@@ -10,9 +10,11 @@ from app.main import create_app
 def app() -> Quart:
     """Create application instance for testing."""
     app = create_app()
-    app.config.update({
-        "TESTING": True,
-    })
+    app.config.update(
+        {
+            "TESTING": True,
+        }
+    )
     return app
 
 

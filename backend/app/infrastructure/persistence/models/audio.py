@@ -79,4 +79,6 @@ class AudioModel(Base):
     __table_args__ = ({"comment": "Cached TTS audio files"},)
 
     def __repr__(self) -> str:
-        return f"<Audio(id={self.id}, post_id={self.post_id}, cache_key={self.cache_key})>"
+        return (
+            f"<Audio(id={self.id}, post_id={self.post_id}, cache_key={self.cache_key})>"
+        )

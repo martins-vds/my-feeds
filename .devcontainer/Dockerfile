@@ -16,8 +16,8 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 RUN if ! id -u $USERNAME > /dev/null 2>&1; then \
-        groupadd --gid $USER_GID $USERNAME && \
-        useradd --uid $USER_UID --gid $USER_GID -m $USERNAME; \
+    groupadd --gid $USER_GID $USERNAME && \
+    useradd --uid $USER_UID --gid $USER_GID -m $USERNAME; \
     fi
 
 USER $USERNAME

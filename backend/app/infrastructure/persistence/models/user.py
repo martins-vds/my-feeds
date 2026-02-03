@@ -12,7 +12,9 @@ from app.infrastructure.persistence.database import Base
 
 if TYPE_CHECKING:
     from app.infrastructure.persistence.models.category import CategoryModel
-    from app.infrastructure.persistence.models.push_subscription import PushSubscriptionModel
+    from app.infrastructure.persistence.models.push_subscription import (
+        PushSubscriptionModel,
+    )
     from app.infrastructure.persistence.models.user_post import UserPostModel
 
 

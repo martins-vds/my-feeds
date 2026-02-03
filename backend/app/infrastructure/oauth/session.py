@@ -74,12 +74,16 @@ class SessionManager:
             session_data = json.loads(session_cookie)
 
             # Validate session data
-            if not all(k in session_data for k in ["user_id", "provider", "created_at"]):
+            if not all(
+                k in session_data for k in ["user_id", "provider", "created_at"]
+            ):
                 return None
 
             # Check session age
             created_at = datetime.fromisoformat(session_data["created_at"])
-            if datetime.utcnow() - created_at > timedelta(days=self.SESSION_DURATION_DAYS):
+            if datetime.utcnow() - created_at > timedelta(
+                days=self.SESSION_DURATION_DAYS
+            ):
                 return None
 
             return session_data

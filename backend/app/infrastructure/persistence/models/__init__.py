@@ -7,7 +7,9 @@ from app.infrastructure.persistence.models.feed import FeedModel
 from app.infrastructure.persistence.models.post import PostModel
 from app.infrastructure.persistence.models.user_post import UserPostModel
 from app.infrastructure.persistence.models.audio import AudioModel
-from app.infrastructure.persistence.models.push_subscription import PushSubscriptionModel
+from app.infrastructure.persistence.models.push_subscription import (
+    PushSubscriptionModel,
+)
 
 __all__ = [
     "UserModel",

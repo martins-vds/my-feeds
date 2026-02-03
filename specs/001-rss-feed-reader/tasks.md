@@ -339,18 +339,18 @@
 
 ## Summary
 
-| Phase | Tasks | Focus |
-|-------|-------|-------|
-| Phase 1: Setup | T001-T010 (10) | Project structure |
-| Phase 2: Foundational | T011-T031 (21) | Core infrastructure |
-| Phase 3: US1 Auth | T032-T051 (20) | OAuth sign-in 🎯 MVP |
-| Phase 4: US2 Feeds | T052-T079 (28) | Category/feed management |
-| Phase 5: US3 Posts | T080-T095 (16) | Post browsing |
-| Phase 6: US4 Reading | T096-T110 (15) | Post detail + read state |
-| Phase 7: US5 TTS | T111-T128 (18) | Text-to-speech |
-| Phase 8: US6 Notifications | T129-T150 (22) | Push notifications |
-| Phase 9: PWA/Polish | T151-T160 (10) | PWA compliance |
-| **Total** | **160 tasks** | |
+| Phase                      | Tasks          | Focus                    |
+| -------------------------- | -------------- | ------------------------ |
+| Phase 1: Setup             | T001-T010 (10) | Project structure        |
+| Phase 2: Foundational      | T011-T031 (21) | Core infrastructure      |
+| Phase 3: US1 Auth          | T032-T051 (20) | OAuth sign-in 🎯 MVP      |
+| Phase 4: US2 Feeds         | T052-T079 (28) | Category/feed management |
+| Phase 5: US3 Posts         | T080-T095 (16) | Post browsing            |
+| Phase 6: US4 Reading       | T096-T110 (15) | Post detail + read state |
+| Phase 7: US5 TTS           | T111-T128 (18) | Text-to-speech           |
+| Phase 8: US6 Notifications | T129-T150 (22) | Push notifications       |
+| Phase 9: PWA/Polish        | T151-T160 (10) | PWA compliance           |
+| **Total**                  | **160 tasks**  |                          |
 
 **MVP Scope**: Phases 1-3 (T001-T051) = 51 tasks → Working authentication
 

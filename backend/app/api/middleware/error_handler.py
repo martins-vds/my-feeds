@@ -51,7 +51,9 @@ class ValidationError(APIError):
     """Request validation error."""
 
     def __init__(self, message: str = "Validation failed", **kwargs: Any) -> None:
-        super().__init__(message, status_code=422, error_code="VALIDATION_ERROR", **kwargs)
+        super().__init__(
+            message, status_code=422, error_code="VALIDATION_ERROR", **kwargs
+        )
 
 
 class ConflictError(APIError):
@@ -105,12 +107,17 @@ async def handle_unexpected_error(error: Exception) -> tuple[Response, int]:
         Generic 500 error response.
     """
     logger.exception(f"Unexpected error: {error}")
-    return jsonify({
-        "error": {
-            "code": "INTERNAL_ERROR",
-            "message": "An unexpected error occurred",
-        }
-    }), 500
+    return (
+        jsonify(
+            {
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "An unexpected error occurred",
+                }
+            }
+        ),
+        500,
+    )
 
 
 def register_error_handlers(app: Any) -> None:

@@ -5,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.feed_management.repositories.user_repository import UserRepository
 from app.infrastructure.oauth.oauth_service import OAuthService
-from app.infrastructure.persistence.repositories.user_repository import SQLAlchemyUserRepository
+from app.infrastructure.persistence.repositories.user_repository import (
+    SQLAlchemyUserRepository,
+)
 
 
 class OAuthModule(Module):

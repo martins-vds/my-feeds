@@ -69,7 +69,9 @@ async def callback(
     # Check for OAuth error
     error = request.args.get("error")
     if error:
-        error_description = request.args.get("error_description", "Authorization denied")
+        error_description = request.args.get(
+            "error_description", "Authorization denied"
+        )
         raise UnauthorizedError(f"OAuth error: {error_description}")
 
     # Get authorization code
@@ -123,15 +125,17 @@ async def me(user_repository: UserRepository):
     if not user:
         raise UnauthorizedError("User not found")
 
-    return jsonify({
-        "id": str(user.id),
-        "email": user.email,
-        "name": user.name,
-        "avatarUrl": user.avatar_url,
-        "provider": user.provider,
-        "timezone": user.timezone,
-        "notificationsEnabled": user.notifications_enabled,
-    })
+    return jsonify(
+        {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.name,
+            "avatarUrl": user.avatar_url,
+            "provider": user.provider,
+            "timezone": user.timezone,
+            "notificationsEnabled": user.notifications_enabled,
+        }
+    )
 
 
 @bp.route("/logout", methods=["POST"])

@@ -203,7 +203,8 @@ class OAuthService:
             return {
                 "provider": provider,
                 "provider_id": str(user_info["id"]),
-                "email": user_info.get("mail") or user_info.get("userPrincipalName", ""),
+                "email": user_info.get("mail")
+                or user_info.get("userPrincipalName", ""),
                 "name": user_info.get("displayName"),
                 "avatar_url": None,  # Microsoft requires separate call for photo
             }

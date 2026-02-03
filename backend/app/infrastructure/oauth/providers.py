@@ -61,7 +61,9 @@ def get_microsoft_config() -> OAuthProviderConfig:
     )
 
 
-def get_provider_config(provider: Literal["github", "google", "microsoft"]) -> OAuthProviderConfig:
+def get_provider_config(
+    provider: Literal["github", "google", "microsoft"],
+) -> OAuthProviderConfig:
     """Get OAuth configuration for the specified provider.
 
     Args:

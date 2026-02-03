@@ -43,7 +43,9 @@ class User:
         self.timezone = timezone
         self.updated_at = datetime.utcnow()
 
-    def update_profile(self, name: str | None = None, avatar_url: str | None = None) -> None:
+    def update_profile(
+        self, name: str | None = None, avatar_url: str | None = None
+    ) -> None:
         """Update user profile from OAuth data.
 
         Args:
