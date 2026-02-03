@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - backend-venv:/workspace/backend/.venv
+      - node-modules:/workspace/frontend/node_modules
+    command: sleep infinity
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/myfeeds
+      - PYTHONPATH=/workspace/backend
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - myfeeds-network
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: myfeeds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - myfeeds-network
+
+volumes:
+  postgres-data:
+  backend-venv:
+  node-modules:
+
+networks:
+  myfeeds-network:
+    driver: bridge

@@ -2,22 +2,22 @@
   ============================================================================
   SYNC IMPACT REPORT
   ============================================================================
-  Version change: 0.0.0 → 1.0.0 (Initial ratification)
+  Version change: 1.0.0 → 1.1.0 (TDD enforcement added)
   
-  Modified principles: N/A (initial version)
+  Modified principles:
+    - III. Test-First Development → III. Test-Driven Development (TDD)
+      - Added explicit Red-Green-Refactor cycle requirement
+      - Added NON-NEGOTIABLE marker
+      - Added TDD workflow rules
   
-  Added sections:
-    - Core Principles (6 principles)
-    - Technology Stack
-    - Development Workflow
-    - Governance
+  Added sections: None
   
-  Removed sections: N/A (initial version)
+  Removed sections: None
   
   Templates requiring updates:
-    ✅ plan-template.md - No changes required (generic structure)
-    ✅ spec-template.md - No changes required (generic structure)
-    ✅ tasks-template.md - No changes required (generic structure)
+    ✅ plan-template.md - No changes required (already references testing)
+    ✅ spec-template.md - No changes required (acceptance scenarios support TDD)
+    ✅ tasks-template.md - No changes required (already includes test tasks)
   
   Follow-up TODOs: None
   ============================================================================
@@ -48,16 +48,29 @@ All backend services MUST use dependency injection via `quart-injector`:
 
 **Rationale**: DI enables trivial mocking for tests, supports swapping implementations, and enforces loose coupling between components.
 
-### III. Test-First Development
+### III. Test-Driven Development (NON-NEGOTIABLE)
 
-Testing is mandatory across the stack:
+All code MUST be developed using TDD (Test-Driven Development):
+
+**The Red-Green-Refactor Cycle**:
+1. **RED**: Write a failing test that defines expected behavior
+2. **GREEN**: Write the minimum code to make the test pass
+3. **REFACTOR**: Improve code quality while keeping tests green
+
+**TDD Rules**:
+- No production code may be written without a failing test
+- Tests MUST be written before implementation, not after
+- Each test MUST fail for the right reason before implementation
+- Keep the Red-Green-Refactor cycle short (minutes, not hours)
+
+**Testing Requirements**:
 - **Backend**: pytest + pytest-asyncio for unit and integration tests
-- **Frontend**: Playwright for UI tests
-- Tests MUST be written before or alongside implementation
+- **Frontend**: Playwright for UI tests; Vitest for component/unit tests
 - Contract tests MUST exist for all API endpoints
 - Integration tests MUST cover cross-layer interactions
+- Test coverage SHOULD be tracked but not blindly maximized
 
-**Rationale**: Comprehensive testing is essential for a multi-year project. Tests serve as living documentation and prevent regressions.
+**Rationale**: TDD produces better-designed, more testable code with fewer defects. The discipline of writing tests first forces clear thinking about requirements and interfaces before implementation.
 
 ### IV. Modern Toolchain
 
@@ -93,21 +106,21 @@ Expensive operations MUST be deferred and cached:
 
 All implementations MUST adhere to the following stack:
 
-| Layer | Technology | Version/Notes |
-|-------|------------|---------------|
-| **Frontend** | React + TypeScript | Via Vite |
-| **UI Framework** | Material UI | Latest stable |
-| **Frontend Build** | Vite | PWA plugin enabled |
-| **Frontend Package Manager** | pnpm | Strict mode |
-| **Backend** | Python + Quart | Python 3.12+ |
-| **Dependency Injection** | quart-injector | Required for all services |
-| **Database** | PostgreSQL | Primary data store |
-| **ORM** | SQLAlchemy + asyncpg | Async-first |
-| **Migrations** | Alembic | Schema versioning |
-| **Feed Parsing** | feedparser | RSS/Atom support |
-| **Backend Package Manager** | uv | Required |
-| **Authentication** | OAuth2 | GitHub, Gmail, or Outlook |
-| **Dev Environment** | Dev Containers | Docker-based |
+| Layer                        | Technology           | Version/Notes             |
+| ---------------------------- | -------------------- | ------------------------- |
+| **Frontend**                 | React + TypeScript   | Via Vite                  |
+| **UI Framework**             | Material UI          | Latest stable             |
+| **Frontend Build**           | Vite                 | PWA plugin enabled        |
+| **Frontend Package Manager** | pnpm                 | Strict mode               |
+| **Backend**                  | Python + Quart       | Python 3.12+              |
+| **Dependency Injection**     | quart-injector       | Required for all services |
+| **Database**                 | PostgreSQL           | Primary data store        |
+| **ORM**                      | SQLAlchemy + asyncpg | Async-first               |
+| **Migrations**               | Alembic              | Schema versioning         |
+| **Feed Parsing**             | feedparser           | RSS/Atom support          |
+| **Backend Package Manager**  | uv                   | Required                  |
+| **Authentication**           | OAuth2               | GitHub, Gmail, or Outlook |
+| **Dev Environment**          | Dev Containers       | Docker-based              |
 
 **Stack Deviations**: Any deviation from this stack MUST be documented with justification and approved before implementation.
 
@@ -165,4 +178,4 @@ This constitution supersedes all other development practices for the my-feeds pr
 
 **Compliance**: All code contributions MUST be verified against this constitution during review.
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-01-30
+**Version**: 1.1.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-03
