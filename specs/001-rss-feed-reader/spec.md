@@ -97,20 +97,11 @@ As a user, I want to listen to a post read aloud so that I can consume content h
 
 ---
 
-### User Story 6 - Receive Daily Notifications (Priority: P6)
+### User Story 6 - ~~Receive Daily Notifications~~ (Priority: REMOVED)
 
-As a user, I want to receive a daily notification summarizing new posts so that I am reminded to check my feeds and stay informed.
+**Status**: OUT OF SCOPE - Removed per clarification session 2026-02-13
 
-**Why this priority**: Notifications drive engagement and habit formation. However, they require a working feed system to have content to notify about.
-
-**Independent Test**: Can be tested by enabling notifications and verifying a notification is received at the scheduled time when new posts exist.
-
-**Acceptance Scenarios**:
-
-1. **Given** I have enabled notifications, **When** the daily notification time arrives, **Then** I receive a push notification with a summary of new posts
-2. **Given** I receive a notification, **When** I tap on it, **Then** the app opens to the latest posts view
-3. **Given** I want to control notifications, **When** I access notification settings, **Then** I can enable/disable notifications
-4. **Given** there are no new posts since my last visit, **When** notification time arrives, **Then** no notification is sent (avoid empty notifications)
+~~As a user, I want to receive a daily notification summarizing new posts so that I am reminded to check my feeds and stay informed.~~
 
 ---
 
@@ -141,12 +132,15 @@ As a user, I want to receive a daily notification summarizing new posts so that 
 - **FR-009**: Users MUST be able to move feeds between categories
 - **FR-010**: Users MUST be able to remove feeds from their subscriptions
 - **FR-011**: System MUST persist all feed and category data per user
+- **FR-038**: System MUST enforce a maximum of 100 feeds per user
+- **FR-039**: System MUST enforce a maximum of 25 categories per user
 
 **Content Fetching**
-- **FR-012**: System MUST periodically fetch new posts from all subscribed feeds
+- **FR-012**: System MUST fetch new posts when user triggers refresh on a feed
 - **FR-013**: System MUST store fetched posts for user access
 - **FR-014**: System MUST support both RSS and Atom feed formats
 - **FR-032**: System MUST automatically delete posts older than 90 days from publication date
+- **FR-036**: System MUST provide a manual refresh action per feed (no automatic background polling)
 
 **Content Display**
 - **FR-015**: Users MUST be able to view all recent posts in a unified chronological list
@@ -163,18 +157,19 @@ As a user, I want to receive a daily notification summarizing new posts so that 
 - **FR-021**: System MUST cache generated audio for subsequent playback
 - **FR-022**: Users MUST be able to pause, resume, and stop audio playback
 - **FR-033**: System MUST store generated audio server-side and serve via backend API
+- **FR-037**: System MUST delete cached audio after 90 days (aligned with post retention)
 
-**Notifications**
-- **FR-023**: Users MUST be able to enable/disable daily notifications
-- **FR-024**: System MUST send daily push notifications when new posts are available
-- **FR-025**: Notifications MUST deep-link to the latest posts view
-- **FR-034**: System MUST send daily notifications at 8:00 AM user local time
-- **FR-035**: System MUST track user timezone for notification scheduling
+**Notifications** (REMOVED)
+- ~~**FR-023**: Users MUST be able to enable/disable daily notifications~~ - OUT OF SCOPE
+- ~~**FR-024**: System MUST send daily push notifications when new posts are available~~ - OUT OF SCOPE
+- ~~**FR-025**: Notifications MUST deep-link to the latest posts view~~ - OUT OF SCOPE
+- ~~**FR-034**: System MUST send daily notifications at 8:00 AM user local time~~ - OUT OF SCOPE
+- ~~**FR-035**: System MUST track user timezone for notification scheduling~~ - OUT OF SCOPE
 
 **Progressive Web App**
 - **FR-026**: Application MUST be installable on mobile devices
 - **FR-027**: Application MUST work offline with cached content
-- **FR-028**: Application MUST support push notifications on compatible browsers/devices
+- ~~**FR-028**: Application MUST support push notifications on compatible browsers/devices~~ - OUT OF SCOPE (no notifications feature)
 
 ### Key Entities
 
@@ -194,19 +189,17 @@ As a user, I want to receive a daily notification summarizing new posts so that 
 - **SC-004**: Text-to-speech audio begins playing within 5 seconds of first request
 - **SC-005**: Cached audio replays within 1 second of subsequent requests
 - **SC-006**: Application functions offline with previously viewed content accessible
-- **SC-007**: Daily notifications are delivered within 5 minutes of scheduled time
+- ~~**SC-007**: Daily notifications are delivered within 5 minutes of scheduled time~~ - OUT OF SCOPE
 - **SC-008**: Users can organize 50+ feeds across 10+ categories without performance degradation
 - **SC-009**: 90% of users can complete feed subscription without external help
 - **SC-010**: Application achieves Lighthouse PWA score of 90+
 
 ## Assumptions
 
-- Users have modern browsers supporting PWA features (service workers, push notifications)
+- Users have modern browsers supporting PWA features (service workers, installable apps)
 - OAuth providers (GitHub, Google, Microsoft) maintain stable API availability
 - RSS/Atom feeds follow standard specifications; non-standard feeds may have limited support
-- Text-to-speech service is available and responsive (specific provider TBD during implementation)
-- Users accept browser permissions for notifications when prompted
-- Daily notifications are sent at 8:00 AM user local time (requires timezone tracking per user)
+- Azure Cognitive Services TTS is used for text-to-speech generation (neural voices, free tier available)
 
 ## Clarifications
 
@@ -216,3 +209,11 @@ As a user, I want to receive a daily notification summarizing new posts so that 
 - Q: How long should posts be retained before automatic cleanup? → A: 90 days from publication date
 - Q: Where should generated TTS audio files be stored? → A: Server-side storage (backend serves audio files)
 - Q: What time of day should daily notifications be sent? → A: Morning (8:00 AM user local time)
+
+### Session 2026-02-13
+
+- Q: Which TTS provider should be used for text-to-speech? → A: Azure Cognitive Services TTS
+- Q: How often should feeds be refreshed? → A: User-triggered (manual refresh per feed)
+- Q: How long should cached TTS audio be retained? → A: 90 days (matches post retention)
+- Q: What are the hard limits for feeds and categories per user? → A: 100 feeds, 25 categories
+- Q: Should push notifications be used for daily summaries? → A: No, daily notifications feature removed from scope

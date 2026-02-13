@@ -1,72 +1,187 @@
 # Research: RSS Feed Reader Core
 
 **Feature Branch**: `001-rss-feed-reader`  
-**Date**: 2026-02-03  
+**Date**: 2026-02-13  
 **Purpose**: Resolve NEEDS CLARIFICATION items and establish best practices
 
 ## Table of Contents
 
-1. [Dependency Injection with quart-injector](#1-dependency-injection-with-quart-injector)
+1. [Dependency Injection with Abstract Base Classes](#1-dependency-injection-with-abstract-base-classes)
 2. [OAuth2 Authentication](#2-oauth2-authentication)
 3. [Text-to-Speech Implementation](#3-text-to-speech-implementation)
-4. [PWA Push Notifications](#4-pwa-push-notifications)
+4. ~~[PWA Push Notifications](#4-pwa-push-notifications)~~ - OUT OF SCOPE
 
 ---
 
-## 1. Dependency Injection with quart-injector
+## 1. Dependency Injection with Abstract Base Classes
 
-### Decision: Use quart-injector with Module classes
+### Decision: Use Python's built-in `abc` module for DI via inheritance
 
-**Rationale**: quart-injector integrates seamlessly with Quart's async-first approach. Module classes provide clear organization for DDD bounded contexts.
+**Rationale**: ABC-based DI provides loose coupling without external dependencies. ABCs are built into Python, require no additional libraries, and integrate naturally with type checkers and IDE tooling. The constitution mandates this approach as of v1.2.0.
 
 **Alternatives Considered**:
-- Manual DI: Rejected - too verbose, no scope management
+- quart-injector: Rejected - library no longer viable per constitution v1.2.0
+- Manual DI without ABCs: Rejected - loses type safety and clear contracts
+- python-inject: Rejected - external dependency not needed
 - FastAPI Depends: Rejected - wrong framework
-- python-inject: Rejected - less async support than quart-injector
 
 ### Key Implementation Patterns
 
-**Setup Pattern**:
+**Abstract Base Class Definition (Domain Layer)**:
 ```python
-import quart_injector
-from injector import Module, Binder, singleton
+from abc import ABC, abstractmethod
+from typing import Optional
 
-class InfrastructureModule(Module):
-    def configure(self, binder: Binder) -> None:
-        binder.bind(Database, to=AsyncDatabase, scope=singleton)
+class FeedRepository(ABC):
+    """Abstract base class for feed persistence operations."""
+    
+    @abstractmethod
+    async def get_by_id(self, feed_id: str) -> Optional[Feed]:
+        """Retrieve a feed by its ID."""
+        ...
+    
+    @abstractmethod
+    async def get_by_user(self, user_id: str) -> list[Feed]:
+        """Retrieve all feeds for a user."""
+        ...
+    
+    @abstractmethod
+    async def save(self, feed: Feed) -> Feed:
+        """Persist a feed entity."""
+        ...
+    
+    @abstractmethod
+    async def delete(self, feed_id: str) -> bool:
+        """Delete a feed by ID."""
+        ...
+```
 
-class RepositoryModule(Module):
-    def configure(self, binder: Binder) -> None:
-        binder.bind(FeedRepository, to=SQLFeedRepository)
+**Concrete Implementation (Infrastructure Layer)**:
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.domain.feed_management.repositories import FeedRepository
+from app.domain.feed_management.entities import Feed
 
-quart_injector.wire(app, [InfrastructureModule(), RepositoryModule()])
+class SQLFeedRepository(FeedRepository):
+    """SQLAlchemy implementation of FeedRepository."""
+    
+    def __init__(self, session: AsyncSession):
+        self._session = session
+    
+    async def get_by_id(self, feed_id: str) -> Optional[Feed]:
+        result = await self._session.get(FeedModel, feed_id)
+        return result.to_entity() if result else None
+    
+    async def get_by_user(self, user_id: str) -> list[Feed]:
+        stmt = select(FeedModel).where(FeedModel.user_id == user_id)
+        result = await self._session.scalars(stmt)
+        return [r.to_entity() for r in result]
+    
+    async def save(self, feed: Feed) -> Feed:
+        model = FeedModel.from_entity(feed)
+        self._session.add(model)
+        await self._session.flush()
+        return model.to_entity()
+    
+    async def delete(self, feed_id: str) -> bool:
+        stmt = delete(FeedModel).where(FeedModel.id == feed_id)
+        result = await self._session.execute(stmt)
+        return result.rowcount > 0
+```
+
+**Service with Injected Dependencies**:
+```python
+from app.domain.feed_management.repositories import FeedRepository
+from app.domain.feed_management.entities import Feed
+
+class FeedService:
+    """Application service for feed operations."""
+    
+    def __init__(self, repository: FeedRepository):  # Depends on ABC
+        self._repository = repository
+    
+    async def get_feeds_for_user(self, user_id: str) -> list[Feed]:
+        return await self._repository.get_by_user(user_id)
+    
+    async def add_feed(self, user_id: str, url: str, category_id: str) -> Feed:
+        feed = Feed.create(user_id=user_id, url=url, category_id=category_id)
+        return await self._repository.save(feed)
+```
+
+**Composition Root (container.py)**:
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.domain.feed_management.repositories import FeedRepository
+from app.infrastructure.persistence.repositories import SQLFeedRepository
+from app.application.services import FeedService
+
+class Container:
+    """DI composition root - wires ABCs to concrete implementations."""
+    
+    def __init__(self, session: AsyncSession):
+        self._session = session
+    
+    def feed_repository(self) -> FeedRepository:
+        return SQLFeedRepository(self._session)
+    
+    def feed_service(self) -> FeedService:
+        return FeedService(self.feed_repository())
+```
+
+**Route Integration**:
+```python
+from quart import Blueprint, g
+from app.config.container import Container
+
+feeds_bp = Blueprint('feeds', __name__)
+
+def get_container() -> Container:
+    return Container(g.db_session)
+
+@feeds_bp.route("/feeds")
+async def list_feeds():
+    service = get_container().feed_service()
+    feeds = await service.get_feeds_for_user(g.current_user.id)
+    return [f.to_dict() for f in feeds]
+```
+
+**Testing Pattern (Mock via ABC)**:
+```python
+import pytest
+from unittest.mock import AsyncMock
+from app.domain.feed_management.repositories import FeedRepository
+from app.application.services import FeedService
+from app.domain.feed_management.entities import Feed
+
+@pytest.fixture
+def mock_repository():
+    repo = AsyncMock(spec=FeedRepository)
+    return repo
+
+@pytest.fixture
+def feed_service(mock_repository):
+    return FeedService(mock_repository)
+
+async def test_get_feeds_for_user(feed_service, mock_repository):
+    # Arrange
+    expected_feeds = [Feed.create(user_id="u1", url="https://example.com/feed", category_id="c1")]
+    mock_repository.get_by_user.return_value = expected_feeds
+    
+    # Act
+    result = await feed_service.get_feeds_for_user("u1")
+    
+    # Assert
+    assert result == expected_feeds
+    mock_repository.get_by_user.assert_called_once_with("u1")
 ```
 
 **Scope Strategy for DDD**:
-| Layer                             | Scope               | Rationale                               |
-| --------------------------------- | ------------------- | --------------------------------------- |
-| Infrastructure (DB, HTTP clients) | Singleton           | Connection pooling, expensive to create |
-| Repositories                      | Transient (default) | Stateless, use singleton DB             |
-| Application Services              | Transient           | Stateless, orchestrate domain logic     |
-| Domain Services                   | Transient           | Pure business logic                     |
-
-**Route Injection**:
-```python
-@app.route("/feeds")
-async def list_feeds(service: Inject[FeedService]) -> Response:
-    feeds = await service.get_all()
-    return jsonify([f.to_dict() for f in feeds])
-```
-
-**Testing Pattern**:
-```python
-def create_test_app(mock_service: FeedService) -> Quart:
-    app = create_app()
-    def configure_test(binder: Binder) -> None:
-        binder.bind(FeedService, to=mock_service)
-    quart_injector.wire(app, configure_test)
-    return app
-```
+| Layer                       | Lifecycle      | Rationale                           |
+| --------------------------- | -------------- | ----------------------------------- |
+| Infrastructure (DB session) | Request-scoped | Managed by middleware               |
+| Repositories                | Per-request    | Stateless, receive session          |
+| Application Services        | Per-request    | Stateless, orchestrate domain logic |
+| Domain Services             | Per-request    | Pure business logic                 |
 
 ---
 
@@ -125,24 +240,87 @@ app.config.update(
 
 ## 3. Text-to-Speech Implementation
 
-### Decision: Azure Cognitive Services Speech (initial), migrate to Piper at scale
+### Decision: Azure Cognitive Services Speech
 
-**Rationale**: Azure offers 0.5M chars/month free tier with high-quality neural voices. Piper provides a cost-effective self-hosted option when usage exceeds free tier.
+**Rationale**: Azure offers 0.5M chars/month free tier with high-quality neural voices. This aligns with the constitution's requirement to minimize costs. Selected per spec clarification session 2026-02-13.
 
 **Alternatives Considered**:
 - Google Cloud TTS: Similar pricing, Azure has better free tier
 - AWS Polly: Similar pricing, slightly worse free tier
 - ElevenLabs: Too expensive for RSS content ($0.30/1K chars)
-- Coqui TTS: Good but requires GPU; Piper is more CPU-friendly
+- Piper (self-hosted): Good CPU-friendly option for future scale, but Azure sufficient for MVP
 
 ### Provider Comparison
 
-| Provider                | Free Tier                 | Neural Pricing   | Quality        |
-| ----------------------- | ------------------------- | ---------------- | -------------- |
-| **Azure**               | 0.5M chars/month          | $16/1M chars     | Excellent      |
-| Google                  | 1M chars (first 3 months) | $16/1M chars     | Excellent      |
-| AWS Polly               | 5M chars (12 months)      | $16/1M chars     | Good           |
-| **Piper** (self-hosted) | Unlimited                 | Server cost only | Good-Excellent |
+| Provider             | Free Tier                 | Neural Pricing   | Quality        |
+| -------------------- | ------------------------- | ---------------- | -------------- |
+| **Azure** (selected) | 0.5M chars/month          | $16/1M chars     | Excellent      |
+| Google               | 1M chars (first 3 months) | $16/1M chars     | Excellent      |
+| AWS Polly            | 5M chars (12 months)      | $16/1M chars     | Good           |
+| Piper (self-hosted)  | Unlimited                 | Server cost only | Good-Excellent |
+
+### Azure SDK Implementation
+
+**Package**: `azure-cognitiveservices-speech` (Python SDK)
+
+**Installation**:
+```bash
+uv add azure-cognitiveservices-speech
+```
+
+**Configuration** (environment variables):
+```bash
+AZURE_SPEECH_KEY=your_subscription_key
+AZURE_SPEECH_REGION=eastus  # or other region
+```
+
+**Implementation Pattern**:
+```python
+import azure.cognitiveservices.speech as speechsdk
+from pathlib import Path
+
+class AzureTTSService(TTSService):
+    """Azure Cognitive Services TTS implementation."""
+    
+    def __init__(self, speech_key: str, speech_region: str):
+        self._config = speechsdk.SpeechConfig(
+            subscription=speech_key,
+            region=speech_region
+        )
+        # Neural voice for natural speech
+        self._config.speech_synthesis_voice_name = "en-US-JennyNeural"
+        # MP3 output at 64kbps
+        self._config.set_speech_synthesis_output_format(
+            speechsdk.SpeechSynthesisOutputFormat.Audio16Khz64KBitRateMonoMp3
+        )
+    
+    async def synthesize(self, text: str, output_path: Path) -> None:
+        """Generate audio file from text."""
+        audio_config = speechsdk.audio.AudioOutputConfig(filename=str(output_path))
+        synthesizer = speechsdk.SpeechSynthesizer(
+            speech_config=self._config,
+            audio_config=audio_config
+        )
+        
+        # Run synthesis (blocking - wrap in asyncio.to_thread for async)
+        result = synthesizer.speak_text_async(text).get()
+        
+        if result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = result.cancellation_details
+            raise TTSError(f"Speech synthesis canceled: {cancellation.reason}")
+```
+
+**Voice Options** (neural voices):
+| Voice               | Style          | Use Case               |
+| ------------------- | -------------- | ---------------------- |
+| `en-US-JennyNeural` | Conversational | Default for articles   |
+| `en-US-GuyNeural`   | News           | Alternative male voice |
+| `en-GB-SoniaNeural` | British        | UK content             |
+
+**Rate Limiting**:
+- Free tier: 20 concurrent requests
+- Standard tier: 200 concurrent requests
+- Implement queue with max 10 concurrent requests for safety margin
 
 ### Audio Format
 
@@ -178,149 +356,34 @@ cache_key = sha256(f"{text}:{voice_id}:{format}:{cache_version}")
 
 ### Cache Invalidation
 
-| Trigger                         | Action                                           |
-| ------------------------------- | ------------------------------------------------ |
-| Source content changes          | Regenerate (content hash mismatch)               |
-| Voice/quality config changes    | Bump `cache_version`, regenerate on next request |
-| Storage limit exceeded          | LRU eviction (30-day access threshold)           |
-| Post deleted (90-day retention) | Cascade delete audio                             |
+| Trigger                      | Action                                           |
+| ---------------------------- | ------------------------------------------------ |
+| Source content changes       | Regenerate (content hash mismatch)               |
+| Voice/quality config changes | Bump `cache_version`, regenerate on next request |
+| 90-day retention exceeded    | Cascade delete audio with post                   |
+| Post deleted                 | Cascade delete audio                             |
 
 ---
 
 ## 4. PWA Push Notifications
 
-### Decision: pywebpush + vite-plugin-pwa with injectManifest
+**Status**: OUT OF SCOPE - Removed per spec clarification session 2026-02-13
 
-**Rationale**: pywebpush is the standard Python library for Web Push. `injectManifest` strategy allows custom service worker logic for push handling.
-
-**Alternatives Considered**:
-- Custom service worker without Workbox: Rejected - lose caching benefits
-- generateSW strategy: Rejected - less control over push event handling
-- Firebase Cloud Messaging: Rejected - adds vendor dependency
-
-### VAPID Keys
-
-```bash
-# Generate keys
-openssl ecparam -genkey -name prime256v1 -out vapid_private.pem
-openssl ec -in vapid_private.pem -pubout -out vapid_public.pem
-```
-
-### Subscription Management
-
-**Database Schema**:
-```sql
-CREATE TABLE push_subscriptions (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    endpoint TEXT NOT NULL UNIQUE,
-    p256dh TEXT NOT NULL,
-    auth TEXT NOT NULL,
-    user_agent TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    last_success_at TIMESTAMP,
-    failure_count INTEGER DEFAULT 0
-);
-```
-
-### Timezone-Aware Scheduling
-
-**Decision**: Store user IANA timezone, convert 8:00 AM local to UTC for scheduling
-
-```python
-from zoneinfo import ZoneInfo
-from datetime import datetime, time
-
-def get_next_notification_time(user_timezone: str) -> datetime:
-    tz = ZoneInfo(user_timezone)
-    now = datetime.now(tz)
-    target_time = time(8, 0)  # 8:00 AM local
-    
-    # Calculate next 8 AM in user's timezone
-    if now.time() >= target_time:
-        next_day = now.date() + timedelta(days=1)
-    else:
-        next_day = now.date()
-    
-    local_dt = datetime.combine(next_day, target_time, tzinfo=tz)
-    return local_dt.astimezone(ZoneInfo('UTC'))
-```
-
-### Service Worker Events
-
-```javascript
-// Handle push event
-self.addEventListener('push', (event) => {
-    const data = event.data?.json() ?? {};
-    event.waitUntil(
-        self.registration.showNotification(data.title, {
-            body: data.body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/badge-72.png',
-            tag: 'daily-digest',
-            data: { url: data.url || '/posts' }
-        })
-    );
-});
-
-// Handle notification click - deep link
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    const url = event.notification.data?.url || '/';
-    event.waitUntil(
-        clients.matchAll({ type: 'window' }).then((windowClients) => {
-            // Focus existing window or open new
-            for (const client of windowClients) {
-                if (client.url === url && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            return clients.openWindow(url);
-        })
-    );
-});
-```
-
-### Notification Payload
-
-```json
-{
-    "title": "Your Daily Feed Digest",
-    "body": "12 new posts from your subscriptions",
-    "icon": "/icons/icon-192.png",
-    "badge": "/icons/badge-72.png",
-    "tag": "daily-digest",
-    "data": {
-        "url": "/posts?filter=unread",
-        "postCount": 12
-    }
-}
-```
-
-### Browser Support
-
-| Browser | Push Support              | Notes                        |
-| ------- | ------------------------- | ---------------------------- |
-| Chrome  | ✅ 42+                     | Full support                 |
-| Firefox | ✅ 44+                     | Full support                 |
-| Safari  | ✅ 16.4+ (iOS Home Screen) | Requires Web Push permission |
-| Edge    | ✅ 17+                     | Full support                 |
-| WebView | ❌                         | Use native app notifications |
+Daily notification feature was removed from scope. Push notification infrastructure is not required for this feature.
 
 ---
 
 ## Summary: Technology Decisions
 
-| Area                        | Decision                           | Rationale                                     |
-| --------------------------- | ---------------------------------- | --------------------------------------------- |
-| **Dependency Injection**    | quart-injector with Module classes | Async support, clean DDD organization         |
-| **OAuth2**                  | Authlib + BFF pattern              | Security, tokens stay server-side             |
-| **Session**                 | Server-side with HttpOnly cookies  | XSS/CSRF protection                           |
-| **TTS Provider**            | Azure (MVP), Piper (scale)         | Free tier, quality, cost optimization         |
-| **Audio Format**            | MP3 @ 64kbps                       | Universal support, sufficient for speech      |
-| **Audio Storage**           | Filesystem + SQLite metadata       | Simple MVP, migrate to S3 later               |
-| **Audio Streaming**         | HTTP Range Requests                | Seeking support, native browser compatibility |
-| **Push Notifications**      | pywebpush + vite-plugin-pwa        | Standard, full control                        |
-| **Notification Scheduling** | IANA timezone, APScheduler         | Accurate local time delivery                  |
+| Area                     | Decision                          | Rationale                                     |
+| ------------------------ | --------------------------------- | --------------------------------------------- |
+| **Dependency Injection** | ABC + Inheritance (no library)    | Built-in Python, type-safe, IDE integration   |
+| **OAuth2**               | Authlib + BFF pattern             | Security, tokens stay server-side             |
+| **Session**              | Server-side with HttpOnly cookies | XSS/CSRF protection                           |
+| **TTS Provider**         | Azure Cognitive Services          | Free tier, neural quality                     |
+| **Audio Format**         | MP3 @ 64kbps                      | Universal support, sufficient for speech      |
+| **Audio Storage**        | Filesystem + SQLite metadata      | Simple MVP, migrate to S3 later               |
+| **Audio Streaming**      | HTTP Range Requests               | Seeking support, native browser compatibility |
+| ~~Push Notifications~~   | ~~N/A~~                           | OUT OF SCOPE                                  |
 
-All decisions align with Constitution principles (DDD, DI, Modern Toolchain, PWA-First, Lazy Generation).
+All decisions align with Constitution v1.2.0 principles (DDD, ABC-based DI, TDD, Modern Toolchain, PWA-First, Lazy Generation).

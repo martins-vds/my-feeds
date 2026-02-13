@@ -21,8 +21,6 @@ tags:
     description: Post viewing and read state
   - name: audio
     description: Text-to-Speech audio
-  - name: notifications
-    description: Push notification management
   - name: user
     description: User profile and settings
 
@@ -544,79 +542,10 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # ============================================================================
-  # Notifications
+  # Notifications (OUT OF SCOPE)
   # ============================================================================
-  /notifications/vapid-public-key:
-    get:
-      tags: [notifications]
-      summary: Get VAPID public key
-      description: Returns public key for push subscription
-      operationId: getVapidPublicKey
-      responses:
-        "200":
-          description: VAPID public key
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  publicKey:
-                    type: string
-                    description: Base64-encoded VAPID public key
-
-  /notifications/subscribe:
-    post:
-      tags: [notifications]
-      summary: Subscribe to push notifications
-      description: Registers a push subscription
-      operationId: subscribePush
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PushSubscriptionCreate"
-      responses:
-        "201":
-          description: Subscription created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PushSubscription"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
-  /notifications/unsubscribe:
-    post:
-      tags: [notifications]
-      summary: Unsubscribe from push notifications
-      description: Removes a push subscription
-      operationId: unsubscribePush
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - endpoint
-              properties:
-                endpoint:
-                  type: string
-                  description: Push subscription endpoint URL
-      responses:
-        "204":
-          description: Subscription removed
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
+  # Daily notification feature was removed from scope per spec clarification
+  # session 2026-02-13. No notification endpoints are required.
 
   # ============================================================================
   # User Settings
@@ -1015,64 +944,19 @@ components:
           type: integer
           description: Estimated time until ready
 
-    PushSubscriptionCreate:
-      type: object
-      required:
-        - endpoint
-        - keys
-      properties:
-        endpoint:
-          type: string
-          format: uri
-        keys:
-          type: object
-          required:
-            - p256dh
-            - auth
-          properties:
-            p256dh:
-              type: string
-            auth:
-              type: string
-        userAgent:
-          type: string
-
-    PushSubscription:
-      type: object
-      required:
-        - id
-        - endpoint
-      properties:
-        id:
-          type: string
-          format: uuid
-        endpoint:
-          type: string
-          format: uri
-        createdAt:
-          type: string
-          format: date-time
+    # PushSubscriptionCreate - OUT OF SCOPE (notifications removed)
+    # PushSubscription - OUT OF SCOPE (notifications removed)
 
     UserSettings:
       type: object
-      required:
-        - notificationsEnabled
-        - timezone
       properties:
-        notificationsEnabled:
-          type: boolean
-        timezone:
-          type: string
-          description: IANA timezone (e.g., America/New_York)
-        subscriptionCount:
+        feedCount:
           type: integer
-          description: Number of active push subscriptions
+          description: Number of subscribed feeds
+        categoryCount:
+          type: integer
+          description: Number of categories
 
     UserSettingsUpdate:
       type: object
-      properties:
-        notificationsEnabled:
-          type: boolean
-        timezone:
-          type: string
-          description: IANA timezone
+      description: No mutable settings currently (notifications removed from scope)

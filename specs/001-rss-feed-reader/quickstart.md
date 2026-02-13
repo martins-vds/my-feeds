@@ -1,7 +1,7 @@
 # Quickstart: my-feeds Development
 
 **Feature Branch**: `001-rss-feed-reader`  
-**Date**: 2026-02-03
+**Date**: 2026-02-13
 
 ## Prerequisites
 
@@ -67,20 +67,14 @@ MICROSOFT_CLIENT_SECRET=your_microsoft_client_secret
 # Session
 SECRET_KEY=generate_a_secure_random_key
 
-# TTS (Azure)
+# TTS (Azure Cognitive Services)
 AZURE_SPEECH_KEY=your_azure_speech_key
 AZURE_SPEECH_REGION=eastus
-
-# Push Notifications
-VAPID_PRIVATE_KEY=your_vapid_private_key
-VAPID_PUBLIC_KEY=your_vapid_public_key
-VAPID_CLAIM_EMAIL=mailto:your@email.com
 ```
 
 **frontend/.env**:
 ```bash
 VITE_API_URL=http://localhost:5000/api
-VITE_VAPID_PUBLIC_KEY=your_vapid_public_key
 ```
 
 ### 4. Database Setup
@@ -113,9 +107,8 @@ Frontend runs at: http://localhost:5173
 my-feeds/
 ├── backend/
 │   ├── app/
-│   │   ├── domain/           # DDD Domain layer
+│   │   ├── domain/           # DDD Domain layer (ABCs + entities)
 │   │   │   ├── feed_management/
-│   │   │   ├── notifications/
 │   │   │   └── audio/
 │   │   ├── application/      # Application services
 │   │   ├── infrastructure/   # Repositories, external services
@@ -199,18 +192,6 @@ uv run alembic downgrade -1
 uv run alembic current
 ```
 
-### Generate VAPID Keys
-
-```bash
-# Using OpenSSL
-openssl ecparam -genkey -name prime256v1 -out vapid_private.pem
-openssl ec -in vapid_private.pem -pubout -out vapid_public.pem
-
-# Convert to base64 for .env
-openssl ec -in vapid_private.pem -outform DER | tail -c +8 | head -c 32 | base64 -w0
-openssl ec -in vapid_public.pem -pubin -outform DER | tail -c 65 | base64 -w0
-```
-
 ### Linting & Formatting
 
 **Backend**:
@@ -241,13 +222,13 @@ When backend is running, Swagger UI available at: http://localhost:5000/docs
 
 2. **DDD Layers**: Domain logic is framework-independent. See `app/domain/`.
 
-3. **Dependency Injection**: All services use `quart-injector`. Configure in `app/config/container.py`.
+3. **Dependency Injection via ABCs**: Services depend on abstract base classes. Concrete implementations injected at composition root. See `app/config/container.py`.
 
 4. **OAuth BFF Pattern**: Tokens stay server-side. Frontend uses HttpOnly session cookies.
 
-5. **Lazy TTS**: Audio generated on first listen, cached server-side.
+5. **Lazy TTS**: Audio generated on first listen via Azure Cognitive Services, cached server-side.
 
-6. **PWA**: Vite PWA plugin with custom service worker for push notifications.
+6. **PWA**: Vite PWA plugin for offline capability and installability.
 
 ## Troubleshooting
 
@@ -264,10 +245,6 @@ When backend is running, Swagger UI available at: http://localhost:5000/docs
 ### Frontend can't reach backend
 - Check CORS settings in backend
 - Verify Vite proxy config in `vite.config.ts`
-
-### Push notifications not working
-- Must be served over HTTPS (use ngrok for testing)
-- Check VAPID keys match between backend and frontend
 
 ## Next Steps
 

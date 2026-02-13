@@ -1,7 +1,7 @@
 # Data Model: RSS Feed Reader Core
 
 **Feature Branch**: `001-rss-feed-reader`  
-**Date**: 2026-02-03  
+**Date**: 2026-02-13  
 **Purpose**: Define entities, relationships, and validation rules extracted from feature specification
 
 ## Entity Relationship Diagram
@@ -15,12 +15,12 @@
 │ provider_id │       │ name        │       │ url         │
 │ email       │       │ position    │       │ title       │
 │ name        │       │ created_at  │       │ description │
-│ timezone    │       │ updated_at  │       │ site_url    │
-│ created_at  │       └─────────────┘       │ last_fetched│
-│ updated_at  │                             │ created_at  │
-└─────────────┘                             └─────────────┘
-       │                                           │
-       │                                           │
+│ created_at  │       │ updated_at  │       │ site_url    │
+│ updated_at  │       └─────────────┘       │ last_fetched│
+└─────────────┘                             │ created_at  │
+       │                                           └─────────────┘
+       │                                                   │
+       │                                                   │
        │         ┌─────────────┐                   │
        │         │    Post     │                   │
        │         ├─────────────┤                   │
@@ -48,20 +48,6 @@
                  │ is_read     │
                  │ read_at     │
                  └─────────────┘
-
-       ┌─────────────────────┐
-       │  PushSubscription   │
-       ├─────────────────────┤
-       │ id (PK)             │
-       │ user_id (FK)        │──────── User (1:N)
-       │ endpoint            │
-       │ p256dh              │
-       │ auth                │
-       │ user_agent          │
-       │ created_at          │
-       │ last_success_at     │
-       │ failure_count       │
-       └─────────────────────┘
 ```
 
 ---
@@ -72,23 +58,20 @@
 
 **Description**: Authenticated individual with unique identity from OAuth provider.
 
-| Field                   | Type         | Constraints                    | Description                              |
-| ----------------------- | ------------ | ------------------------------ | ---------------------------------------- |
-| `id`                    | UUID         | PK                             | Internal unique identifier               |
-| `provider`              | ENUM         | NOT NULL                       | `github`, `google`, `microsoft`          |
-| `provider_id`           | VARCHAR(255) | NOT NULL, UNIQUE with provider | User ID from OAuth provider              |
-| `email`                 | VARCHAR(255) | NOT NULL                       | Email from OAuth provider                |
-| `name`                  | VARCHAR(255) | NULL                           | Display name from OAuth                  |
-| `avatar_url`            | VARCHAR(512) | NULL                           | Profile picture URL                      |
-| `timezone`              | VARCHAR(64)  | NOT NULL, DEFAULT 'UTC'        | IANA timezone (e.g., `America/New_York`) |
-| `notifications_enabled` | BOOLEAN      | NOT NULL, DEFAULT FALSE        | Daily notification preference            |
-| `created_at`            | TIMESTAMP    | NOT NULL, DEFAULT NOW()        | Account creation time                    |
-| `updated_at`            | TIMESTAMP    | NOT NULL                       | Last profile update                      |
+| Field         | Type         | Constraints                    | Description                     |
+| ------------- | ------------ | ------------------------------ | ------------------------------- |
+| `id`          | UUID         | PK                             | Internal unique identifier      |
+| `provider`    | ENUM         | NOT NULL                       | `github`, `google`, `microsoft` |
+| `provider_id` | VARCHAR(255) | NOT NULL, UNIQUE with provider | User ID from OAuth provider     |
+| `email`       | VARCHAR(255) | NOT NULL                       | Email from OAuth provider       |
+| `name`        | VARCHAR(255) | NULL                           | Display name from OAuth         |
+| `avatar_url`  | VARCHAR(512) | NULL                           | Profile picture URL             |
+| `created_at`  | TIMESTAMP    | NOT NULL, DEFAULT NOW()        | Account creation time           |
+| `updated_at`  | TIMESTAMP    | NOT NULL                       | Last profile update             |
 
 **Validation Rules**:
 - `provider` + `provider_id` must be unique (composite unique constraint)
 - `email` must be valid email format
-- `timezone` must be valid IANA timezone identifier
 
 **Indexes**:
 - `idx_user_provider` on (`provider`, `provider_id`) - OAuth lookup
@@ -232,29 +215,11 @@
 
 ---
 
-### PushSubscription
+### ~~PushSubscription~~ (OUT OF SCOPE)
 
-**Description**: Web Push subscription for notifications.
+**Status**: Removed per spec clarification session 2026-02-13
 
-| Field             | Type         | Constraints                            | Description               |
-| ----------------- | ------------ | -------------------------------------- | ------------------------- |
-| `id`              | UUID         | PK                                     | Unique identifier         |
-| `user_id`         | UUID         | FK → User, NOT NULL, ON DELETE CASCADE | Subscriber                |
-| `endpoint`        | TEXT         | NOT NULL, UNIQUE                       | Push service endpoint URL |
-| `p256dh`          | VARCHAR(255) | NOT NULL                               | Encryption key            |
-| `auth`            | VARCHAR(255) | NOT NULL                               | Auth secret               |
-| `user_agent`      | VARCHAR(512) | NULL                                   | Browser/device info       |
-| `created_at`      | TIMESTAMP    | NOT NULL, DEFAULT NOW()                | Subscription time         |
-| `last_success_at` | TIMESTAMP    | NULL                                   | Last successful push      |
-| `failure_count`   | INTEGER      | NOT NULL, DEFAULT 0                    | Consecutive failures      |
-
-**Validation Rules**:
-- `endpoint` must be unique (one subscription per browser/device)
-- After 3 consecutive failures (404/410), subscription should be deleted
-
-**Indexes**:
-- `idx_pushsub_user` on (`user_id`) - List user's subscriptions
-- `idx_pushsub_endpoint` on (`endpoint`) - Lookup by endpoint
+Daily notification feature was removed from scope. Push subscription entity is not required.
 
 ---
 
@@ -300,19 +265,18 @@
 
 ## Cascade Delete Rules
 
-| Parent   | Child            | On Delete |
-| -------- | ---------------- | --------- |
-| User     | Category         | CASCADE   |
-| User     | UserPost         | CASCADE   |
-| User     | PushSubscription | CASCADE   |
-| Category | Feed             | CASCADE   |
-| Feed     | Post             | CASCADE   |
-| Post     | UserPost         | CASCADE   |
-| Post     | Audio            | CASCADE   |
+| Parent   | Child    | On Delete |
+| -------- | -------- | --------- |
+| User     | Category | CASCADE   |
+| User     | UserPost | CASCADE   |
+| Category | Feed     | CASCADE   |
+| Feed     | Post     | CASCADE   |
+| Post     | UserPost | CASCADE   |
+| Post     | Audio    | CASCADE   |
 
 ---
 
-## Data Retention (FR-032)
+## Data Retention (FR-032, FR-037)
 
 **90-Day Post Retention Policy**:
 
@@ -322,12 +286,6 @@ DELETE FROM posts
 WHERE published_at < NOW() - INTERVAL '90 days';
 ```
 
-**Audio Cleanup** (cascades from Post deletion, plus LRU eviction):
+**Audio Cleanup** (cascades from Post deletion):
 
-```sql
--- LRU eviction when storage exceeds threshold
-DELETE FROM audio
-WHERE last_accessed_at < NOW() - INTERVAL '30 days'
-ORDER BY access_count ASC, last_accessed_at ASC
-LIMIT [batch_size];
-```
+Audio is deleted automatically when its parent post is deleted via CASCADE. No separate LRU eviction needed since audio retention matches post retention (90 days).
