@@ -2,24 +2,40 @@
   ============================================================================
   SYNC IMPACT REPORT
   ============================================================================
-  Version change: 1.0.0 → 1.1.0 (TDD enforcement added)
+  Version change: 1.1.0 → 1.2.0 (DI mechanism changed)
   
   Modified principles:
-    - III. Test-First Development → III. Test-Driven Development (TDD)
-      - Added explicit Red-Green-Refactor cycle requirement
-      - Added NON-NEGOTIABLE marker
-      - Added TDD workflow rules
+    - II. Dependency Injection
+      - REMOVED: quart-injector library (no longer viable)
+      - ADDED: OOP-based DI using inheritance and abstract classes
+      - Services MUST depend on abstract base classes, not concrete implementations
+  
+  Technology Stack changes:
+    - Removed quart-injector row
+    - Added "ABC + Inheritance" for Dependency Injection layer
   
   Added sections: None
   
   Removed sections: None
   
   Templates requiring updates:
-    ✅ plan-template.md - No changes required (already references testing)
-    ✅ spec-template.md - No changes required (acceptance scenarios support TDD)
-    ✅ tasks-template.md - No changes required (already includes test tasks)
+    ✅ plan-template.md - No changes required (no DI library references)
+    ✅ spec-template.md - No changes required (no DI references)
+    ✅ tasks-template.md - No changes required (no DI tool references)
   
-  Follow-up TODOs: None
+  Files requiring manual follow-up (not templates):
+    ⚠️ README.md - References quart-injector (lines 20, 129)
+    ⚠️ .github/agents/copilot-instructions.md - References quart-injector (lines 7, 26)
+    ⚠️ backend/pyproject.toml - quart-injector dependency (line 12)
+    ⚠️ backend/app/config/container.py - Uses quart-injector (entire file)
+    ⚠️ specs/001-rss-feed-reader/research.md - Documents quart-injector decision
+    ⚠️ specs/001-rss-feed-reader/plan.md - Lists quart-injector in dependencies
+    ⚠️ specs/001-rss-feed-reader/quickstart.md - DI instructions reference quart-injector
+    ⚠️ specs/001-rss-feed-reader/tasks.md - Task T012 references quart-injector
+  
+  Follow-up TODOs:
+    - Migrate existing DI container from quart-injector to ABC-based approach
+    - Update all affected spec/documentation files listed above
   ============================================================================
 -->
 
@@ -38,15 +54,29 @@ All backend code MUST follow Domain-Driven Design principles:
 
 **Rationale**: DDD ensures the codebase remains maintainable and refactor-safe over the multi-year project scope. Clean domain boundaries enable independent testing and evolution.
 
-### II. Dependency Injection
+### II. Dependency Injection via Abstract Base Classes
 
-All backend services MUST use dependency injection via `quart-injector`:
+All backend services MUST use dependency injection via OOP inheritance:
+- Services MUST depend on abstract base classes (ABCs), not concrete implementations
+- All external dependencies (database, TTS, feed fetchers) MUST be injected via constructor
+- Concrete implementations inherit from ABCs and are injected at composition root
 - No hard-coded dependencies in business logic
-- All external dependencies (database, TTS, feed fetchers) MUST be injected
-- Constructor injection preferred; avoid service locator patterns
-- DI configuration MUST be centralized and explicit
+- Avoid service locator patterns; prefer explicit constructor injection
 
-**Rationale**: DI enables trivial mocking for tests, supports swapping implementations, and enforces loose coupling between components.
+**Implementation Pattern**:
+```python
+from abc import ABC, abstractmethod
+
+class FeedRepository(ABC):
+    @abstractmethod
+    async def get_feeds(self, user_id: str) -> list[Feed]: ...
+
+class FeedService:
+    def __init__(self, repository: FeedRepository):  # Depends on ABC
+        self._repository = repository
+```
+
+**Rationale**: OOP-based DI using abstract classes provides loose coupling without external dependencies. ABCs are built into Python, require no additional libraries, and integrate naturally with type checkers and IDE tooling.
 
 ### III. Test-Driven Development (NON-NEGOTIABLE)
 
@@ -113,7 +143,7 @@ All implementations MUST adhere to the following stack:
 | **Frontend Build**           | Vite                 | PWA plugin enabled        |
 | **Frontend Package Manager** | pnpm                 | Strict mode               |
 | **Backend**                  | Python + Quart       | Python 3.12+              |
-| **Dependency Injection**     | quart-injector       | Required for all services |
+| **Dependency Injection**     | ABC + Inheritance    | No external library       |
 | **Database**                 | PostgreSQL           | Primary data store        |
 | **ORM**                      | SQLAlchemy + asyncpg | Async-first               |
 | **Migrations**               | Alembic              | Schema versioning         |
@@ -178,4 +208,4 @@ This constitution supersedes all other development practices for the my-feeds pr
 
 **Compliance**: All code contributions MUST be verified against this constitution during review.
 
-**Version**: 1.1.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-03
+**Version**: 1.2.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-13
