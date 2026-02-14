@@ -220,27 +220,27 @@
 
 ### Tests for User Story 5 (TDD - Write First, Must Fail)
 
-- [ ] T109 [P] [US5] Contract test for GET /posts/{id}/audio in backend/tests/contract/test_audio.py
-- [ ] T110 [P] [US5] Contract test for GET /audio/{cacheKey} streaming in backend/tests/contract/test_audio.py
-- [ ] T111 [P] [US5] Unit test for TTSService in backend/tests/unit/test_tts_service.py
-- [ ] T112 [P] [US5] Unit test for AudioCacheService in backend/tests/unit/test_audio_cache.py
-- [ ] T113 [P] [US5] Vitest unit test for AudioPlayer component in frontend/src/components/__tests__/AudioPlayer.test.tsx
-- [ ] T114 [P] [US5] Playwright test for TTS playback in frontend/playwright/audio.spec.ts
+- [X] T109 [P] [US5] Contract test for GET /posts/{id}/audio in backend/tests/contract/test_audio.py
+- [X] T110 [P] [US5] Contract test for GET /audio/{cacheKey} streaming in backend/tests/contract/test_audio.py
+- [X] T111 [P] [US5] Unit test for TTSService in backend/tests/unit/test_tts_service.py
+- [X] T112 [P] [US5] Unit test for AudioCacheService in backend/tests/unit/test_audio_cache.py
+- [X] T113 [P] [US5] Vitest unit test for AudioPlayer component in frontend/src/components/__tests__/AudioPlayer.test.tsx
+- [X] T114 [P] [US5] Playwright test for TTS playback in frontend/playwright/audio.spec.ts
 
 ### Implementation for User Story 5
 
-- [ ] T115 [US5] Create Audio domain entity in backend/app/domain/audio/entities/audio.py
-- [ ] T116 [US5] Create AudioRepository ABC in backend/app/domain/audio/repositories/audio_repository.py
-- [ ] T117 [US5] Implement SQLAlchemyAudioRepository in backend/app/infrastructure/persistence/repositories/audio_repository.py
-- [ ] T118 [US5] Create TTSService ABC in backend/app/domain/audio/services/tts_service.py
-- [ ] T119 [US5] Implement AzureTTSService in backend/app/infrastructure/tts/azure_tts.py
-- [ ] T120 [US5] Create AudioCacheManager in backend/app/infrastructure/tts/cache_manager.py
-- [ ] T121 [US5] Create AudioService application service in backend/app/application/services/audio_service.py
-- [ ] T122 [US5] Implement audio routes (get/generate, stream) in backend/app/api/routes/audio.py
-- [ ] T123 [US5] Wire Audio dependencies in DI composition root backend/app/config/container.py
-- [ ] T124 [P] [US5] Create AudioPlayer component in frontend/src/components/AudioPlayer.tsx
-- [ ] T125 [P] [US5] Create useAudioPlayer hook in frontend/src/hooks/useAudioPlayer.ts
-- [ ] T126 [US5] Add Listen button to PostDetailPage in frontend/src/pages/posts/PostDetailPage.tsx
+- [X] T115 [US5] Create Audio domain entity in backend/app/domain/audio/entities/audio.py
+- [X] T116 [US5] Create AudioRepository ABC in backend/app/domain/audio/repositories/audio_repository.py
+- [X] T117 [US5] Implement SQLAlchemyAudioRepository in backend/app/infrastructure/persistence/repositories/audio_repository.py
+- [X] T118 [US5] Create TTSService ABC in backend/app/domain/audio/services/tts_service.py
+- [X] T119 [US5] Implement AzureTTSService in backend/app/infrastructure/tts/azure_tts.py
+- [X] T120 [US5] Create AudioCacheManager in backend/app/infrastructure/tts/cache_manager.py
+- [X] T121 [US5] Create AudioService application service in backend/app/application/services/audio_service.py
+- [X] T122 [US5] Implement audio routes (get/generate, stream) in backend/app/api/routes/audio.py
+- [X] T123 [US5] Wire Audio dependencies in DI composition root backend/app/config/container.py
+- [X] T124 [P] [US5] Create AudioPlayer component in frontend/src/components/AudioPlayer.tsx
+- [X] T125 [P] [US5] Create useAudioPlayer hook in frontend/src/hooks/useAudioPlayer.ts
+- [X] T126 [US5] Add Listen button to PostDetailPage in frontend/src/pages/posts/PostDetailPage.tsx
 
 **Checkpoint**: User Story 5 complete - TTS playback works independently
 

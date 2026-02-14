@@ -28,9 +28,9 @@ import {
     RssFeed as RssFeedIcon,
 } from "@mui/icons-material";
 import api, { ApiError } from "../../services/api";
-import type { PostDetail } from "../../types";
 import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";
+import { AudioPlayer } from "../../components/AudioPlayer";
 
 interface PostDetailResponse {
     id: string;
@@ -280,6 +280,11 @@ export const PostDetailPage: React.FC = () => {
                         color={post.isRead ? "default" : "primary"}
                         variant="outlined"
                     />
+                </Box>
+
+                {/* Audio player */}
+                <Box sx={{ my: 2 }}>
+                    <AudioPlayer postId={post.id} />
                 </Box>
 
                 <Divider sx={{ mb: 3 }} />

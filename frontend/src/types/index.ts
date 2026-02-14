@@ -69,14 +69,29 @@ export interface PostDetail extends Post {
 }
 
 /**
- * Audio info for a post
+ * Audio info for a post (ready state)
  */
 export interface AudioInfo {
     postId: string;
-    cacheKey: string;
-    durationSeconds: number | null;
-    status: "available" | "generating" | "error";
+    status: "ready";
+    url: string;
+    durationSeconds?: number;
+    format?: string;
 }
+
+/**
+ * Audio pending state (generating)
+ */
+export interface AudioPending {
+    postId: string;
+    status: "generating";
+    estimatedSeconds?: number;
+}
+
+/**
+ * Audio response (ready or generating)
+ */
+export type AudioResponse = AudioInfo | AudioPending;
 
 /**
  * Push subscription for notifications

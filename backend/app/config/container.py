@@ -189,6 +189,84 @@ def create_post_service(session: AsyncSession):
     )
 
 
+def create_audio_repository(session: AsyncSession):
+    """Create AudioRepository with session.
+    
+    Args:
+        session: Database session
+        
+    Returns:
+        SQLAlchemyAudioRepository instance
+    """
+    from app.infrastructure.persistence.repositories.audio_repository import (
+        SQLAlchemyAudioRepository,
+    )
+    return SQLAlchemyAudioRepository(session)
+
+
+def create_tts_service():
+    """Create TTSService instance.
+    
+    Uses Azure TTS in production, Mock TTS in testing.
+    
+    Returns:
+        TTSService implementation
+    """
+    settings = get_settings_instance()
+    
+    if settings.environment == "testing" or not settings.azure_speech_key:
+        from app.infrastructure.tts.mock_tts import MockTTSService
+        return MockTTSService()
+    
+    from app.infrastructure.tts.azure_tts import AzureTTSService
+    return AzureTTSService(
+        speech_key=settings.azure_speech_key,
+        speech_region=settings.azure_speech_region,
+    )
+
+
+def create_cache_manager():
+    """Create AudioCacheManager instance.
+    
+    Returns:
+        AudioCacheManager configured from settings
+    """
+    from pathlib import Path
+    from app.infrastructure.tts.cache_manager import AudioCacheManager
+    
+    settings = get_settings_instance()
+    cache_dir = Path(settings.audio_cache_dir)
+    
+    return AudioCacheManager(
+        cache_dir=cache_dir,
+        max_size_mb=settings.audio_max_cache_size_mb,
+    )
+
+
+def create_audio_service(session: AsyncSession):
+    """Create AudioService with dependencies.
+    
+    Args:
+        session: Database session
+        
+    Returns:
+        AudioService instance
+    """
+    from app.application.services.audio_service import AudioService
+    
+    audio_repository = create_audio_repository(session)
+    post_repository = create_post_repository(session)
+    tts_service = create_tts_service()
+    cache_manager = create_cache_manager()
+    
+    return AudioService(
+        audio_repository=audio_repository,
+        post_repository=post_repository,
+        tts_service=tts_service,
+        cache_manager=cache_manager,
+    )
+
+
 # =============================================================================
 # Request context helpers
 # =============================================================================
@@ -207,6 +285,7 @@ class RequestContainer:
         self._feed_service = None
         self._post_service = None
         self._oauth_service = None
+        self._audio_service = None
     
     @property
     def session(self) -> AsyncSession:
@@ -242,6 +321,13 @@ class RequestContainer:
         if self._oauth_service is None:
             self._oauth_service = create_oauth_service(self.session)
         return self._oauth_service
+    
+    @property
+    def audio_service(self):
+        """Get or create AudioService for this request."""
+        if self._audio_service is None:
+            self._audio_service = create_audio_service(self.session)
+        return self._audio_service
     
     async def close(self):
         """Close the session and cleanup resources."""
