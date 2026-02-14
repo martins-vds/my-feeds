@@ -209,3 +209,194 @@ class TestPostServiceListPosts:
 
         # Posts should include feed metadata
         assert len(result.posts) > 0
+
+
+class TestPostServiceReadState:
+    """Tests for PostService read state methods."""
+
+    @pytest.fixture
+    def mock_post_repository(self):
+        """Create a mock PostRepository."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_category_repository(self):
+        """Create a mock CategoryRepository."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_feed_repository(self):
+        """Create a mock FeedRepository."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_mark_as_read_updates_read_state(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should mark post as read via repository."""
+        from app.application.services.post_service import PostService
+
+        user_id = uuid4()
+        post_id = uuid4()
+        feed_id = uuid4()
+        category_id = uuid4()
+
+        # Setup mocks
+        mock_post = MagicMock(
+            id=post_id,
+            feed_id=feed_id,
+            is_read=False,
+        )
+        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_category = MagicMock(id=category_id, user_id=user_id)
+
+        mock_post_repository.get_by_id.return_value = mock_post
+        mock_feed_repository.get_by_id.return_value = mock_feed
+        mock_category_repository.get_by_id.return_value = mock_category
+        mock_post_repository.get_read_state.return_value = (True, datetime.now(timezone.utc))
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        is_read, read_at = await service.mark_as_read(user_id, post_id, True)
+
+        assert is_read is True
+        assert read_at is not None
+        mock_post_repository.mark_as_read.assert_called_once_with(user_id, post_id, True)
+
+    @pytest.mark.asyncio
+    async def test_mark_as_unread(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should mark post as unread via repository."""
+        from app.application.services.post_service import PostService
+
+        user_id = uuid4()
+        post_id = uuid4()
+        feed_id = uuid4()
+        category_id = uuid4()
+
+        # Setup mocks
+        mock_post = MagicMock(id=post_id, feed_id=feed_id, is_read=True)
+        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_category = MagicMock(id=category_id, user_id=user_id)
+
+        mock_post_repository.get_by_id.return_value = mock_post
+        mock_feed_repository.get_by_id.return_value = mock_feed
+        mock_category_repository.get_by_id.return_value = mock_category
+        mock_post_repository.get_read_state.return_value = (False, None)
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        is_read, read_at = await service.mark_as_read(user_id, post_id, False)
+
+        assert is_read is False
+        assert read_at is None
+        mock_post_repository.mark_as_read.assert_called_once_with(user_id, post_id, False)
+
+    @pytest.mark.asyncio
+    async def test_mark_as_read_post_not_found(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should raise PostNotFoundError when post doesn't exist."""
+        from app.application.services.post_service import PostService, PostNotFoundError
+
+        user_id = uuid4()
+        post_id = uuid4()
+
+        mock_post_repository.get_by_id.return_value = None
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        with pytest.raises(PostNotFoundError):
+            await service.mark_as_read(user_id, post_id, True)
+
+    @pytest.mark.asyncio
+    async def test_mark_as_read_other_user_post(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should raise PostPermissionError when accessing other user's post."""
+        from app.application.services.post_service import PostService, PostPermissionError
+
+        user_id = uuid4()
+        other_user_id = uuid4()
+        post_id = uuid4()
+        feed_id = uuid4()
+        category_id = uuid4()
+
+        # Setup mocks - category belongs to another user
+        mock_post = MagicMock(id=post_id, feed_id=feed_id)
+        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_category = MagicMock(id=category_id, user_id=other_user_id)
+
+        mock_post_repository.get_by_id.return_value = mock_post
+        mock_feed_repository.get_by_id.return_value = mock_feed
+        mock_category_repository.get_by_id.return_value = mock_category
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        with pytest.raises(PostPermissionError):
+            await service.mark_as_read(user_id, post_id, True)
+
+    @pytest.mark.asyncio
+    async def test_auto_mark_read_only_marks_unread_posts(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should only mark as read if post is currently unread."""
+        from app.application.services.post_service import PostService
+
+        user_id = uuid4()
+        post_id = uuid4()
+
+        # Post is already read
+        mock_post_repository.get_read_state.return_value = (True, datetime.now(timezone.utc))
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        await service.auto_mark_read(user_id, post_id)
+
+        # Should NOT call mark_as_read since already read
+        mock_post_repository.mark_as_read.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_mark_read_marks_unread_post(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should mark as read if post is currently unread."""
+        from app.application.services.post_service import PostService
+
+        user_id = uuid4()
+        post_id = uuid4()
+
+        # Post is unread
+        mock_post_repository.get_read_state.return_value = (False, None)
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        await service.auto_mark_read(user_id, post_id)
+
+        # Should call mark_as_read
+        mock_post_repository.mark_as_read.assert_called_once_with(user_id, post_id, True)

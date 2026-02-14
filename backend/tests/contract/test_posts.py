@@ -182,3 +182,138 @@ class TestListPosts:
         assert response.status_code == 200
         data = await response.get_json()
         assert len(data["posts"]) <= 100
+
+
+class TestGetPostDetail:
+    """Tests for GET /api/posts/{postId} endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_post_returns_full_content(self, client, auth_headers, post_id):
+        """Should return post with full content field."""
+        response = await client.get(f"/api/posts/{post_id}", headers=auth_headers)
+        
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert "id" in data
+        assert "content" in data  # Full content, not just summary
+        assert "feedId" in data
+        assert "title" in data
+        assert "link" in data
+        assert "publishedAt" in data
+        assert "isRead" in data
+
+    @pytest.mark.asyncio
+    async def test_get_post_auto_marks_as_read(self, client, auth_headers, unread_post_id):
+        """Should auto-mark post as read when viewing."""
+        # First, verify post is unread
+        list_response = await client.get("/api/posts?readState=unread", headers=auth_headers)
+        list_data = await list_response.get_json()
+        unread_ids = [p["id"] for p in list_data["posts"]]
+        
+        # View the post
+        response = await client.get(f"/api/posts/{unread_post_id}", headers=auth_headers)
+        assert response.status_code == 200
+        
+        # Verify it's now marked as read
+        data = await response.get_json()
+        assert data["isRead"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_post_not_found(self, client, auth_headers):
+        """Should return 404 for non-existent post."""
+        fake_id = str(uuid4())
+        response = await client.get(f"/api/posts/{fake_id}", headers=auth_headers)
+        
+        assert response.status_code == 404
+        data = await response.get_json()
+        assert data["error"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_get_post_requires_authentication(self, client, post_id):
+        """Should return 401 when not authenticated."""
+        response = await client.get(f"/api/posts/{post_id}")
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_post_from_other_user_returns_404(self, client, auth_headers, other_user_post_id):
+        """Should return 404 when accessing another user's post."""
+        response = await client.get(f"/api/posts/{other_user_post_id}", headers=auth_headers)
+        
+        assert response.status_code == 404
+
+
+class TestUpdateReadState:
+    """Tests for PUT /api/posts/{postId}/read-state endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_mark_post_as_read(self, client, auth_headers, unread_post_id):
+        """Should mark post as read."""
+        response = await client.put(
+            f"/api/posts/{unread_post_id}/read-state",
+            headers=auth_headers,
+            json={"isRead": True}
+        )
+        
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["postId"] == str(unread_post_id)
+        assert data["isRead"] is True
+        assert "readAt" in data  # Should have timestamp
+
+    @pytest.mark.asyncio
+    async def test_mark_post_as_unread(self, client, auth_headers, read_post_id):
+        """Should mark post as unread."""
+        response = await client.put(
+            f"/api/posts/{read_post_id}/read-state",
+            headers=auth_headers,
+            json={"isRead": False}
+        )
+        
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["postId"] == str(read_post_id)
+        assert data["isRead"] is False
+        assert data["readAt"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_read_state_requires_is_read_field(self, client, auth_headers, post_id):
+        """Should require isRead field in request body."""
+        response = await client.put(
+            f"/api/posts/{post_id}/read-state",
+            headers=auth_headers,
+            json={}
+        )
+        
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_update_read_state_not_found(self, client, auth_headers):
+        """Should return 404 for non-existent post."""
+        fake_id = str(uuid4())
+        response = await client.put(
+            f"/api/posts/{fake_id}/read-state",
+            headers=auth_headers,
+            json={"isRead": True}
+        )
+        
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_read_state_requires_authentication(self, client, post_id):
+        """Should return 401 when not authenticated."""
+        response = await client.put(
+            f"/api/posts/{post_id}/read-state",
+            json={"isRead": True}
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_read_state_is_read_must_be_boolean(self, client, auth_headers, post_id):
+        """Should reject non-boolean isRead values."""
+        response = await client.put(
+            f"/api/posts/{post_id}/read-state",
+            headers=auth_headers,
+            json={"isRead": "yes"}
+        )
+        
+        assert response.status_code == 400

@@ -189,24 +189,24 @@
 
 ### Tests for User Story 4 (TDD - Write First, Must Fail)
 
-- [ ] T094 [P] [US4] Contract test for GET /posts/{id} in backend/tests/contract/test_posts.py
-- [ ] T095 [P] [US4] Contract test for PUT /posts/{id}/read-state in backend/tests/contract/test_posts.py
-- [ ] T096 [P] [US4] Unit test for read state service in backend/tests/unit/test_read_state_service.py
-- [ ] T097 [P] [US4] Vitest unit test for PostDetail component in frontend/src/components/__tests__/PostDetail.test.tsx
-- [ ] T098 [P] [US4] Playwright test for post reading in frontend/playwright/post-detail.spec.ts
+- [X] T094 [P] [US4] Contract test for GET /posts/{id} in backend/tests/contract/test_posts.py
+- [X] T095 [P] [US4] Contract test for PUT /posts/{id}/read-state in backend/tests/contract/test_posts.py
+- [X] T096 [P] [US4] Unit test for read state service in backend/tests/unit/test_post_service.py (integrated into PostService)
+- [X] T097 [P] [US4] Vitest unit test for PostDetail component in frontend/src/components/__tests__/PostDetail.test.tsx
+- [X] T098 [P] [US4] Playwright test for post reading in frontend/playwright/post-detail.spec.ts
 
 ### Implementation for User Story 4
 
-- [ ] T099 [US4] Create UserPost domain entity (read state) in backend/app/domain/feed_management/entities/user_post.py
-- [ ] T100 [US4] Create ReadStateRepository ABC in backend/app/domain/feed_management/repositories/read_state_repository.py
-- [ ] T101 [US4] Implement SQLAlchemyReadStateRepository in backend/app/infrastructure/persistence/repositories/read_state_repository.py
-- [ ] T102 [US4] Create ReadStateService in backend/app/application/services/read_state_service.py
-- [ ] T103 [US4] Implement post detail route (auto-marks read) in backend/app/api/routes/posts.py
-- [ ] T104 [US4] Implement read state toggle route in backend/app/api/routes/posts.py
-- [ ] T105 [P] [US4] Create PostDetailPage in frontend/src/pages/posts/PostDetailPage.tsx
-- [ ] T106 [P] [US4] Create PostContent renderer in frontend/src/components/PostContent.tsx
-- [ ] T107 [P] [US4] Create ReadStateToggle component in frontend/src/components/ReadStateToggle.tsx
-- [ ] T108 [US4] Add read state filter to PostsPage in frontend/src/pages/posts/PostsPage.tsx
+- [X] T099 [US4] Create UserPost domain entity (read state) in backend/app/domain/feed_management/entities/user_post.py (pre-existing UserPostModel)
+- [X] T100 [US4] Create ReadStateRepository ABC in backend/app/domain/feed_management/repositories/read_state_repository.py (integrated in PostRepository)
+- [X] T101 [US4] Implement SQLAlchemyReadStateRepository in backend/app/infrastructure/persistence/repositories/post_repository.py (integrated)
+- [X] T102 [US4] Create ReadStateService in backend/app/application/services/post_service.py (integrated into PostService)
+- [X] T103 [US4] Implement post detail route (auto-marks read) in backend/app/api/routes/posts.py
+- [X] T104 [US4] Implement read state toggle route in backend/app/api/routes/posts.py
+- [X] T105 [P] [US4] Create PostDetailPage in frontend/src/pages/posts/PostDetailPage.tsx
+- [X] T106 [P] [US4] Create PostContent renderer in frontend/src/components/PostContent.tsx
+- [X] T107 [P] [US4] Create ReadStateToggle component in frontend/src/components/ReadStateToggle.tsx
+- [X] T108 [US4] Add read state filter to PostsPage in frontend/src/pages/posts/PostsPage.tsx (pre-existing)
 
 **Checkpoint**: User Story 4 complete - Post reading with read state works independently
 

@@ -6,14 +6,10 @@ import { Header } from "./components/Header";
 import { SignInPage } from "./pages/auth/SignInPage";
 import { AuthCallback } from "./pages/auth/AuthCallback";
 import { FeedsPage } from "./pages/feeds";
-import { PostsPage } from "./pages/posts/PostsPage";
+import { PostsPage, PostDetailPage } from "./pages/posts";
 import { Box } from "@mui/material";
 
 // Placeholder components - will be implemented in user story phases
-
-function PostDetailPage() {
-    return <div>Post Detail Page (US4)</div>;
-}
 
 function SettingsPage() {
     return <div>Settings Page (US6)</div>;
