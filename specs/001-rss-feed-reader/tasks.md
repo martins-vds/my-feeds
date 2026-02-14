@@ -115,37 +115,37 @@
 
 ### Tests for User Story 2 (TDD - Write First, Must Fail)
 
-- [ ] T052 [P] [US2] Contract test for GET/POST /categories in backend/tests/contract/test_categories.py
-- [ ] T053 [P] [US2] Contract test for GET/PATCH/DELETE /categories/{id} in backend/tests/contract/test_categories.py
-- [ ] T054 [P] [US2] Contract test for GET/POST /categories/{id}/feeds in backend/tests/contract/test_feeds.py
-- [ ] T055 [P] [US2] Contract test for GET/PATCH/DELETE /feeds/{id} in backend/tests/contract/test_feeds.py
-- [ ] T056 [P] [US2] Unit test for CategoryService in backend/tests/unit/test_category_service.py
-- [ ] T057 [P] [US2] Unit test for FeedService in backend/tests/unit/test_feed_service.py
-- [ ] T058 [P] [US2] Unit test for feed URL validation in backend/tests/unit/test_feed_validator.py
-- [ ] T059 [P] [US2] Vitest unit test for CategoryList component in frontend/src/components/__tests__/CategoryList.test.tsx
-- [ ] T060 [P] [US2] Playwright test for category/feed management in frontend/playwright/feeds.spec.ts
+- [X] T052 [P] [US2] Contract test for GET/POST /categories in backend/tests/contract/test_categories.py
+- [X] T053 [P] [US2] Contract test for GET/PATCH/DELETE /categories/{id} in backend/tests/contract/test_categories.py
+- [X] T054 [P] [US2] Contract test for GET/POST /categories/{id}/feeds in backend/tests/contract/test_feeds.py
+- [X] T055 [P] [US2] Contract test for GET/PATCH/DELETE /feeds/{id} in backend/tests/contract/test_feeds.py
+- [X] T056 [P] [US2] Unit test for CategoryService in backend/tests/unit/test_category_service.py
+- [X] T057 [P] [US2] Unit test for FeedService in backend/tests/unit/test_feed_service.py
+- [X] T058 [P] [US2] Unit test for feed URL validation in backend/tests/unit/test_feed_validator.py
+- [X] T059 [P] [US2] Vitest unit test for CategoryList component in frontend/src/components/__tests__/CategoryList.test.tsx
+- [X] T060 [P] [US2] Playwright test for category/feed management in frontend/playwright/feeds.spec.ts
 
 ### Implementation for User Story 2
 
-- [ ] T061 [US2] Create Category domain entity in backend/app/domain/feed_management/entities/category.py
-- [ ] T062 [US2] Create Feed domain entity in backend/app/domain/feed_management/entities/feed.py
-- [ ] T063 [US2] Create CategoryRepository ABC in backend/app/domain/feed_management/repositories/category_repository.py
-- [ ] T064 [US2] Create FeedRepository ABC in backend/app/domain/feed_management/repositories/feed_repository.py
-- [ ] T065 [US2] Implement SQLAlchemyCategoryRepository in backend/app/infrastructure/persistence/repositories/category_repository.py
-- [ ] T066 [US2] Implement SQLAlchemyFeedRepository in backend/app/infrastructure/persistence/repositories/feed_repository.py
-- [ ] T067 [US2] Create FeedFetcher service using feedparser in backend/app/infrastructure/feed_fetcher/feed_fetcher.py
-- [ ] T068 [US2] Create FeedValidator for URL validation in backend/app/domain/feed_management/services/feed_validator.py
-- [ ] T069 [US2] Create CategoryService application service (enforce 25 category limit per FR-039) in backend/app/application/services/category_service.py
-- [ ] T070 [US2] Create FeedService application service (enforce 100 feed limit per FR-038) in backend/app/application/services/feed_service.py
-- [ ] T071 [US2] Implement category routes in backend/app/api/routes/categories.py
-- [ ] T072 [US2] Implement feed routes in backend/app/api/routes/feeds.py
-- [ ] T073 [US2] Wire FeedManagement dependencies in DI composition root backend/app/config/container.py
-- [ ] T074 [P] [US2] Create FeedsPage layout in frontend/src/pages/feeds/FeedsPage.tsx
-- [ ] T075 [P] [US2] Create CategoryList component in frontend/src/components/CategoryList.tsx
-- [ ] T076 [P] [US2] Create CategoryForm dialog in frontend/src/components/CategoryForm.tsx
-- [ ] T077 [P] [US2] Create FeedList component in frontend/src/components/FeedList.tsx
-- [ ] T078 [P] [US2] Create AddFeedDialog component in frontend/src/components/AddFeedDialog.tsx
-- [ ] T079 [US2] Create useFeedsData hook in frontend/src/hooks/useFeedsData.ts
+- [X] T061 [US2] Create Category domain entity in backend/app/domain/feed_management/entities/category.py
+- [X] T062 [US2] Create Feed domain entity in backend/app/domain/feed_management/entities/feed.py
+- [X] T063 [US2] Create CategoryRepository ABC in backend/app/domain/feed_management/repositories/category_repository.py
+- [X] T064 [US2] Create FeedRepository ABC in backend/app/domain/feed_management/repositories/feed_repository.py
+- [X] T065 [US2] Implement SQLAlchemyCategoryRepository in backend/app/infrastructure/persistence/repositories/category_repository.py
+- [X] T066 [US2] Implement SQLAlchemyFeedRepository in backend/app/infrastructure/persistence/repositories/feed_repository.py
+- [X] T067 [US2] Create FeedFetcher service using feedparser in backend/app/infrastructure/feed_fetcher/feed_fetcher.py
+- [X] T068 [US2] Create FeedValidator for URL validation in backend/app/domain/feed_management/services/feed_validator.py
+- [X] T069 [US2] Create CategoryService application service (enforce 25 category limit per FR-039) in backend/app/application/services/category_service.py
+- [X] T070 [US2] Create FeedService application service (enforce 100 feed limit per FR-038) in backend/app/application/services/feed_service.py
+- [X] T071 [US2] Implement category routes in backend/app/api/routes/categories.py
+- [X] T072 [US2] Implement feed routes in backend/app/api/routes/feeds.py
+- [X] T073 [US2] Wire FeedManagement dependencies in DI composition root backend/app/config/container.py
+- [X] T074 [P] [US2] Create FeedsPage layout in frontend/src/pages/feeds/FeedsPage.tsx
+- [X] T075 [P] [US2] Create CategoryList component in frontend/src/components/CategoryList.tsx
+- [X] T076 [P] [US2] Create CategoryForm dialog in frontend/src/components/CategoryForm.tsx
+- [X] T077 [P] [US2] Create FeedList component in frontend/src/components/FeedList.tsx
+- [X] T078 [P] [US2] Create AddFeedDialog component in frontend/src/components/AddFeedDialog.tsx
+- [X] T079 [US2] Create useFeedsData hook in frontend/src/hooks/useFeedsData.ts
 
 **Checkpoint**: User Story 2 complete - Categories and feeds work independently
 
@@ -159,23 +159,23 @@
 
 ### Tests for User Story 3 (TDD - Write First, Must Fail)
 
-- [ ] T080 [P] [US3] Contract test for GET /posts in backend/tests/contract/test_posts.py
-- [ ] T081 [P] [US3] Unit test for PostService in backend/tests/unit/test_post_service.py
-- [ ] T082 [P] [US3] Vitest unit test for PostList component in frontend/src/components/__tests__/PostList.test.tsx
-- [ ] T083 [P] [US3] Playwright test for posts browsing in frontend/playwright/posts.spec.ts
+- [X] T080 [P] [US3] Contract test for GET /posts in backend/tests/contract/test_posts.py
+- [X] T081 [P] [US3] Unit test for PostService in backend/tests/unit/test_post_service.py
+- [X] T082 [P] [US3] Vitest unit test for PostList component in frontend/src/components/__tests__/PostList.test.tsx
+- [X] T083 [P] [US3] Playwright test for posts browsing in frontend/playwright/posts.spec.ts
 
 ### Implementation for User Story 3
 
-- [ ] T084 [US3] Create Post domain entity in backend/app/domain/feed_management/entities/post.py
-- [ ] T085 [US3] Create PostRepository ABC in backend/app/domain/feed_management/repositories/post_repository.py
-- [ ] T086 [US3] Implement SQLAlchemyPostRepository in backend/app/infrastructure/persistence/repositories/post_repository.py
-- [ ] T087 [US3] Create PostService application service in backend/app/application/services/post_service.py
-- [ ] T088 [US3] Implement posts routes (list with filters) in backend/app/api/routes/posts.py
-- [ ] T089 [P] [US3] Create PostsPage layout in frontend/src/pages/posts/PostsPage.tsx
-- [ ] T090 [P] [US3] Create PostList component in frontend/src/components/PostList.tsx
-- [ ] T091 [P] [US3] Create PostCard component in frontend/src/components/PostCard.tsx
-- [ ] T092 [P] [US3] Create CategoryFilter component in frontend/src/components/CategoryFilter.tsx
-- [ ] T093 [US3] Create usePostsData hook with pagination in frontend/src/hooks/usePostsData.ts
+- [X] T084 [US3] Create Post domain entity in backend/app/domain/feed_management/entities/post.py
+- [X] T085 [US3] Create PostRepository ABC in backend/app/domain/feed_management/repositories/post_repository.py
+- [X] T086 [US3] Implement SQLAlchemyPostRepository in backend/app/infrastructure/persistence/repositories/post_repository.py
+- [X] T087 [US3] Create PostService application service in backend/app/application/services/post_service.py
+- [X] T088 [US3] Implement posts routes (list with filters) in backend/app/api/routes/posts.py
+- [X] T089 [P] [US3] Create PostsPage layout in frontend/src/pages/posts/PostsPage.tsx
+- [X] T090 [P] [US3] Create PostList component in frontend/src/components/PostList.tsx
+- [X] T091 [P] [US3] Create PostCard component in frontend/src/components/PostCard.tsx
+- [X] T092 [P] [US3] Create CategoryFilter component in frontend/src/components/CategoryFilter.tsx
+- [X] T093 [US3] Create usePostsData hook with pagination in frontend/src/hooks/usePostsData.ts
 
 **Checkpoint**: User Story 3 complete - Post browsing works independently
 

@@ -1,11 +1,10 @@
 """Quart application factory."""
 
 from quart import Quart
-from quart_injector import QuartInjector
 
 from app.api.middleware import register_error_handlers
 from app.api.routes import register_routes
-from app.config.container import create_injector
+from app.config.container import RequestContainer, set_request_container
 from app.config.logging import setup_logging
 from app.config.settings import get_settings
 from app.infrastructure.persistence.database import close_db, init_db
@@ -48,9 +47,24 @@ def create_app() -> Quart:
     # Register routes
     register_routes(app)
 
-    # Setup dependency injection
-    injector = create_injector()
-    QuartInjector(app, injector)
+    # Request-scoped DI container middleware
+    @app.before_request
+    async def setup_request_container():
+        """Create request-scoped container with database session."""
+        container = RequestContainer()
+        set_request_container(container)
+
+    @app.teardown_request
+    async def teardown_request_container(exception=None):
+        """Cleanup request container and close session."""
+        from app.config.container import get_request_container
+        try:
+            container = get_request_container()
+            await container.close()
+        except RuntimeError:
+            pass  # No container was set
+        finally:
+            set_request_container(None)
 
     # Lifecycle hooks
     @app.before_serving

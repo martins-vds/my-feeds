@@ -4,13 +4,11 @@ from typing import Literal
 from uuid import UUID
 
 from quart import Blueprint, redirect, request, jsonify, url_for
-from injector import inject
 
 from app.api.middleware import UnauthorizedError, ValidationError
-from app.domain.feed_management.repositories.user_repository import UserRepository
+from app.config.container import get_request_container, get_settings_instance
 from app.infrastructure.oauth.oauth_service import OAuthService, OAuthError
 from app.infrastructure.oauth.session import session_manager
-from app.config.settings import Settings
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -49,12 +47,7 @@ async def login(provider: str):
 
 
 @bp.route("/<provider>/callback")
-@inject
-async def callback(
-    provider: str,
-    user_repository: UserRepository,
-    settings: Settings,
-):
+async def callback(provider: str):
     """Handle OAuth callback.
 
     GET /api/auth/{provider}/callback
@@ -79,19 +72,21 @@ async def callback(
     if not code:
         raise ValidationError("Missing authorization code")
 
-    oauth_service = OAuthService(user_repository=user_repository)
+    container = get_request_container()
+    settings = get_settings_instance()
+    
     try:
         redirect_uri = get_redirect_uri(provider)
 
         # Exchange code for user info
-        user_info = await oauth_service.exchange_code_for_user(
+        user_info = await container.oauth_service.exchange_code_for_user(
             provider,  # type: ignore
             code,
             redirect_uri,
         )
 
         # Get or create user
-        user = await oauth_service.get_or_create_user(user_info)
+        user = await container.oauth_service.get_or_create_user(user_info)
 
         # Create session and redirect to frontend
         frontend_url = "/" if settings.is_production else "http://localhost:5173/"
@@ -101,13 +96,10 @@ async def callback(
         return response
     except OAuthError as e:
         raise UnauthorizedError(str(e))
-    finally:
-        await oauth_service.close()
 
 
 @bp.route("/me")
-@inject
-async def me(user_repository: UserRepository):
+async def me():
     """Get current authenticated user.
 
     GET /api/auth/me
@@ -120,6 +112,9 @@ async def me(user_repository: UserRepository):
     if not user_id:
         raise UnauthorizedError("Not authenticated")
 
+    from app.config.container import create_user_repository
+    container = get_request_container()
+    user_repository = create_user_repository(container.session)
     user = await user_repository.get_by_id(user_id)
 
     if not user:

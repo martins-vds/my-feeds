@@ -5,16 +5,11 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Header } from "./components/Header";
 import { SignInPage } from "./pages/auth/SignInPage";
 import { AuthCallback } from "./pages/auth/AuthCallback";
+import { FeedsPage } from "./pages/feeds";
+import { PostsPage } from "./pages/posts/PostsPage";
 import { Box } from "@mui/material";
 
 // Placeholder components - will be implemented in user story phases
-function FeedsPage() {
-    return <div>Feeds Page (US2)</div>;
-}
-
-function PostsPage() {
-    return <div>Posts Page (US3)</div>;
-}
 
 function PostDetailPage() {
     return <div>Post Detail Page (US4)</div>;

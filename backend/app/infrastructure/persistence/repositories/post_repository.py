@@ -1,0 +1,257 @@
+"""SQLAlchemy implementation of PostRepository."""
+
+from datetime import datetime, timezone
+from typing import List, Optional
+from uuid import UUID
+
+from sqlalchemy import delete, exists, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.domain.feed_management.entities.post import Post
+from app.domain.feed_management.repositories.post_repository import PostRepository, ReadState
+from app.infrastructure.persistence.models.audio import AudioModel
+from app.infrastructure.persistence.models.category import CategoryModel
+from app.infrastructure.persistence.models.feed import FeedModel
+from app.infrastructure.persistence.models.post import PostModel
+from app.infrastructure.persistence.models.user_post import UserPostModel
+
+
+class SQLAlchemyPostRepository(PostRepository):
+    """SQLAlchemy-based implementation of PostRepository."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize repository with database session.
+
+        Args:
+            session: SQLAlchemy async session
+        """
+        self._session = session
+
+    async def get_by_id(self, id: UUID) -> Optional[Post]:
+        """Get a post by its ID."""
+        result = await self._session.execute(
+            select(PostModel)
+            .options(selectinload(PostModel.feed), selectinload(PostModel.audio))
+            .where(PostModel.id == id)
+        )
+        model = result.scalar_one_or_none()
+        if model:
+            return self._to_entity(model)
+        return None
+
+    async def get_posts_for_user(
+        self,
+        user_id: UUID,
+        *,
+        category_id: Optional[UUID] = None,
+        feed_id: Optional[UUID] = None,
+        read_state: ReadState = "all",
+        before: Optional[datetime] = None,
+        limit: int = 50,
+    ) -> List[Post]:
+        """Get posts for a user with optional filters."""
+        # Base query joining posts -> feeds -> categories for user filter
+        query = (
+            select(PostModel)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .join(CategoryModel, FeedModel.category_id == CategoryModel.id)
+            .where(CategoryModel.user_id == user_id)
+            .options(selectinload(PostModel.feed), selectinload(PostModel.audio))
+        )
+
+        # Apply filters
+        if category_id is not None:
+            query = query.where(FeedModel.category_id == category_id)
+
+        if feed_id is not None:
+            query = query.where(PostModel.feed_id == feed_id)
+
+        # Cursor-based pagination
+        if before is not None:
+            query = query.where(PostModel.published_at < before)
+
+        # Order by published_at descending (newest first)
+        query = query.order_by(PostModel.published_at.desc())
+
+        # Limit
+        query = query.limit(limit)
+
+        result = await self._session.execute(query)
+        models = result.scalars().all()
+
+        # Convert to entities and populate read state
+        posts = []
+        for model in models:
+            post = self._to_entity(model)
+            # Get read state for this user
+            is_read, _ = await self.get_read_state(user_id, post.id)
+            post.is_read = is_read
+            posts.append(post)
+
+        # Filter by read state after fetching (not optimal for large datasets)
+        if read_state == "unread":
+            posts = [p for p in posts if not p.is_read]
+        elif read_state == "read":
+            posts = [p for p in posts if p.is_read]
+
+        return posts
+
+    async def get_by_feed(
+        self,
+        feed_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> List[Post]:
+        """Get posts for a specific feed."""
+        result = await self._session.execute(
+            select(PostModel)
+            .where(PostModel.feed_id == feed_id)
+            .order_by(PostModel.published_at.desc())
+            .limit(limit)
+        )
+        models = result.scalars().all()
+        return [self._to_entity(model) for model in models]
+
+    async def exists_by_guid(self, feed_id: UUID, guid: str) -> bool:
+        """Check if a post with the given GUID exists in the feed."""
+        result = await self._session.execute(
+            select(exists().where(
+                PostModel.feed_id == feed_id,
+                PostModel.guid == guid,
+            ))
+        )
+        return result.scalar() or False
+
+    async def save(self, post: Post) -> Post:
+        """Save a post (create or update)."""
+        existing = await self._session.get(PostModel, post.id)
+
+        if existing:
+            # Update existing post
+            existing.title = post.title
+            existing.content = post.content
+            existing.summary = post.summary
+            existing.author = post.author
+            existing.link = post.link
+            existing.published_at = post.published_at
+            await self._session.flush()
+            return self._to_entity(existing)
+        else:
+            # Create new post
+            model = self._to_model(post)
+            self._session.add(model)
+            await self._session.flush()
+            return self._to_entity(model)
+
+    async def save_many(self, posts: List[Post]) -> List[Post]:
+        """Save multiple posts efficiently."""
+        saved = []
+        for post in posts:
+            # Check if exists by guid first
+            exists_already = await self.exists_by_guid(post.feed_id, post.guid)
+            if not exists_already:
+                model = self._to_model(post)
+                self._session.add(model)
+                saved.append(post)
+        await self._session.flush()
+        return saved
+
+    async def delete(self, id: UUID) -> bool:
+        """Delete a post by ID."""
+        result = await self._session.execute(
+            delete(PostModel).where(PostModel.id == id)
+        )
+        await self._session.flush()
+        return result.rowcount > 0
+
+    async def delete_old_posts(self, older_than: datetime) -> int:
+        """Delete posts older than a given date."""
+        result = await self._session.execute(
+            delete(PostModel).where(PostModel.published_at < older_than)
+        )
+        await self._session.flush()
+        return result.rowcount
+
+    async def mark_as_read(
+        self, user_id: UUID, post_id: UUID, is_read: bool = True
+    ) -> None:
+        """Mark a post as read/unread for a user."""
+        # Check if user_post record exists
+        result = await self._session.execute(
+            select(UserPostModel).where(
+                UserPostModel.user_id == user_id,
+                UserPostModel.post_id == post_id,
+            )
+        )
+        user_post = result.scalar_one_or_none()
+
+        if user_post:
+            # Update existing
+            user_post.is_read = is_read
+            user_post.read_at = datetime.now(timezone.utc) if is_read else None
+        else:
+            # Create new
+            user_post = UserPostModel(
+                user_id=user_id,
+                post_id=post_id,
+                is_read=is_read,
+                read_at=datetime.now(timezone.utc) if is_read else None,
+            )
+            self._session.add(user_post)
+
+        await self._session.flush()
+
+    async def get_read_state(
+        self, user_id: UUID, post_id: UUID
+    ) -> tuple[bool, Optional[datetime]]:
+        """Get read state for a specific post and user."""
+        result = await self._session.execute(
+            select(UserPostModel).where(
+                UserPostModel.user_id == user_id,
+                UserPostModel.post_id == post_id,
+            )
+        )
+        user_post = result.scalar_one_or_none()
+
+        if user_post:
+            return (user_post.is_read, user_post.read_at)
+        return (False, None)  # Posts are unread by default
+
+    def _to_entity(self, model: PostModel) -> Post:
+        """Convert SQLAlchemy model to domain entity."""
+        post = Post(
+            id=model.id,
+            feed_id=model.feed_id,
+            guid=model.guid,
+            title=model.title,
+            link=model.link,
+            published_at=model.published_at,
+            content=model.content,
+            summary=model.summary,
+            author=model.author,
+            fetched_at=model.fetched_at,
+            is_read=False,  # Populated by caller
+            has_audio=model.audio is not None,
+        )
+        # Populate feed metadata if loaded
+        if model.feed:
+            post.feed_title = model.feed.title
+            post.feed_icon_url = model.feed.icon_url
+        return post
+
+    @staticmethod
+    def _to_model(entity: Post) -> PostModel:
+        """Convert domain entity to SQLAlchemy model."""
+        return PostModel(
+            id=entity.id,
+            feed_id=entity.feed_id,
+            guid=entity.guid,
+            title=entity.title,
+            content=entity.content,
+            summary=entity.summary,
+            author=entity.author,
+            link=entity.link,
+            published_at=entity.published_at,
+            fetched_at=entity.fetched_at,
+        )

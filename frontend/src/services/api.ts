@@ -1,4 +1,6 @@
-"""API client service for backend communication."""
+/**
+ * API client service for backend communication.
+ */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
