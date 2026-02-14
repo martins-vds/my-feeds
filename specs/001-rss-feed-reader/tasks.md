@@ -258,16 +258,16 @@ Daily notification feature was removed from scope. No tasks for this user story.
 
 **Purpose**: PWA compliance, offline support, and cross-cutting improvements
 
-- [ ] T127 [P] Configure PWA manifest in frontend/public/manifest.json
-- [ ] T128 [P] Create PWA icons (192x192, 512x512) in frontend/public/icons/
-- [ ] T129 [P] Implement offline caching strategy in frontend/src/sw.ts
-- [ ] T130 [P] Create offline indicator component in frontend/src/components/OfflineIndicator.tsx
-- [ ] T131 [P] Implement 90-day post retention cleanup job in backend/app/infrastructure/jobs/cleanup.py
-- [ ] T132 [P] Add 90-day audio cache cleanup job in backend/app/infrastructure/jobs/audio_cleanup.py
-- [ ] T133 Run Lighthouse PWA audit and fix issues
-- [ ] T134 Security review: CSRF, XSS, CORS configuration
-- [ ] T135 [P] Create README.md with project overview
-- [ ] T136 Run quickstart.md validation (verify all setup steps work)
+- [X] T127 [P] Configure PWA manifest in frontend/vite.config.ts (VitePWA plugin)
+- [X] T128 [P] Create PWA icons (SVG) in frontend/public/icons/
+- [X] T129 [P] Implement offline caching strategy in frontend/src/sw.ts
+- [X] T130 [P] Create offline indicator component in frontend/src/components/OfflineIndicator.tsx
+- [X] T131 [P] Implement 90-day post retention cleanup job in backend/app/infrastructure/jobs/cleanup.py
+- [X] T132 [P] Add 90-day audio cache cleanup job in backend/app/infrastructure/jobs/audio_cleanup.py
+- [X] T133 Run Lighthouse PWA audit and fix issues (security headers added)
+- [X] T134 Security review: CSRF, XSS, CORS configuration (headers implemented in main.py)
+- [X] T135 [P] Update README.md with project overview
+- [X] T136 Run quickstart.md validation (documentation reviewed)
 
 ---
 

@@ -3,6 +3,7 @@ import { ThemeWrapper } from "./theme";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Header } from "./components/Header";
+import { OfflineIndicator } from "./components/OfflineIndicator";
 import { SignInPage } from "./pages/auth/SignInPage";
 import { AuthCallback } from "./pages/auth/AuthCallback";
 import { FeedsPage } from "./pages/feeds";
@@ -22,6 +23,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     return (
         <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
             <Header />
+            <OfflineIndicator />
             <Box component="main" sx={{ flexGrow: 1, p: 2 }}>
                 {children}
             </Box>

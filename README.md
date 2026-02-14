@@ -1,6 +1,6 @@
 # my-feeds
 
-RSS Feed Reader Progressive Web App with OAuth authentication, category-based feed organization, text-to-speech reading, and daily push notifications.
+RSS Feed Reader Progressive Web App with OAuth authentication, category-based feed organization, text-to-speech reading, and PWA offline support.
 
 ## Features
 
@@ -9,7 +9,6 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Unified Post View**: Browse latest posts across all subscribed feeds
 - **Read State Tracking**: Auto-track and manually toggle read/unread status
 - **Text-to-Speech**: Listen to posts with lazy-generated, cached audio
-- **Daily Notifications**: Receive morning push notifications for new content
 - **PWA Support**: Install on mobile, works offline
 
 ## Tech Stack
@@ -17,7 +16,7 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 ### Backend
 - **Python 3.12+** with **Quart** async framework
 - **SQLAlchemy** with **asyncpg** for PostgreSQL
-- **quart-injector** for dependency injection
+- **ABC-based dependency injection** (no external DI library)
 - **Authlib** for OAuth2 authentication
 - **feedparser** for RSS/Atom parsing
 - **Azure Cognitive Services** for TTS
@@ -126,7 +125,7 @@ pnpm playwright test             # Playwright E2E tests
 This project follows the [Constitution](/.specify/memory/constitution.md):
 
 1. **Domain-Driven Design** - Clean bounded contexts
-2. **Dependency Injection** - Loose coupling via quart-injector
+2. **Dependency Injection** - ABC-based loose coupling
 3. **Test-Driven Development** - Red-Green-Refactor cycle
 4. **Modern Toolchain** - uv, pnpm, Dev Containers
 5. **PWA-First** - Single codebase for all platforms

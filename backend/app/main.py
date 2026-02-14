@@ -27,10 +27,31 @@ def create_app() -> Quart:
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["DEBUG"] = settings.debug
 
-    # Configure CORS for development
+    # Configure CORS and security headers
     @app.after_request
-    async def add_cors_headers(response):
-        if settings.debug:
+    async def add_security_headers(response):
+        # Security headers (always apply)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        if settings.is_production:
+            # Production: strict CORS
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "connect-src 'self'; "
+                "font-src 'self'; "
+                "media-src 'self'"
+            )
+        else:
+            # Development: permissive CORS
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, PATCH, DELETE, OPTIONS"
