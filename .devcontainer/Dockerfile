@@ -4,8 +4,10 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-22.04
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> /etc/bash.bashrc
 
-# Install pnpm
-RUN npm install -g pnpm@8
+# Install pnpm (standalone, since npm isn't available until devcontainer features run)
+RUN curl -fsSL https://get.pnpm.io/install.sh | ENV="$HOME/.bashrc" SHELL="$(which bash)" PNPM_VERSION="8" bash - && \
+    echo 'export PNPM_HOME="$HOME/.local/share/pnpm"' >> /etc/bash.bashrc && \
+    echo 'export PATH="$PNPM_HOME:$PATH"' >> /etc/bash.bashrc
 
 # Set up workspace
 WORKDIR /workspace
