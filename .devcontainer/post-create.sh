@@ -4,7 +4,7 @@ set -e
 echo "📦 Installing backend dependencies..."
 cd /workspace/backend
 sudo chown vscode:vscode .venv
-~/.local/bin/uv sync
+~/.local/bin/uv sync --extra dev
 
 echo "📦 Installing pnpm..."
 npm install -g pnpm@latest-10
