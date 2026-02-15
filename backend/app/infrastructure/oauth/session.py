@@ -74,16 +74,12 @@ class SessionManager:
             session_data = json.loads(session_cookie)
 
             # Validate session data
-            if not all(
-                k in session_data for k in ["user_id", "provider", "created_at"]
-            ):
+            if not all(k in session_data for k in ["user_id", "provider", "created_at"]):
                 return None
 
             # Check session age
             created_at = datetime.fromisoformat(session_data["created_at"])
-            if datetime.utcnow() - created_at > timedelta(
-                days=self.SESSION_DURATION_DAYS
-            ):
+            if datetime.utcnow() - created_at > timedelta(days=self.SESSION_DURATION_DAYS):
                 return None
 
             return session_data
@@ -106,6 +102,18 @@ class SessionManager:
             except ValueError:
                 return None
         return None
+
+    def get_current_user_id(self) -> UUID | None:
+        """Get user ID from the current request context.
+
+        Convenience method that uses quart.request automatically.
+
+        Returns:
+            User UUID or None if not authenticated
+        """
+        from quart import request as current_request
+
+        return self.get_user_id(current_request)
 
     def clear_session(self, response: Response) -> None:
         """Clear the session cookie.

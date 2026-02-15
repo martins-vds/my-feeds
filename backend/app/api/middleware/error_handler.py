@@ -51,9 +51,7 @@ class ValidationError(APIError):
     """Request validation error."""
 
     def __init__(self, message: str = "Validation failed", **kwargs: Any) -> None:
-        super().__init__(
-            message, status_code=422, error_code="VALIDATION_ERROR", **kwargs
-        )
+        super().__init__(message, status_code=400, error_code="VALIDATION_ERROR", **kwargs)
 
 
 class ConflictError(APIError):

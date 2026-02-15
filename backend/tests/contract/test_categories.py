@@ -4,8 +4,9 @@ Tests verify API contract compliance per openapi.yaml.
 TDD: These tests are written FIRST and should FAIL until implementation.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 
 class TestListCategories:
@@ -14,13 +15,19 @@ class TestListCategories:
     @pytest.mark.asyncio
     async def test_list_categories_returns_empty_array_for_new_user(self, client):
         """New user should have no categories."""
-        # Arrange: authenticated user with no categories
-        # (requires auth mock - will fail until implemented)
-        
-        # Act
-        response = await client.get("/api/categories")
-        
-        # Assert
+        # Use a fresh user UUID that has no data at all
+        import json
+        from datetime import datetime
+
+        fresh_session = {
+            "user_id": str(uuid4()),
+            "provider": "github",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        headers = {"Cookie": f"my_feeds_session={json.dumps(fresh_session)}"}
+
+        response = await client.get("/api/categories", headers=headers)
+
         assert response.status_code == 200
         data = await response.get_json()
         assert isinstance(data, list)
@@ -30,7 +37,7 @@ class TestListCategories:
     async def test_list_categories_requires_authentication(self, client):
         """Unauthenticated request should return 401."""
         response = await client.get("/api/categories")
-        
+
         assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -39,7 +46,7 @@ class TestListCategories:
         # This test requires category creation + auth mock
         # Will fail until fully implemented
         response = await client.get("/api/categories")
-        
+
         assert response.status_code in (200, 401)  # 401 until auth implemented
 
 
@@ -47,14 +54,14 @@ class TestCreateCategory:
     """Tests for POST /api/categories."""
 
     @pytest.mark.asyncio
-    async def test_create_category_success(self, client):
+    async def test_create_category_success(self, client, auth_headers):
         """Valid category creation should return 201."""
         response = await client.post(
             "/api/categories",
             json={"name": "Technology"},
+            headers=auth_headers,
         )
-        
-        # Will fail until implemented - expect 404 or 405 now
+
         assert response.status_code == 201
         data = await response.get_json()
         assert data["name"] == "Technology"
@@ -69,7 +76,7 @@ class TestCreateCategory:
             "/api/categories",
             json={"name": "Technology"},
         )
-        
+
         assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -79,7 +86,7 @@ class TestCreateCategory:
             "/api/categories",
             json={},
         )
-        
+
         assert response.status_code in (400, 401)
 
     @pytest.mark.asyncio
@@ -89,7 +96,7 @@ class TestCreateCategory:
             "/api/categories",
             json={"name": "x" * 101},
         )
-        
+
         assert response.status_code in (400, 401)
 
     @pytest.mark.asyncio
@@ -97,13 +104,13 @@ class TestCreateCategory:
         """Duplicate category name for same user should return 409."""
         # Create first category
         await client.post("/api/categories", json={"name": "Technology"})
-        
+
         # Try to create duplicate
         response = await client.post(
             "/api/categories",
             json={"name": "Technology"},
         )
-        
+
         assert response.status_code in (409, 401)
 
     @pytest.mark.asyncio
@@ -121,9 +128,9 @@ class TestGetCategory:
     async def test_get_category_returns_category_with_feeds(self, client):
         """Should return category details with feeds array."""
         category_id = str(uuid4())
-        
+
         response = await client.get(f"/api/categories/{category_id}")
-        
+
         # Will fail until implemented
         assert response.status_code in (200, 401, 404)
 
@@ -131,9 +138,9 @@ class TestGetCategory:
     async def test_get_category_not_found(self, client):
         """Non-existent category should return 404."""
         fake_id = str(uuid4())
-        
+
         response = await client.get(f"/api/categories/{fake_id}")
-        
+
         assert response.status_code in (404, 401)
 
 
@@ -144,36 +151,36 @@ class TestUpdateCategory:
     async def test_update_category_name(self, client):
         """Should update category name."""
         category_id = str(uuid4())
-        
+
         response = await client.patch(
             f"/api/categories/{category_id}",
             json={"name": "Updated Name"},
         )
-        
+
         assert response.status_code in (200, 401, 404)
 
     @pytest.mark.asyncio
     async def test_update_category_position(self, client):
         """Should update category position."""
         category_id = str(uuid4())
-        
+
         response = await client.patch(
             f"/api/categories/{category_id}",
             json={"position": 5},
         )
-        
+
         assert response.status_code in (200, 401, 404)
 
     @pytest.mark.asyncio
     async def test_update_category_duplicate_name_returns_409(self, client):
         """Renaming to existing name should return 409."""
         category_id = str(uuid4())
-        
+
         response = await client.patch(
             f"/api/categories/{category_id}",
             json={"name": "Existing Name"},
         )
-        
+
         assert response.status_code in (409, 401, 404)
 
 
@@ -184,9 +191,9 @@ class TestDeleteCategory:
     async def test_delete_category_success(self, client):
         """Should delete category and return 204."""
         category_id = str(uuid4())
-        
+
         response = await client.delete(f"/api/categories/{category_id}")
-        
+
         assert response.status_code in (204, 401, 404)
 
     @pytest.mark.asyncio
@@ -199,7 +206,7 @@ class TestDeleteCategory:
     async def test_delete_category_not_found(self, client):
         """Non-existent category should return 404."""
         fake_id = str(uuid4())
-        
+
         response = await client.delete(f"/api/categories/{fake_id}")
-        
+
         assert response.status_code in (404, 401)

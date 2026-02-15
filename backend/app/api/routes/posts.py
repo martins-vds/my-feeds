@@ -101,11 +101,13 @@ async def list_posts():
         limit=limit,
     )
 
-    return jsonify({
-        "posts": [post.to_summary_dict() for post in result.posts],
-        "hasMore": result.has_more,
-        "nextCursor": result.next_cursor,
-    })
+    return jsonify(
+        {
+            "posts": [post.to_summary_dict() for post in result.posts],
+            "hasMore": result.has_more,
+            "nextCursor": result.next_cursor,
+        }
+    )
 
 
 @bp.route("/<uuid:post_id>", methods=["GET"])
@@ -128,18 +130,13 @@ async def get_post(post_id: UUID):
 
         # Auto-mark as read
         await container.post_service.auto_mark_read(user_id, post_id)
+        post.is_read = True
 
         return jsonify(post.to_detail_dict())
     except PostNotFoundError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Post not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Post not found"}), 404
     except PostPermissionError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Post not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Post not found"}), 404
 
 
 @bp.route("/<uuid:post_id>/read-state", methods=["PUT"])
@@ -170,18 +167,14 @@ async def update_read_state(post_id: UUID):
             user_id, post_id, is_read
         )
 
-        return jsonify({
-            "postId": str(post_id),
-            "isRead": is_read_result,
-            "readAt": read_at.isoformat() if read_at else None,
-        })
+        return jsonify(
+            {
+                "postId": str(post_id),
+                "isRead": is_read_result,
+                "readAt": read_at.isoformat() if read_at else None,
+            }
+        )
     except PostNotFoundError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Post not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Post not found"}), 404
     except PostPermissionError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Post not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Post not found"}), 404

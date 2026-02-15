@@ -1,17 +1,21 @@
 """Unit tests for CategoryService.
 
-TDD: These tests are written FIRST and should FAIL until implementation.
 Tests use mock repositories to isolate service logic.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
-# These imports will fail until entities/services are implemented
-# from app.domain.feed_management.entities.category import Category
-# from app.domain.feed_management.repositories.category_repository import CategoryRepository
-# from app.application.services.category_service import CategoryService
+import pytest
+
+from app.application.services.category_service import (
+    CategoryLimitError,
+    CategoryNameConflictError,
+    CategoryNotFoundError,
+    CategoryPermissionError,
+    CategoryService,
+)
+from app.domain.feed_management.entities.category import Category
 
 
 class TestCategoryServiceCreate:
@@ -20,29 +24,18 @@ class TestCategoryServiceCreate:
     @pytest.mark.asyncio
     async def test_create_category_success(self):
         """Should create category with default position 0."""
-        # Arrange
         mock_repo = AsyncMock()
         mock_repo.count_by_user.return_value = 0
         mock_repo.get_max_position.return_value = -1
-        mock_repo.save.return_value = MagicMock(
-            id=uuid4(),
-            user_id=uuid4(),
-            name="Technology",
-            position=0,
-            feed_count=0,
-        )
-        
-        # This will fail until CategoryService is implemented
-        # service = CategoryService(mock_repo)
-        # result = await service.create_category(user_id=uuid4(), name="Technology")
-        
-        # Assert
-        # assert result.name == "Technology"
-        # assert result.position == 0
-        # mock_repo.save.assert_called_once()
-        
-        # Placeholder to make test run (will fail)
-        assert False, "CategoryService not yet implemented"
+        mock_repo.exists_by_name.return_value = False
+        mock_repo.save.side_effect = lambda cat: cat
+
+        service = CategoryService(mock_repo)
+        result = await service.create_category(user_id=uuid4(), name="Technology")
+
+        assert result.name == "Technology"
+        assert result.position == 0
+        mock_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_create_category_assigns_next_position(self):
@@ -50,39 +43,46 @@ class TestCategoryServiceCreate:
         mock_repo = AsyncMock()
         mock_repo.count_by_user.return_value = 3
         mock_repo.get_max_position.return_value = 2
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        mock_repo.exists_by_name.return_value = False
+        mock_repo.save.side_effect = lambda cat: cat
+
+        service = CategoryService(mock_repo)
+        result = await service.create_category(user_id=uuid4(), name="New Category")
+
+        assert result.position == 3
 
     @pytest.mark.asyncio
     async def test_create_category_enforces_25_limit(self):
         """Should raise error when user has 25 categories (FR-039)."""
         mock_repo = AsyncMock()
         mock_repo.count_by_user.return_value = 25
-        
-        # Will fail until implemented
-        # service = CategoryService(mock_repo)
-        # with pytest.raises(LimitExceededError):
-        #     await service.create_category(user_id=uuid4(), name="New Category")
-        
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(CategoryLimitError):
+            await service.create_category(user_id=uuid4(), name="New Category")
 
     @pytest.mark.asyncio
     async def test_create_category_validates_name_length(self):
         """Name over 100 chars should raise validation error."""
         mock_repo = AsyncMock()
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        mock_repo.count_by_user.return_value = 0
+        mock_repo.exists_by_name.return_value = False
+        mock_repo.get_max_position.return_value = -1
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(ValueError):
+            await service.create_category(user_id=uuid4(), name="x" * 101)
 
     @pytest.mark.asyncio
     async def test_create_category_validates_unique_name(self):
         """Duplicate name for same user should raise error."""
         mock_repo = AsyncMock()
+        mock_repo.count_by_user.return_value = 1
         mock_repo.exists_by_name.return_value = True
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(CategoryNameConflictError):
+            await service.create_category(user_id=uuid4(), name="Existing")
 
 
 class TestCategoryServiceUpdate:
@@ -91,43 +91,71 @@ class TestCategoryServiceUpdate:
     @pytest.mark.asyncio
     async def test_update_category_name(self):
         """Should update category name."""
+        user_id = uuid4()
+        category_id = uuid4()
         mock_repo = AsyncMock()
-        existing_category = MagicMock(
-            id=uuid4(),
-            user_id=uuid4(),
+        existing_category = Category(
+            id=category_id,
+            user_id=user_id,
             name="Old Name",
             position=0,
         )
         mock_repo.get_by_id.return_value = existing_category
         mock_repo.exists_by_name.return_value = False
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        mock_repo.save.side_effect = lambda cat: cat
+
+        service = CategoryService(mock_repo)
+        result = await service.update_category(user_id, category_id, name="New Name")
+
+        assert result.name == "New Name"
+        mock_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_update_category_position(self):
         """Should update category position."""
+        user_id = uuid4()
+        category_id = uuid4()
         mock_repo = AsyncMock()
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        existing_category = Category(
+            id=category_id,
+            user_id=user_id,
+            name="Test",
+            position=0,
+        )
+        mock_repo.get_by_id.return_value = existing_category
+        mock_repo.save.side_effect = lambda cat: cat
+
+        service = CategoryService(mock_repo)
+        result = await service.update_category(user_id, category_id, position=5)
+
+        assert result.position == 5
 
     @pytest.mark.asyncio
     async def test_update_category_not_found(self):
         """Should raise error for non-existent category."""
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = None
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(CategoryNotFoundError):
+            await service.update_category(uuid4(), uuid4(), name="New")
 
     @pytest.mark.asyncio
     async def test_update_category_different_user(self):
         """Should raise error when category belongs to different user."""
+        category_id = uuid4()
         mock_repo = AsyncMock()
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        existing_category = Category(
+            id=category_id,
+            user_id=uuid4(),
+            name="Test",
+            position=0,
+        )
+        mock_repo.get_by_id.return_value = existing_category
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(CategoryPermissionError):
+            await service.update_category(uuid4(), category_id, name="New")
 
 
 class TestCategoryServiceDelete:
@@ -136,24 +164,31 @@ class TestCategoryServiceDelete:
     @pytest.mark.asyncio
     async def test_delete_category_success(self):
         """Should delete category."""
+        user_id = uuid4()
+        category_id = uuid4()
         mock_repo = AsyncMock()
-        mock_repo.get_by_id.return_value = MagicMock(
-            id=uuid4(),
-            user_id=uuid4(),
+        mock_repo.get_by_id.return_value = Category(
+            id=category_id,
+            user_id=user_id,
+            name="Test",
         )
         mock_repo.delete.return_value = True
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        result = await service.delete_category(user_id, category_id)
+
+        assert result is True
+        mock_repo.delete.assert_called_once_with(category_id)
 
     @pytest.mark.asyncio
     async def test_delete_category_not_found(self):
         """Should raise error for non-existent category."""
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = None
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        with pytest.raises(CategoryNotFoundError):
+            await service.delete_category(uuid4(), uuid4())
 
 
 class TestCategoryServiceList:
@@ -165,19 +200,28 @@ class TestCategoryServiceList:
         mock_repo = AsyncMock()
         user_id = uuid4()
         categories = [
-            MagicMock(id=uuid4(), name="Cat2", position=1),
-            MagicMock(id=uuid4(), name="Cat1", position=0),
-            MagicMock(id=uuid4(), name="Cat3", position=2),
+            Category(id=uuid4(), user_id=user_id, name="Cat2", position=1),
+            Category(id=uuid4(), user_id=user_id, name="Cat1", position=0),
+            Category(id=uuid4(), user_id=user_id, name="Cat3", position=2),
         ]
         mock_repo.get_by_user.return_value = categories
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+
+        service = CategoryService(mock_repo)
+        result = await service.list_categories(user_id)
+
+        assert len(result) == 3
+        mock_repo.get_by_user.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_list_categories_includes_feed_count(self):
         """Each category should include feed_count."""
         mock_repo = AsyncMock()
-        
-        # Will fail until implemented
-        assert False, "CategoryService not yet implemented"
+        user_id = uuid4()
+        cat = Category(id=uuid4(), user_id=user_id, name="Test", position=0)
+        cat.feed_count = 5
+        mock_repo.get_by_user.return_value = [cat]
+
+        service = CategoryService(mock_repo)
+        result = await service.list_categories(user_id)
+
+        assert result[0].feed_count == 5
