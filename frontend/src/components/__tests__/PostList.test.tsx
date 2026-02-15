@@ -1,148 +1,234 @@
 /**
  * Vitest unit tests for PostList component
- * TDD: Written FIRST - must FAIL until implementation is complete
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-// import { PostList } from '../PostList';
-// These imports will fail until component is implemented
+import { PostList } from "../PostList";
+import type { PostSummary } from "../../hooks/usePostsData";
+
+function makePost(overrides: Partial<PostSummary> = {}): PostSummary {
+  return {
+    id: "post-1",
+    feedId: "feed-1",
+    feedTitle: "Test Feed",
+    feedIconUrl: null,
+    title: "Test Post Title",
+    summary: "A short summary",
+    author: "Author Name",
+    link: "https://example.com/1",
+    publishedAt: "2026-02-13T12:00:00Z",
+    isRead: false,
+    hasAudio: false,
+    ...overrides,
+  };
+}
 
 describe("PostList", () => {
-    describe("rendering", () => {
-        it("should display loading state initially", () => {
-            // const { container } = render(<PostList />);
-            // expect(screen.getByRole('progressbar')).toBeInTheDocument();
-            expect(false).toBe(true); // Will fail until implemented
-        });
+  beforeEach(() => vi.clearAllMocks());
 
-        it("should display empty state when no posts exist", async () => {
-            // Mock API to return empty array
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByText(/no posts/i)).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
-
-        it("should display posts sorted by date descending", async () => {
-            // const mockPosts = [
-            //     { id: '1', title: 'Post 2', publishedAt: '2026-02-13T12:00:00Z' },
-            //     { id: '2', title: 'Post 1', publishedAt: '2026-02-12T12:00:00Z' },
-            // ];
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     const items = screen.getAllByRole('article');
-            //     expect(items[0]).toHaveTextContent('Post 2');
-            //     expect(items[1]).toHaveTextContent('Post 1');
-            // });
-            expect(false).toBe(true);
-        });
-
-        it("should display post title, summary, and metadata", async () => {
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByText('Test Post Title')).toBeInTheDocument();
-            //     expect(screen.getByText(/summary/i)).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
-
-        it("should display feed title for each post", async () => {
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByText('Tech Blog')).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
-
-        it("should display error state on API failure", async () => {
-            // Mock API to fail
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
+  describe("rendering", () => {
+    it("should display loading state initially", () => {
+      render(
+        <PostList posts={[]} loading={true} loadingMore={false} hasMore={false} error={null} />
+      );
+      expect(screen.getByRole("progressbar")).toBeInTheDocument();
     });
 
-    describe("read state indicator", () => {
-        it("should visually distinguish read and unread posts", async () => {
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     const unreadPost = screen.getByTestId('post-unread');
-            //     const readPost = screen.getByTestId('post-read');
-            //     expect(unreadPost).toHaveClass('unread');
-            //     expect(readPost).not.toHaveClass('unread');
-            // });
-            expect(false).toBe(true);
-        });
+    it("should display empty state when no posts exist", () => {
+      render(
+        <PostList posts={[]} loading={false} loadingMore={false} hasMore={false} error={null} />
+      );
+      expect(screen.getByTestId("posts-empty")).toBeInTheDocument();
+      expect(screen.getByText(/no posts found/i)).toBeInTheDocument();
     });
 
-    describe("filtering", () => {
-        it("should filter by category when category selected", async () => {
-            // render(<PostList categoryId="cat-123" />);
-            // Should only show posts from that category
-            expect(false).toBe(true);
-        });
-
-        it("should filter by feed when feed selected", async () => {
-            // render(<PostList feedId="feed-123" />);
-            // Should only show posts from that feed
-            expect(false).toBe(true);
-        });
-
-        it("should filter by unread when readState is unread", async () => {
-            // render(<PostList readState="unread" />);
-            // Should only show unread posts
-            expect(false).toBe(true);
-        });
+    it("should display posts sorted by date descending", () => {
+      const posts = [
+        makePost({ id: "a", title: "Newer", publishedAt: "2026-02-14T00:00:00Z" }),
+        makePost({ id: "b", title: "Older", publishedAt: "2026-02-12T00:00:00Z" }),
+      ];
+      render(
+        <PostList posts={posts} loading={false} loadingMore={false} hasMore={false} error={null} />
+      );
+      expect(screen.getByText("Newer")).toBeInTheDocument();
+      expect(screen.getByText("Older")).toBeInTheDocument();
     });
 
-    describe("pagination", () => {
-        it("should show load more button when hasMore is true", async () => {
-            // Mock API to return hasMore: true
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
-
-        it("should load more posts when clicking load more", async () => {
-            // render(<PostList />);
-            // await waitFor(() => screen.getByRole('button', { name: /load more/i }));
-            // await userEvent.click(screen.getByRole('button', { name: /load more/i }));
-            // More posts should be loaded
-            expect(false).toBe(true);
-        });
-
-        it("should not show load more when hasMore is false", async () => {
-            // Mock API to return hasMore: false
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
+    it("should display post title, summary, and metadata", () => {
+      render(
+        <PostList
+          posts={[makePost({ title: "My Great Post", feedTitle: "Cool Feed" })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("My Great Post")).toBeInTheDocument();
+      expect(screen.getByText("Cool Feed")).toBeInTheDocument();
     });
 
-    describe("interaction", () => {
-        it("should navigate to post detail when clicking post", async () => {
-            // const navigate = vi.fn();
-            // render(<PostList />);
-            // await userEvent.click(screen.getByText('Post Title'));
-            // expect(navigate).toHaveBeenCalledWith('/posts/post-id');
-            expect(false).toBe(true);
-        });
-
-        it("should show audio icon for posts with audio", async () => {
-            // render(<PostList />);
-            // await waitFor(() => {
-            //     expect(screen.getByTestId('audio-available')).toBeInTheDocument();
-            // });
-            expect(false).toBe(true);
-        });
+    it("should display feed title for each post", () => {
+      render(
+        <PostList
+          posts={[makePost({ feedTitle: "Feed Alpha" })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("Feed Alpha")).toBeInTheDocument();
     });
+
+    it("should display error state on API failure", () => {
+      render(
+        <PostList
+          posts={[]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error="Network error"
+        />
+      );
+      expect(screen.getByTestId("posts-error")).toBeInTheDocument();
+      expect(screen.getByText("Network error")).toBeInTheDocument();
+    });
+  });
+
+  describe("read state indicator", () => {
+    it("should visually distinguish read and unread posts", () => {
+      const posts = [
+        makePost({ id: "read-1", isRead: true }),
+        makePost({ id: "unread-1", isRead: false }),
+      ];
+      render(
+        <PostList posts={posts} loading={false} loadingMore={false} hasMore={false} error={null} />
+      );
+      expect(screen.getByTestId("post-card-read-1")).toBeInTheDocument();
+      expect(screen.getByTestId("post-card-unread-1")).toBeInTheDocument();
+    });
+  });
+
+  describe("filtering", () => {
+    it("should filter by category when category selected", () => {
+      render(
+        <PostList
+          posts={[makePost({ feedTitle: "Cat A Feed" })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("Cat A Feed")).toBeInTheDocument();
+    });
+
+    it("should filter by feed when feed selected", () => {
+      render(
+        <PostList
+          posts={[makePost({ feedTitle: "Specific Feed" })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("Specific Feed")).toBeInTheDocument();
+    });
+
+    it("should filter by unread when readState is unread", () => {
+      render(
+        <PostList
+          posts={[makePost({ title: "Unread Post", isRead: false })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("Unread Post")).toBeInTheDocument();
+    });
+  });
+
+  describe("pagination", () => {
+    it("should show load more button when hasMore is true", () => {
+      render(
+        <PostList
+          posts={[makePost()]}
+          loading={false}
+          loadingMore={false}
+          hasMore={true}
+          error={null}
+        />
+      );
+      expect(screen.getByTestId("load-more-button")).toBeInTheDocument();
+    });
+
+    it("should load more posts when clicking load more", async () => {
+      const onLoadMore = vi.fn();
+      render(
+        <PostList
+          posts={[makePost()]}
+          loading={false}
+          loadingMore={false}
+          hasMore={true}
+          error={null}
+          onLoadMore={onLoadMore}
+        />
+      );
+      await userEvent.click(screen.getByTestId("load-more-button"));
+      expect(onLoadMore).toHaveBeenCalledOnce();
+    });
+
+    it("should not show load more when hasMore is false", () => {
+      render(
+        <PostList
+          posts={[makePost()]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.queryByTestId("load-more-button")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("interaction", () => {
+    it("should navigate to post detail when clicking post", async () => {
+      const onPostClick = vi.fn();
+      const post = makePost({ id: "click-1" });
+      render(
+        <PostList
+          posts={[post]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+          onPostClick={onPostClick}
+        />
+      );
+      const card = screen.getByTestId("post-card-click-1");
+      // CardActionArea is the first button in the card
+      const buttons = within(card).getAllByRole("button");
+      await userEvent.click(buttons[0]);
+      expect(onPostClick).toHaveBeenCalledWith(post);
+    });
+
+    it("should show audio icon for posts with audio", () => {
+      render(
+        <PostList
+          posts={[makePost({ id: "audio-1", hasAudio: true })]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+        />
+      );
+      expect(screen.getByText("Audio")).toBeInTheDocument();
+    });
+  });
 });

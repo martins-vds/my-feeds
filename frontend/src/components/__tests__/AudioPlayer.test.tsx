@@ -1,237 +1,267 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
-import { ThemeProvider, createTheme } from "@mui/material";
-import { AuthProvider } from "../../contexts/AuthContext";
+/**
+ * Vitest unit tests for AudioPlayer component
+ */
 
-// These tests are written TDD-style and should FAIL until AudioPlayer is implemented
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AudioPlayer } from "../AudioPlayer";
+import type { UseAudioPlayerResult, AudioStatus } from "../../hooks/useAudioPlayer";
+
+// Mock the useAudioPlayer hook
+const mockUseAudioPlayer: UseAudioPlayerResult = {
+  status: "idle" as AudioStatus,
+  audioUrl: null,
+  durationSeconds: null,
+  currentTime: 0,
+  progress: 0,
+  error: null,
+  generateAudio: vi.fn(),
+  play: vi.fn(),
+  pause: vi.fn(),
+  toggle: vi.fn(),
+  seek: vi.fn(),
+};
+
+vi.mock("../../hooks/useAudioPlayer", () => ({
+  useAudioPlayer: () => mockUseAudioPlayer,
+}));
+
+function setMockState(overrides: Partial<UseAudioPlayerResult>) {
+  Object.assign(mockUseAudioPlayer, overrides);
+}
+
+function resetMockState() {
+  Object.assign(mockUseAudioPlayer, {
+    status: "idle" as AudioStatus,
+    audioUrl: null,
+    durationSeconds: null,
+    currentTime: 0,
+    progress: 0,
+    error: null,
+    generateAudio: vi.fn(),
+    play: vi.fn(),
+    pause: vi.fn(),
+    toggle: vi.fn(),
+    seek: vi.fn(),
+  });
+}
 
 describe("AudioPlayer", () => {
-    const theme = createTheme();
+  beforeEach(() => {
+    resetMockState();
+  });
 
-    const renderWithProviders = (ui: React.ReactElement) => {
-        return render(
-            <ThemeProvider theme={theme}>
-                <AuthProvider>
-                    <BrowserRouter>{ui}</BrowserRouter>
-                </AuthProvider>
-            </ThemeProvider>
-        );
-    };
-
-    beforeEach(() => {
-        vi.clearAllMocks();
+  describe("idle state", () => {
+    it("should display listen button in idle state", () => {
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByTestId("listen-button")).toBeInTheDocument();
     });
 
-    describe("initial state", () => {
-        it("renders listen button when no audio", async () => {
-            // Import will fail until component exists
-            const { AudioPlayer } = await import("../AudioPlayer");
-
-            renderWithProviders(
-                <AudioPlayer postId="test-post-id" audioUrl={null} />
-            );
-
-            expect(screen.getByRole("button", { name: /listen/i })).toBeInTheDocument();
-        });
-
-        it("shows play button when audio is ready", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-cache-key"
-                />
-            );
-
-            expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
-        });
+    it("should display listen button with accessible label", () => {
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByLabelText("Listen to post")).toBeInTheDocument();
     });
 
-    describe("audio generation", () => {
-        it("shows loading state while generating", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-            const mockOnGenerate = vi.fn(() => new Promise(() => { })); // Never resolves
+    it("should call generateAudio when listen button is clicked", async () => {
+      const generateAudio = vi.fn();
+      setMockState({ generateAudio });
 
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl={null}
-                    onGenerateAudio={mockOnGenerate}
-                />
-            );
-
-            fireEvent.click(screen.getByRole("button", { name: /listen/i }));
-
-            await waitFor(() => {
-                expect(screen.getByText(/generating/i)).toBeInTheDocument();
-            });
-        });
-
-        it("calls onGenerateAudio when listen clicked", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-            const mockOnGenerate = vi.fn().mockResolvedValue({
-                status: "ready",
-                url: "/api/audio/new-key"
-            });
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl={null}
-                    onGenerateAudio={mockOnGenerate}
-                />
-            );
-
-            fireEvent.click(screen.getByRole("button", { name: /listen/i }));
-
-            expect(mockOnGenerate).toHaveBeenCalledWith("test-post-id");
-        });
-
-        it("shows play button after generation completes", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-            const mockOnGenerate = vi.fn().mockResolvedValue({
-                status: "ready",
-                url: "/api/audio/new-key"
-            });
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl={null}
-                    onGenerateAudio={mockOnGenerate}
-                />
-            );
-
-            fireEvent.click(screen.getByRole("button", { name: /listen/i }));
-
-            await waitFor(() => {
-                expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
-            });
-        });
+      render(<AudioPlayer postId="post-1" />);
+      await userEvent.click(screen.getByTestId("listen-button"));
+      expect(generateAudio).toHaveBeenCalled();
     });
 
-    describe("playback controls", () => {
-        it("toggles play/pause on button click", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
+    it("should call onGenerateAudio callback if provided", async () => {
+      const onGenerateAudio = vi.fn().mockResolvedValue({ status: "ready", url: "/audio.mp3" });
 
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-key"
-                />
-            );
+      render(<AudioPlayer postId="post-1" onGenerateAudio={onGenerateAudio} />);
+      await userEvent.click(screen.getByTestId("listen-button"));
+      expect(onGenerateAudio).toHaveBeenCalledWith("post-1");
+    });
+  });
 
-            const playButton = screen.getByRole("button", { name: /play/i });
-            fireEvent.click(playButton);
+  describe("loading state", () => {
+    it("should display spinner when generating audio", () => {
+      setMockState({ status: "loading" });
 
-            await waitFor(() => {
-                expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
-            });
-        });
-
-        it("shows progress bar during playback", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-key"
-                />
-            );
-
-            expect(screen.getByRole("progressbar")).toBeInTheDocument();
-        });
-
-        it("displays duration when available", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-key"
-                    durationSeconds={125}
-                />
-            );
-
-            expect(screen.getByText(/2:05/)).toBeInTheDocument();
-        });
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByRole("progressbar")).toBeInTheDocument();
     });
 
-    describe("error handling", () => {
-        it("shows error message on generation failure", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-            const mockOnGenerate = vi.fn().mockRejectedValue(new Error("API Error"));
+    it("should display 'Generating audio...' text", () => {
+      setMockState({ status: "loading" });
 
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl={null}
-                    onGenerateAudio={mockOnGenerate}
-                />
-            );
-
-            fireEvent.click(screen.getByRole("button", { name: /listen/i }));
-
-            await waitFor(() => {
-                expect(screen.getByText(/failed/i)).toBeInTheDocument();
-            });
-        });
-
-        it("allows retry after error", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-            const mockOnGenerate = vi.fn()
-                .mockRejectedValueOnce(new Error("API Error"))
-                .mockResolvedValueOnce({ status: "ready", url: "/api/audio/key" });
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl={null}
-                    onGenerateAudio={mockOnGenerate}
-                />
-            );
-
-            fireEvent.click(screen.getByRole("button", { name: /listen/i }));
-
-            await waitFor(() => {
-                expect(screen.getByText(/retry/i)).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-
-            expect(mockOnGenerate).toHaveBeenCalledTimes(2);
-        });
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByText("Generating audio...")).toBeInTheDocument();
     });
 
-    describe("accessibility", () => {
-        it("has accessible button labels", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
+    it("should not display listen or play buttons while loading", () => {
+      setMockState({ status: "loading" });
 
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-key"
-                />
-            );
-
-            const playButton = screen.getByRole("button", { name: /play/i });
-            expect(playButton).toHaveAttribute("aria-label");
-        });
-
-        it("progress bar has accessible labels", async () => {
-            const { AudioPlayer } = await import("../AudioPlayer");
-
-            renderWithProviders(
-                <AudioPlayer
-                    postId="test-post-id"
-                    audioUrl="/api/audio/test-key"
-                />
-            );
-
-            const progressBar = screen.getByRole("progressbar");
-            expect(progressBar).toHaveAttribute("aria-label");
-        });
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("play-pause-button")).not.toBeInTheDocument();
     });
+  });
+
+  describe("error state", () => {
+    it("should display 'Audio failed' message on error", () => {
+      setMockState({ status: "error", error: "Something went wrong" });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByText("Audio failed")).toBeInTheDocument();
+    });
+
+    it("should display retry button on error", () => {
+      setMockState({ status: "error", error: "Network error" });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByLabelText("Retry audio generation")).toBeInTheDocument();
+    });
+
+    it("should call generateAudio when retry is clicked", async () => {
+      const generateAudio = vi.fn();
+      setMockState({ status: "error", error: "Failed", generateAudio });
+
+      render(<AudioPlayer postId="post-1" />);
+      await userEvent.click(screen.getByLabelText("Retry audio generation"));
+      expect(generateAudio).toHaveBeenCalled();
+    });
+  });
+
+  describe("ready state", () => {
+    it("should show play/pause button when audio is ready", () => {
+      setMockState({
+        status: "ready",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByTestId("play-pause-button")).toBeInTheDocument();
+    });
+
+    it("should show progress bar when audio is ready", () => {
+      setMockState({
+        status: "ready",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByLabelText("Audio progress")).toBeInTheDocument();
+    });
+
+    it("should show ready state when initialAudioUrl is passed and status is idle", () => {
+      // When initialAudioUrl is provided and status is idle, effectiveStatus becomes "ready"
+      setMockState({ status: "idle", audioUrl: null });
+
+      render(<AudioPlayer postId="post-1" audioUrl="/audio/post-1.mp3" />);
+      expect(screen.getByTestId("play-pause-button")).toBeInTheDocument();
+    });
+  });
+
+  describe("playing state", () => {
+    it("should show Pause label when playing", () => {
+      setMockState({
+        status: "playing",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+        currentTime: 30,
+        progress: 25,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByLabelText("Pause")).toBeInTheDocument();
+    });
+
+    it("should call toggle when play/pause button is clicked", async () => {
+      const toggle = vi.fn();
+      setMockState({
+        status: "playing",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+        currentTime: 30,
+        progress: 25,
+        toggle,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      await userEvent.click(screen.getByTestId("play-pause-button"));
+      expect(toggle).toHaveBeenCalled();
+    });
+
+    it("should show current time and duration", () => {
+      setMockState({
+        status: "playing",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+        currentTime: 65,
+        progress: 54,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      // 65 seconds = 1:05, 120 seconds = 2:00
+      expect(screen.getByText("1:05 / 2:00")).toBeInTheDocument();
+    });
+  });
+
+  describe("paused state", () => {
+    it("should show Play label when paused", () => {
+      setMockState({
+        status: "paused",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 120,
+        currentTime: 30,
+        progress: 25,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByLabelText("Play")).toBeInTheDocument();
+    });
+
+    it("should retain current time when paused", () => {
+      setMockState({
+        status: "paused",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 60,
+        currentTime: 45,
+        progress: 75,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      // 45 seconds = 0:45, 60 seconds = 1:00
+      expect(screen.getByText("0:45 / 1:00")).toBeInTheDocument();
+    });
+  });
+
+  describe("time formatting", () => {
+    it("should format zero time correctly", () => {
+      setMockState({
+        status: "ready",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 300,
+        currentTime: 0,
+        progress: 0,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      // 0 seconds = 0:00, 300 seconds = 5:00
+      expect(screen.getByText("0:00 / 5:00")).toBeInTheDocument();
+    });
+
+    it("should show only current time when duration is not available", () => {
+      setMockState({
+        status: "ready",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: null,
+        currentTime: 30,
+        progress: 0,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+      expect(screen.getByText("0:30")).toBeInTheDocument();
+    });
+  });
 });
