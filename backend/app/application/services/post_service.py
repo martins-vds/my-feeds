@@ -10,23 +10,25 @@ from app.domain.feed_management.repositories.category_repository import Category
 from app.domain.feed_management.repositories.feed_repository import FeedRepository
 from app.domain.feed_management.repositories.post_repository import PostRepository
 
-
 ReadState = Literal["all", "unread", "read"]
 
 
 class PostNotFoundError(Exception):
     """Raised when a post is not found."""
+
     pass
 
 
 class PostPermissionError(Exception):
     """Raised when user doesn't have permission to access a post."""
+
     pass
 
 
 @dataclass
 class PostListResult:
     """Result of listing posts with pagination info."""
+
     posts: List[Post]
     has_more: bool
     next_cursor: Optional[str] = None
@@ -86,22 +88,17 @@ class PostService:
         if limit < 1:
             limit = self.DEFAULT_LIMIT
 
-        # Fetch one extra to determine if there are more
-        fetch_limit = limit + 1
-
         posts = await self._post_repository.get_posts_for_user(
             user_id=user_id,
             category_id=category_id,
             feed_id=feed_id,
             read_state=read_state,
             before=before,
-            limit=fetch_limit,
+            limit=limit,
         )
 
         # Determine if there are more posts
-        has_more = len(posts) > limit
-        if has_more:
-            posts = posts[:limit]
+        has_more = len(posts) >= limit
 
         # Calculate next cursor (ISO timestamp of last post)
         next_cursor = None

@@ -2,9 +2,6 @@
 
 from quart import Blueprint
 
-# Create API blueprint
-api_bp = Blueprint("api", __name__, url_prefix="/api")
-
 
 def register_routes(app) -> None:
     """Register all API routes with the application.
@@ -12,8 +9,11 @@ def register_routes(app) -> None:
     Args:
         app: The Quart application instance.
     """
+    # Create a fresh blueprint each time to support multiple create_app() calls (e.g. tests)
+    api_bp = Blueprint("api", __name__, url_prefix="/api")
+
     # Import route modules here to avoid circular imports
-    from app.api.routes import auth, categories, feeds, posts, audio
+    from app.api.routes import audio, auth, categories, feeds, posts
 
     # Register blueprints
     api_bp.register_blueprint(auth.bp)

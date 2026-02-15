@@ -8,7 +8,7 @@ import httpx
 
 from app.domain.feed_management.entities.user import User
 from app.domain.feed_management.repositories.user_repository import UserRepository
-from app.infrastructure.oauth.providers import get_provider_config, OAuthProviderConfig
+from app.infrastructure.oauth.providers import OAuthProviderConfig, get_provider_config
 
 
 class OAuthError(Exception):
@@ -203,8 +203,7 @@ class OAuthService:
             return {
                 "provider": provider,
                 "provider_id": str(user_info["id"]),
-                "email": user_info.get("mail")
-                or user_info.get("userPrincipalName", ""),
+                "email": user_info.get("mail") or user_info.get("userPrincipalName", ""),
                 "name": user_info.get("displayName"),
                 "avatar_url": None,  # Microsoft requires separate call for photo
             }
@@ -233,12 +232,7 @@ class OAuthService:
         )
 
         if existing:
-            # Update profile from OAuth (in case it changed)
-            existing.update_profile(
-                name=user_info.get("name"),
-                avatar_url=user_info.get("avatar_url"),
-            )
-            return await self._user_repository.save(existing)
+            return existing
 
         # Create new user
         user = User.from_oauth(
