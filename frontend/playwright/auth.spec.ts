@@ -1,117 +1,162 @@
 /**
- * Playwright E2E tests for authentication flow
- * TDD: Written FIRST - must FAIL until implementation is complete
+ * E2E tests for authentication flow.
+ *
+ * Tests the sign-in page, OAuth button redirects, protected-route
+ * guards, and the OAuth callback page.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, mockApi, TEST_USER } from "./fixtures";
 
-test.describe("Authentication Flow", () => {
-    test.describe("Sign In Page", () => {
-        test("should display sign in page with OAuth buttons", async ({ page }) => {
-            await page.goto("/signin");
+// ── Public sign-in page (no auth mock needed) ──────────────────────────
 
-            // Should show the sign in page
-            await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
+test.describe("Sign In Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApi(
+      page,
+      "**/api/auth/me",
+      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+      { status: 401 }
+    );
+  });
 
-            // Should have OAuth provider buttons
-            await expect(page.getByRole("button", { name: /github/i })).toBeVisible();
-            await expect(page.getByRole("button", { name: /google/i })).toBeVisible();
-            await expect(page.getByRole("button", { name: /microsoft|outlook/i })).toBeVisible();
-        });
+  test("displays heading and OAuth provider buttons", async ({ page }) => {
+    await page.goto("/signin");
 
-        test("should redirect to GitHub OAuth when clicking GitHub button", async ({ page }) => {
-            await page.goto("/signin");
+    await expect(page.getByRole("heading", { name: /my-feeds/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /github/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /google/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible();
+  });
 
-            // Click GitHub sign in button
-            await page.getByRole("button", { name: /github/i }).click();
+  test("GitHub button redirects to backend OAuth endpoint", async ({ page }) => {
+    await page.route("**/api/auth/login/github", (route) =>
+      route.fulfill({ status: 200, body: "redirected" })
+    );
 
-            // Should redirect to backend auth endpoint (which redirects to GitHub)
-            await expect(page).toHaveURL(/\/api\/auth\/login\/github|github\.com/);
-        });
+    await page.goto("/signin");
+    const [request] = await Promise.all([
+      page.waitForRequest("**/api/auth/login/github"),
+      page.getByRole("button", { name: /github/i }).click(),
+    ]);
+    expect(request.url()).toContain("/api/auth/login/github");
+  });
 
-        test("should redirect to Google OAuth when clicking Google button", async ({ page }) => {
-            await page.goto("/signin");
+  test("Google button redirects to backend OAuth endpoint", async ({ page }) => {
+    await page.route("**/api/auth/login/google", (route) =>
+      route.fulfill({ status: 200, body: "redirected" })
+    );
 
-            await page.getByRole("button", { name: /google/i }).click();
+    await page.goto("/signin");
+    const [request] = await Promise.all([
+      page.waitForRequest("**/api/auth/login/google"),
+      page.getByRole("button", { name: /google/i }).click(),
+    ]);
+    expect(request.url()).toContain("/api/auth/login/google");
+  });
 
-            await expect(page).toHaveURL(/\/api\/auth\/login\/google|accounts\.google\.com/);
-        });
+  test("Microsoft button redirects to backend OAuth endpoint", async ({ page }) => {
+    await page.route("**/api/auth/login/microsoft", (route) =>
+      route.fulfill({ status: 200, body: "redirected" })
+    );
 
-        test("should redirect to Microsoft OAuth when clicking Microsoft button", async ({ page }) => {
-            await page.goto("/signin");
+    await page.goto("/signin");
+    const [request] = await Promise.all([
+      page.waitForRequest("**/api/auth/login/microsoft"),
+      page.getByRole("button", { name: /microsoft/i }).click(),
+    ]);
+    expect(request.url()).toContain("/api/auth/login/microsoft");
+  });
+});
 
-            await page.getByRole("button", { name: /microsoft|outlook/i }).click();
+// ── Protected route redirects ──────────────────────────────────────────
 
-            await expect(page).toHaveURL(/\/api\/auth\/login\/microsoft|login\.microsoftonline\.com/);
-        });
-    });
+test.describe("Protected Routes", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApi(
+      page,
+      "**/api/auth/me",
+      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+      { status: 401 }
+    );
+  });
 
-    test.describe("Protected Routes", () => {
-        test("should redirect unauthenticated users to sign in", async ({ page }) => {
-            // Try to access a protected route without authentication
-            await page.goto("/posts");
+  test("redirects /posts to /signin when not authenticated", async ({ page }) => {
+    await page.goto("/posts");
+    await expect(page).toHaveURL(/\/signin/);
+  });
 
-            // Should redirect to sign in page
-            await expect(page).toHaveURL(/\/signin/);
-        });
+  test("redirects /feeds to /signin when not authenticated", async ({ page }) => {
+    await page.goto("/feeds");
+    await expect(page).toHaveURL(/\/signin/);
+  });
 
-        test("should redirect unauthenticated users from feeds page", async ({ page }) => {
-            await page.goto("/feeds");
+  test("redirects /settings to /signin when not authenticated", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page).toHaveURL(/\/signin/);
+  });
+});
 
-            await expect(page).toHaveURL(/\/signin/);
-        });
+// ── OAuth callback ─────────────────────────────────────────────────────
 
-        test("should redirect unauthenticated users from settings page", async ({ page }) => {
-            await page.goto("/settings");
+test.describe("OAuth Callback", () => {
+  test("shows error message when OAuth returns error", async ({ page }) => {
+    await mockApi(
+      page,
+      "**/api/auth/me",
+      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+      { status: 401 }
+    );
+    await page.goto("/auth/callback?error=access_denied&error_description=User%20denied%20access");
+    await expect(page.getByText(/denied|error|failed/i)).toBeVisible();
+  });
 
-            await expect(page).toHaveURL(/\/signin/);
-        });
-    });
+  test("redirects to /posts after successful callback", async ({ page }) => {
+    await mockApi(page, "**/api/auth/me", TEST_USER);
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+    await mockApi(page, "**/api/categories", { categories: [] });
 
-    test.describe("OAuth Callback", () => {
-        test("should handle OAuth callback and redirect to main page", async ({ page }) => {
-            // Mock a successful OAuth callback
-            // In a real test, we'd mock the backend response
-            await page.goto("/auth/callback?code=test_code&state=test_state");
+    await page.goto("/auth/callback?code=test_code&state=test_state");
+    await expect(page).toHaveURL(/\/posts/, { timeout: 5000 });
+  });
+});
 
-            // Should show loading or redirect to main page
-            // The actual behavior depends on the callback implementation
-            await expect(
-                page.getByText(/loading|redirecting/i).or(page.locator('[data-testid="main-content"]'))
-            ).toBeVisible({ timeout: 5000 });
-        });
+// ── Authenticated user header ──────────────────────────────────────────
 
-        test("should handle OAuth error and show error message", async ({ page }) => {
-            await page.goto("/auth/callback?error=access_denied&error_description=User%20denied%20access");
+test.describe("Authenticated User", () => {
+  test("displays user avatar in header", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+    await mockApi(page, "**/api/categories", { categories: [] });
 
-            // Should show error message
-            await expect(page.getByText(/error|denied|failed/i)).toBeVisible();
-        });
-    });
+    await page.goto("/posts");
+    await expect(page.getByTestId("user-avatar")).toBeVisible();
+  });
 
-    test.describe("Authenticated User", () => {
-        // These tests require mocking the auth state
-        // In a real setup, we'd use a test user or mock the session
+  test("sign out clears session and redirects to signin", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+    await mockApi(page, "**/api/categories", { categories: [] });
+    await mockApi(
+      page,
+      "**/api/auth/logout",
+      { message: "Logged out successfully" },
+      { method: "POST" }
+    );
 
-        test.skip("should display user avatar in header when authenticated", async ({ page }) => {
-            // TODO: Implement with mock authentication
-            await page.goto("/posts");
+    await page.goto("/posts");
+    await expect(page.getByTestId("user-avatar")).toBeVisible();
 
-            await expect(page.getByTestId("user-avatar")).toBeVisible();
-        });
+    await page.getByTestId("user-avatar").click();
+    await page.getByText(/sign out/i).click();
 
-        test.skip("should allow sign out from header menu", async ({ page }) => {
-            // TODO: Implement with mock authentication
-            await page.goto("/posts");
+    // After logout completes, the navigate("/signin") fires.
+    // Override auth/me to 401 so the signin page stays unauthenticated.
+    await page.route("**/api/auth/me", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }),
+      })
+    );
 
-            // Open user menu
-            await page.getByTestId("user-avatar").click();
-
-            // Click sign out
-            await page.getByRole("menuitem", { name: /sign out/i }).click();
-
-            // Should redirect to sign in
-            await expect(page).toHaveURL(/\/signin/);
-        });
-    });
+    await expect(page).toHaveURL(/\/signin/, { timeout: 5000 });
+  });
 });

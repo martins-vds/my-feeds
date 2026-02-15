@@ -1,133 +1,142 @@
 /**
- * Playwright E2E tests for post reading flow
- * Tests GET /posts/{id} and read state toggle
+ * E2E tests for the Post Detail page (/posts/:id).
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, mockApi, makePostDetail } from "./fixtures";
+
+// ── Seed data ──────────────────────────────────────────────────────────
+
+const postDetail = makePostDetail("feed-1", {
+  id: "post-detail-1",
+  title: "Understanding React Server Components",
+  content: "<h2>Introduction</h2><p>React Server Components represent a paradigm shift.</p>",
+  summary: "An overview of RSC",
+  feedTitle: "React Blog",
+  feedIconUrl: null,
+  author: "Dan Abramov",
+  link: "https://react.dev/blog/rsc",
+  publishedAt: "2026-01-10T10:00:00Z",
+  isRead: false,
+  hasAudio: false,
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+async function setupDetailPage(page: import("@playwright/test").Page) {
+  await mockApi(page, `**/api/posts/${postDetail.id}`, postDetail);
+  await mockApi(page, "**/api/categories", { categories: [] });
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────
 
 test.describe("Post Detail Page", () => {
-    test.beforeEach(async ({ page }) => {
-        // Authenticate user (setup should provide session)
-        // This assumes test fixtures provide authenticated session
+  test("displays full post content", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+
+    await page.goto(`/posts/${postDetail.id}`);
+
+    // Title
+    await expect(page.getByTestId("post-title")).toContainText(
+      "Understanding React Server Components"
+    );
+    // Content
+    await expect(page.getByTestId("post-content")).toContainText(
+      "React Server Components represent a paradigm shift"
+    );
+  });
+
+  test("shows post metadata (feed title, author, date)", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+    await page.goto(`/posts/${postDetail.id}`);
+
+    await expect(page.getByTestId("feed-title")).toContainText("React Blog");
+    await expect(page.getByTestId("post-author")).toContainText("Dan Abramov");
+    await expect(page.getByTestId("post-date")).toBeVisible();
+  });
+
+  test("has link to original article", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+    await page.goto(`/posts/${postDetail.id}`);
+
+    const link = page.getByTestId("original-link");
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "https://react.dev/blog/rsc");
+  });
+
+  test("shows read/unread chip reflecting post state", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+    await page.goto(`/posts/${postDetail.id}`);
+
+    // Post starts as unread (isRead: false)
+    const chip = page.getByText(/^(Read|Unread)$/);
+    await expect(chip).toBeVisible();
+  });
+
+  test("navigates back to posts list when clicking back button", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+    // Mock the posts list for back navigation
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+
+    await page.goto(`/posts/${postDetail.id}`);
+    await page.getByTestId("back-button").first().click();
+
+    await expect(page).toHaveURL(/\/posts$/);
+  });
+
+  test("shows error for non-existent post", async ({ authedPage: page }) => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    await mockApi(
+      page,
+      `**/api/posts/${fakeId}`,
+      { error: { code: "NOT_FOUND", message: "Post not found" } },
+      { status: 404 }
+    );
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.goto(`/posts/${fakeId}`);
+
+    await expect(page.getByTestId("error-message")).toContainText(/not found/i);
+  });
+
+  test("toggles read state when clicking toggle button", async ({ authedPage: page }) => {
+    await setupDetailPage(page);
+
+    // Mock the PUT read-state endpoint
+    await page.route(`**/api/posts/${postDetail.id}/read-state`, (route) => {
+      if (route.request().method() === "PUT") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: postDetail.id, isRead: true }),
+        });
+      }
+      return route.fallback();
     });
 
-    test("should display full post content", async ({ page }) => {
-        // Navigate to posts list
-        await page.goto("/posts");
+    await page.goto(`/posts/${postDetail.id}`);
 
-        // Click on first post
-        await page.click('[data-testid="post-card"]:first-child');
+    // ReadStateToggle button: aria-label is "Mark post as read" (unread) or "Mark post as unread" (read)
+    const toggleBtn = page.getByRole("button", { name: /mark post as/i });
+    await expect(toggleBtn).toBeVisible();
+    await toggleBtn.click();
 
-        // Wait for post detail page
-        await expect(page).toHaveURL(/\/posts\/[a-f0-9-]+/);
-
-        // Verify content is displayed
-        await expect(page.locator('[data-testid="post-title"]')).toBeVisible();
-        await expect(page.locator('[data-testid="post-content"]')).toBeVisible();
+    // After toggling isRead: false → true, label becomes "Mark post as unread"
+    await expect(page.getByRole("button", { name: /mark post as unread/i })).toBeVisible({
+      timeout: 3000,
     });
+  });
+});
 
-    test("should auto-mark post as read when viewing", async ({ page }) => {
-        await page.goto("/posts?readState=unread");
+test.describe("Post Detail - Authentication", () => {
+  test("redirects to signin when not authenticated", async ({ page }) => {
+    await mockApi(
+      page,
+      "**/api/auth/me",
+      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+      { status: 401 }
+    );
 
-        // Get first unread post's title
-        const firstPostTitle = await page.locator('[data-testid="post-card"]:first-child [data-testid="post-title"]').textContent();
-
-        // Click to view
-        await page.click('[data-testid="post-card"]:first-child');
-
-        // Wait for detail page
-        await expect(page.locator('[data-testid="post-content"]')).toBeVisible();
-
-        // Go back to list
-        await page.goBack();
-
-        // The post should now be marked as read (not in unread filter)
-        // Or check the read indicator
-    });
-
-    test("should toggle read state manually", async ({ page }) => {
-        await page.goto("/posts");
-
-        // Click first post
-        await page.click('[data-testid="post-card"]:first-child');
-
-        // Wait for detail page
-        await expect(page.locator('[data-testid="post-content"]')).toBeVisible();
-
-        // Find and click read state toggle
-        const toggleButton = page.locator('[data-testid="read-state-toggle"]');
-        await expect(toggleButton).toBeVisible();
-
-        // Get initial state
-        const initialState = await toggleButton.getAttribute("data-is-read");
-
-        // Click toggle
-        await toggleButton.click();
-
-        // Verify state changed
-        await expect(toggleButton).toHaveAttribute(
-            "data-is-read",
-            initialState === "true" ? "false" : "true"
-        );
-    });
-
-    test("should show post metadata", async ({ page }) => {
-        await page.goto("/posts");
-
-        // Click first post
-        await page.click('[data-testid="post-card"]:first-child');
-
-        // Verify metadata elements
-        await expect(page.locator('[data-testid="post-author"]')).toBeVisible();
-        await expect(page.locator('[data-testid="post-date"]')).toBeVisible();
-        await expect(page.locator('[data-testid="feed-title"]')).toBeVisible();
-    });
-
-    test("should link to original article", async ({ page, context }) => {
-        await page.goto("/posts");
-
-        // Click first post
-        await page.click('[data-testid="post-card"]:first-child');
-
-        // Find original link
-        const originalLink = page.locator('[data-testid="original-link"]');
-        await expect(originalLink).toBeVisible();
-        await expect(originalLink).toHaveAttribute("href", /^https?:\/\//);
-    });
-
-    test("should navigate back to posts list", async ({ page }) => {
-        await page.goto("/posts");
-
-        // Click first post
-        await page.click('[data-testid="post-card"]:first-child');
-
-        // Wait for detail
-        await expect(page.locator('[data-testid="post-content"]')).toBeVisible();
-
-        // Click back button
-        await page.click('[data-testid="back-button"]');
-
-        // Should be back on posts list
-        await expect(page).toHaveURL("/posts");
-    });
-
-    test("should show error for non-existent post", async ({ page }) => {
-        // Navigate directly to non-existent post
-        await page.goto("/posts/00000000-0000-0000-0000-000000000000");
-
-        // Should show error
-        await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
-        await expect(page.locator('[data-testid="error-message"]')).toContainText(/not found/i);
-    });
-
-    test("should require authentication", async ({ page, context }) => {
-        // Clear session
-        await context.clearCookies();
-
-        // Try to access post
-        await page.goto("/posts/some-post-id");
-
-        // Should redirect to sign in
-        await expect(page).toHaveURL(/\/signin/);
-    });
+    await page.goto("/posts/some-post-id");
+    await expect(page).toHaveURL(/\/signin/);
+  });
 });

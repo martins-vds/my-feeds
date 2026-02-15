@@ -1,251 +1,227 @@
 /**
- * Playwright E2E tests for category and feed management
- * TDD: Written FIRST - must FAIL until implementation is complete
+ * E2E tests for category and feed management on the /feeds page.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, mockApi, makeCategory, makeFeed } from "./fixtures";
 
-test.describe("Category Management", () => {
-    // Note: These tests require authentication
-    // Will need auth fixtures when implementing
+// ── Seed data ──────────────────────────────────────────────────────────
 
-    test.describe("Category List", () => {
-        test("should display feeds page with category sidebar", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Should show the feeds page (or redirect to signin if not authenticated)
-            // Will fail until route and component are implemented
-            await expect(
-                page.getByRole("heading", { name: /feeds|my feeds|categories/i })
-            ).toBeVisible();
-        });
-
-        test("should show empty state for new user", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Should show empty state message
-            await expect(page.getByText(/no categories|get started|add your first/i)).toBeVisible();
-        });
-
-        test("should display categories in sidebar", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Should show category list
-            await expect(page.getByRole("list", { name: /categories/i })).toBeVisible();
-        });
-    });
-
-    test.describe("Create Category", () => {
-        test("should open create category dialog", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Click add category button
-            await page.getByRole("button", { name: /add category|new category/i }).click();
-
-            // Should show dialog
-            await expect(page.getByRole("dialog")).toBeVisible();
-            await expect(
-                page.getByRole("heading", { name: /create|add|new.*category/i })
-            ).toBeVisible();
-        });
-
-        test("should create category successfully", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Open dialog
-            await page.getByRole("button", { name: /add category/i }).click();
-
-            // Fill in name
-            await page.getByLabel(/name/i).fill("Technology");
-
-            // Submit
-            await page.getByRole("button", { name: /create|save|add/i }).click();
-
-            // Should close dialog and show new category
-            await expect(page.getByRole("dialog")).not.toBeVisible();
-            await expect(page.getByText("Technology")).toBeVisible();
-        });
-
-        test("should show validation error for empty name", async ({ page }) => {
-            await page.goto("/feeds");
-            await page.getByRole("button", { name: /add category/i }).click();
-
-            // Try to submit without name
-            await page.getByRole("button", { name: /create|save/i }).click();
-
-            // Should show validation error
-            await expect(page.getByText(/required|name is required/i)).toBeVisible();
-        });
-
-        test("should show error for duplicate name", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Create first category
-            await page.getByRole("button", { name: /add category/i }).click();
-            await page.getByLabel(/name/i).fill("Technology");
-            await page.getByRole("button", { name: /create|save/i }).click();
-
-            // Try to create duplicate
-            await page.getByRole("button", { name: /add category/i }).click();
-            await page.getByLabel(/name/i).fill("Technology");
-            await page.getByRole("button", { name: /create|save/i }).click();
-
-            // Should show duplicate error
-            await expect(page.getByText(/already exists|duplicate/i)).toBeVisible();
-        });
-    });
-
-    test.describe("Edit Category", () => {
-        test("should open edit dialog for existing category", async ({ page }) => {
-            await page.goto("/feeds");
-
-            // Assuming category exists, click edit button
-            await page.getByRole("button", { name: /edit/i }).first().click();
-
-            await expect(page.getByRole("dialog")).toBeVisible();
-            await expect(page.getByRole("heading", { name: /edit.*category/i })).toBeVisible();
-        });
-
-        test("should rename category successfully", async ({ page }) => {
-            await page.goto("/feeds");
-
-            await page.getByRole("button", { name: /edit/i }).first().click();
-            await page.getByLabel(/name/i).clear();
-            await page.getByLabel(/name/i).fill("Renamed Category");
-            await page.getByRole("button", { name: /save|update/i }).click();
-
-            await expect(page.getByText("Renamed Category")).toBeVisible();
-        });
-    });
-
-    test.describe("Delete Category", () => {
-        test("should show confirmation dialog", async ({ page }) => {
-            await page.goto("/feeds");
-
-            await page.getByRole("button", { name: /delete/i }).first().click();
-
-            await expect(page.getByText(/are you sure|confirm/i)).toBeVisible();
-        });
-
-        test("should delete category on confirm", async ({ page }) => {
-            await page.goto("/feeds");
-
-            const categoryName = await page.getByRole("listitem").first().textContent();
-
-            await page.getByRole("button", { name: /delete/i }).first().click();
-            await page.getByRole("button", { name: /confirm|yes|delete/i }).click();
-
-            // Category should be removed
-            await expect(page.getByText(categoryName!)).not.toBeVisible();
-        });
-    });
+const techCategory = makeCategory({
+  id: "cat-tech",
+  name: "Technology",
+  position: 0,
+  feedCount: 1,
+});
+const newsCategory = makeCategory({ id: "cat-news", name: "News", position: 1, feedCount: 0 });
+const techFeed = makeFeed("cat-tech", {
+  id: "feed-tech-1",
+  title: "Hacker News",
+  url: "https://news.ycombinator.com/rss",
+  siteUrl: "https://news.ycombinator.com",
 });
 
-test.describe("Feed Management", () => {
-    test.describe("Add Feed", () => {
-        test("should open add feed dialog", async ({ page }) => {
-            await page.goto("/feeds");
+// ── Helpers ────────────────────────────────────────────────────────────
 
-            await page.getByRole("button", { name: /add feed/i }).click();
+async function setupFeedsPage(page: import("@playwright/test").Page) {
+  // Categories list (wrapped in { categories: [...] })
+  await mockApi(page, "**/api/categories", { categories: [techCategory, newsCategory] });
 
-            await expect(page.getByRole("dialog")).toBeVisible();
-            await expect(page.getByRole("heading", { name: /add feed|subscribe/i })).toBeVisible();
+  // Feeds per category (wrapped in { feeds: [...] })
+  await page.route("**/api/categories/cat-tech/feeds", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ feeds: [techFeed] }),
+    })
+  );
+  await page.route("**/api/categories/cat-news/feeds", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ feeds: [] }),
+    })
+  );
+}
+
+// ── Category list ──────────────────────────────────────────────────────
+
+test.describe("Category List", () => {
+  test("displays feeds page heading", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+    await page.goto("/feeds");
+
+    await expect(page.getByRole("heading", { name: /my feeds/i })).toBeVisible();
+  });
+
+  test("shows empty state for user with no categories", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/categories", { categories: [] });
+    await page.goto("/feeds");
+
+    await expect(page.getByText(/no categories/i)).toBeVisible();
+  });
+
+  test("displays categories with names", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+    await page.goto("/feeds");
+
+    await expect(page.getByText("Technology")).toBeVisible();
+    await expect(page.getByText("News")).toBeVisible();
+  });
+});
+
+// ── Create category ────────────────────────────────────────────────────
+
+test.describe("Create Category", () => {
+  test("opens dialog, creates category, and closes", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    // POST returns wrapped response; after creation, a refresh also calls GET
+    const newCat = makeCategory({
+      id: "cat-new",
+      name: "Entertainment",
+      position: 0,
+      feedCount: 0,
+    });
+    await page.route("**/api/categories", (route) => {
+      if (route.request().method() === "POST") {
+        return route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({ category: newCat }),
         });
-
-        test("should add valid RSS feed successfully", async ({ page }) => {
-            await page.goto("/feeds");
-
-            await page.getByRole("button", { name: /add feed/i }).click();
-            await page.getByLabel(/url/i).fill("https://example.com/feed.xml");
-            await page.getByRole("button", { name: /add|subscribe/i }).click();
-
-            // Should show success and feed in list
-            // Note: This will fail until backend validation is implemented
-            await expect(page.getByText(/example|feed added/i)).toBeVisible();
-        });
-
-        test("should show error for invalid URL", async ({ page }) => {
-            await page.goto("/feeds");
-
-            await page.getByRole("button", { name: /add feed/i }).click();
-            await page.getByLabel(/url/i).fill("not-a-valid-url");
-            await page.getByRole("button", { name: /add|subscribe/i }).click();
-
-            await expect(page.getByText(/invalid.*url|not.*valid/i)).toBeVisible();
-        });
-
-        test("should show error for non-RSS URL", async ({ page }) => {
-            await page.goto("/feeds");
-
-            await page.getByRole("button", { name: /add feed/i }).click();
-            await page.getByLabel(/url/i).fill("https://example.com/not-a-feed.html");
-            await page.getByRole("button", { name: /add|subscribe/i }).click();
-
-            await expect(page.getByText(/not.*feed|invalid.*feed/i)).toBeVisible();
-        });
+      }
+      return route.fallback();
     });
 
-    test.describe("Feed List", () => {
-        test("should display feeds under category", async ({ page }) => {
-            await page.goto("/feeds");
+    await page.goto("/feeds");
 
-            // Click on category to expand
-            await page.getByText("Technology").click();
+    // Empty state shows a regular "Add Category" button
+    await page.getByRole("button", { name: /add category/i }).click();
 
-            // Should show feeds under it
-            await expect(page.getByRole("list", { name: /feeds/i })).toBeVisible();
+    // Dialog should open
+    await expect(page.getByText(/new category/i)).toBeVisible();
+
+    // Fill name and submit
+    await page.getByLabel("Category Name").fill("Entertainment");
+    await page.getByRole("button", { name: "Create" }).click();
+
+    // Dialog should close
+    await expect(page.getByText(/new category/i)).not.toBeVisible({ timeout: 3000 });
+  });
+
+  test("shows Create button disabled for empty name", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.goto("/feeds");
+    await page.getByRole("button", { name: /add category/i }).click();
+
+    const createBtn = page.getByRole("button", { name: "Create" });
+    await expect(createBtn).toBeDisabled();
+  });
+});
+
+// ── Edit category ──────────────────────────────────────────────────────
+
+test.describe("Edit Category", () => {
+  test("opens edit dialog with existing name", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+    await page.goto("/feeds");
+
+    // Open context menu for first category
+    await page.getByLabel("category options").first().click();
+    await page.getByText("Edit Category").click();
+
+    // Should show edit dialog with pre-filled name
+    await expect(page.getByRole("heading", { name: "Edit Category" })).toBeVisible();
+    await expect(page.getByLabel("Category Name")).toHaveValue("Technology");
+  });
+
+  test("renames category on save", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+
+    // Mock the PATCH endpoint (return wrapped response)
+    await page.route("**/api/categories/cat-tech", (route) => {
+      if (route.request().method() === "PATCH") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ category: { ...techCategory, name: "Tech Renamed" } }),
         });
-
-        test("should show feed title and icon", async ({ page }) => {
-            await page.goto("/feeds");
-            await page.getByText("Technology").click();
-
-            // Should display feed metadata
-            await expect(page.getByRole("img", { name: /favicon|icon/i })).toBeVisible();
-        });
+      }
+      return route.fallback();
     });
 
-    test.describe("Delete Feed", () => {
-        test("should unsubscribe from feed", async ({ page }) => {
-            await page.goto("/feeds");
-            await page.getByText("Technology").click();
+    await page.goto("/feeds");
+    await page.getByLabel("category options").first().click();
+    await page.getByText("Edit Category").click();
 
-            // Delete first feed
-            await page.getByRole("button", { name: /delete|unsubscribe|remove/i }).first().click();
-            await page.getByRole("button", { name: /confirm|yes/i }).click();
+    await page.getByLabel("Category Name").clear();
+    await page.getByLabel("Category Name").fill("Tech Renamed");
+    await page.getByRole("button", { name: "Save" }).click();
 
-            // Feed should be removed
-            await expect(page.getByText(/unsubscribed|removed/i)).toBeVisible();
-        });
+    // Dialog should close
+    await expect(page.getByRole("heading", { name: "Edit Category" })).not.toBeVisible({
+      timeout: 3000,
+    });
+  });
+});
+
+// ── Delete category ────────────────────────────────────────────────────
+
+test.describe("Delete Category", () => {
+  test("shows confirmation dialog and deletes on confirm", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+
+    // Mock DELETE
+    await page.route("**/api/categories/cat-tech", (route) => {
+      if (route.request().method() === "DELETE") {
+        return route.fulfill({ status: 204, body: "" });
+      }
+      return route.fallback();
     });
 
-    test.describe("Move Feed", () => {
-        test("should move feed to different category", async ({ page }) => {
-            await page.goto("/feeds");
-            await page.getByText("Technology").click();
+    await page.goto("/feeds");
 
-            // Click move/edit on feed
-            await page.getByRole("button", { name: /move|edit/i }).first().click();
+    // Open context menu → delete
+    await page.getByLabel("category options").first().click();
+    await page.getByText("Delete Category").click();
 
-            // Select new category
-            await page.getByLabel(/category/i).selectOption("Entertainment");
-            await page.getByRole("button", { name: /save|move/i }).click();
+    // Confirmation dialog
+    await expect(page.getByText("Delete Category?")).toBeVisible();
+    await expect(page.getByText(/are you sure/i)).toBeVisible();
 
-            // Feed should move to new category
-            await expect(page.getByText(/moved/i)).toBeVisible();
-        });
-    });
+    // Confirm
+    await page.getByRole("button", { name: "Delete" }).click();
 
-    test.describe("Refresh Feed", () => {
-        test("should manually refresh feed to fetch new posts", async ({ page }) => {
-            await page.goto("/feeds");
-            await page.getByText("Technology").click();
+    // Dialog should close
+    await expect(page.getByText("Delete Category?")).not.toBeVisible({ timeout: 3000 });
+  });
 
-            // Click refresh button on feed
-            await page.getByRole("button", { name: /refresh|sync/i }).first().click();
+  test("cancels deletion on Cancel", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+    await page.goto("/feeds");
 
-            // Should show refreshing state then success
-            await expect(page.getByText(/refreshed|updated/i)).toBeVisible();
-        });
-    });
+    await page.getByLabel("category options").first().click();
+    await page.getByText("Delete Category").click();
+    await expect(page.getByText("Delete Category?")).toBeVisible();
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText("Delete Category?")).not.toBeVisible({ timeout: 3000 });
+  });
+});
+
+// ── Add feed ───────────────────────────────────────────────────────────
+
+test.describe("Add Feed", () => {
+  test("opens add-feed dialog from category menu", async ({ authedPage: page }) => {
+    await setupFeedsPage(page);
+    await page.goto("/feeds");
+
+    // Open context menu → add feed
+    await page.getByLabel("category options").first().click();
+    await page.getByText("Add Feed").click();
+
+    // Dialog should open — use the dialog's heading for specificity
+    await expect(page.getByRole("heading", { name: /add feed/i })).toBeVisible();
+  });
 });

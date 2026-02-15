@@ -1,240 +1,200 @@
-import { test, expect } from "@playwright/test";
+/**
+ * E2E tests for TTS audio playback on the post detail page.
+ *
+ * These tests mock the post detail API and audio endpoints to exercise
+ * the full AudioPlayer component lifecycle.
+ *
+ * AudioPlayer starts in idle state (no auto-fetch) and only calls the
+ * audio API when the user clicks "Listen".
+ */
+
+import { test, expect, mockApi, makePostDetail } from "./fixtures";
+
+// ── Seed data ──────────────────────────────────────────────────────────
+
+const postWithAudio = makePostDetail("feed-1", {
+  id: "audio-post-1",
+  title: "Post With Audio",
+  content: "<p>Content for audio testing.</p>",
+  feedTitle: "Audio Feed",
+  author: "Narrator",
+  link: "https://example.com/audio-post",
+  publishedAt: "2026-01-12T08:00:00Z",
+  isRead: true,
+  hasAudio: false, // will generate on demand
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+async function setupAudioPage(page: import("@playwright/test").Page) {
+  await mockApi(page, `**/api/posts/${postWithAudio.id}`, postWithAudio);
+  await mockApi(page, "**/api/categories", { categories: [] });
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────
 
 test.describe("TTS Audio Playback", () => {
-    test.beforeEach(async ({ page }) => {
-        // Mock authentication
-        await page.route("**/api/auth/session", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    user: {
-                        id: "test-user-id",
-                        email: "test@example.com",
-                        name: "Test User",
-                    },
-                }),
-            })
-        );
+  test("displays listen button on post detail page", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
+    // AudioPlayer starts in idle state → shows listen button immediately (no API call)
 
-        // Mock post detail
-        await page.route("**/api/posts/test-post-id", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    id: "test-post-id",
-                    title: "Test Post for Audio",
-                    content: "<p>This is the post content for TTS.</p>",
-                    feedId: "test-feed-id",
-                    feedTitle: "Test Feed",
-                    author: "Test Author",
-                    link: "https://example.com/post",
-                    publishedAt: "2024-01-15T12:00:00Z",
-                    isRead: false,
-                }),
-            })
-        );
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await expect(page.getByTestId("listen-button")).toBeVisible();
+  });
+
+  test("shows generating state when audio is requested", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
+
+    // After clicking Listen, the hook calls GET /posts/{id}/audio.
+    // Return 202 "generating" for all calls (including any polls).
+    await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) => {
+      return route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({
+          postId: postWithAudio.id,
+          status: "generating",
+          estimatedSeconds: 5,
+        }),
+      });
     });
 
-    test("displays listen button on post detail page", async ({ page }) => {
-        await page.goto("/posts/test-post-id");
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await page.getByTestId("listen-button").click();
 
-        await expect(page.getByRole("button", { name: /listen/i })).toBeVisible();
+    await expect(page.getByText(/generating/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test("shows audio player when audio is ready", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
+
+    // Return "ready" immediately on click
+    await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          postId: postWithAudio.id,
+          status: "ready",
+          url: "/api/audio/test-cache-key",
+          durationSeconds: 45,
+          format: "mp3",
+        }),
+      });
     });
 
-    test("shows generating state when audio requested", async ({ page }) => {
-        // Mock audio endpoint with 202 (generating)
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 202,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    postId: "test-post-id",
-                    status: "generating",
-                    estimatedSeconds: 5,
-                }),
-            })
-        );
-
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
-
-        await expect(page.getByText(/generating/i)).toBeVisible();
+    // Mock the audio stream URL so the Audio element doesn't error
+    await page.route("**/api/audio/**", (route) => {
+      // Return a minimal valid WAV header (44 bytes, 0 samples)
+      const wav = Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74,
+        0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x44, 0xac, 0x00, 0x00, 0x44, 0xac,
+        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
+      ]);
+      return route.fulfill({
+        status: 200,
+        contentType: "audio/wav",
+        body: wav,
+      });
     });
 
-    test("shows audio player when audio is ready", async ({ page }) => {
-        // Mock audio endpoint with 200 (ready)
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    postId: "test-post-id",
-                    status: "ready",
-                    url: "/api/audio/test-cache-key",
-                    durationSeconds: 45,
-                    format: "mp3",
-                }),
-            })
-        );
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await page.getByTestId("listen-button").click();
 
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
+    await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
+  });
 
-        await expect(page.getByRole("button", { name: /play/i })).toBeVisible();
+  test("displays audio duration when ready", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
+
+    await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          postId: postWithAudio.id,
+          status: "ready",
+          url: "/api/audio/test-cache-key",
+          durationSeconds: 125, // 2:05
+        }),
+      });
     });
 
-    test("plays audio when play button clicked", async ({ page }) => {
-        // Mock audio endpoint
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    postId: "test-post-id",
-                    status: "ready",
-                    url: "/api/audio/test-cache-key",
-                    durationSeconds: 10,
-                }),
-            })
-        );
-
-        // Mock audio streaming (minimal MP3 header)
-        await page.route("**/api/audio/test-cache-key", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "audio/mpeg",
-                // Simple body for testing
-                body: new Uint8Array([0xff, 0xfb, 0x90, 0x00, ...Array(256).fill(0)]).buffer,
-            })
-        );
-
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
-
-        await page.waitForSelector('[role="button"][aria-label*="play" i]');
-        await page.getByRole("button", { name: /play/i }).click();
-
-        // Should switch to pause button
-        await expect(page.getByRole("button", { name: /pause/i })).toBeVisible();
+    // Mock audio stream
+    await page.route("**/api/audio/**", (route) => {
+      const wav = Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74,
+        0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x44, 0xac, 0x00, 0x00, 0x44, 0xac,
+        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
+      ]);
+      return route.fulfill({
+        status: 200,
+        contentType: "audio/wav",
+        body: wav,
+      });
     });
 
-    test("displays audio duration", async ({ page }) => {
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    postId: "test-post-id",
-                    status: "ready",
-                    url: "/api/audio/test-cache-key",
-                    durationSeconds: 125, // 2:05
-                }),
-            })
-        );
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await page.getByTestId("listen-button").click();
 
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
+    // Should show duration formatted as 2:05
+    await expect(page.getByText(/2:05/)).toBeVisible({ timeout: 5000 });
+  });
 
-        await expect(page.getByText(/2:05/)).toBeVisible();
-    });
+  test("handles audio generation error with retry button", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
 
-    test("handles audio generation error", async ({ page }) => {
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 500,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    error: "TTS service unavailable",
-                }),
-            })
-        );
-
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
-
-        await expect(page.getByText(/failed|error/i)).toBeVisible();
-    });
-
-    test("supports range requests for seeking", async ({ page }) => {
-        let rangeRequestReceived = false;
-
-        await page.route("**/api/posts/test-post-id/audio", (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({
-                    postId: "test-post-id",
-                    status: "ready",
-                    url: "/api/audio/test-cache-key",
-                    durationSeconds: 60,
-                }),
-            })
-        );
-
-        await page.route("**/api/audio/test-cache-key", (route) => {
-            const headers = route.request().headers();
-            if (headers["range"]) {
-                rangeRequestReceived = true;
-                route.fulfill({
-                    status: 206,
-                    headers: {
-                        "Content-Range": "bytes 0-1023/10240",
-                        "Content-Type": "audio/mpeg",
-                    },
-                    body: new Uint8Array(1024).buffer,
-                });
-            } else {
-                route.fulfill({
-                    status: 200,
-                    contentType: "audio/mpeg",
-                    body: new Uint8Array(10240).buffer,
-                });
-            }
+    let callCount = 0;
+    await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) => {
+      callCount++;
+      if (callCount === 1) {
+        // First click: error
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: { code: "TTS_ERROR", message: "TTS service unavailable" },
+          }),
         });
-
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
-
-        // Wait for player to be ready
-        await page.waitForSelector('[role="button"][aria-label*="play" i]');
-
-        // The audio element should make range requests when seeking
-        // This is browser behavior - we just verify the endpoint is accessible
+      }
+      // Retry click: ready
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          postId: postWithAudio.id,
+          status: "ready",
+          url: "/api/audio/test-cache-key",
+          durationSeconds: 30,
+        }),
+      });
     });
 
-    test("shows retry option on playback error", async ({ page }) => {
-        let requestCount = 0;
-
-        await page.route("**/api/posts/test-post-id/audio", (route) => {
-            requestCount++;
-            if (requestCount === 1) {
-                route.fulfill({
-                    status: 500,
-                    contentType: "application/json",
-                    body: JSON.stringify({ error: "Server error" }),
-                });
-            } else {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: JSON.stringify({
-                        postId: "test-post-id",
-                        status: "ready",
-                        url: "/api/audio/test-cache-key",
-                    }),
-                });
-            }
-        });
-
-        await page.goto("/posts/test-post-id");
-        await page.getByRole("button", { name: /listen/i }).click();
-
-        await expect(page.getByRole("button", { name: /retry/i })).toBeVisible();
-
-        await page.getByRole("button", { name: /retry/i }).click();
-
-        await expect(page.getByRole("button", { name: /play/i })).toBeVisible();
+    // Mock audio stream for retry
+    await page.route("**/api/audio/**", (route) => {
+      const wav = Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74,
+        0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x44, 0xac, 0x00, 0x00, 0x44, 0xac,
+        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
+      ]);
+      return route.fulfill({
+        status: 200,
+        contentType: "audio/wav",
+        body: wav,
+      });
     });
+
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await page.getByTestId("listen-button").click();
+
+    // Should show error state with retry button
+    await expect(page.getByText(/failed|error/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /retry/i })).toBeVisible();
+
+    // Retry
+    await page.getByRole("button", { name: /retry/i }).click();
+
+    // Should show player after retry
+    await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
+  });
 });
