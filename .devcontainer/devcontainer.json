@@ -65,7 +65,7 @@
         },
         "5173": {
             "label": "Frontend Dev",
-            "onAutoForward": "openBrowser"
+            "onAutoForward": "notify"
         },
         "5432": {
             "label": "PostgreSQL",
