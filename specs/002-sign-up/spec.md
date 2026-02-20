@@ -35,7 +35,7 @@ An existing user who has already completed sign-up clicks an OAuth button. The s
 **Acceptance Scenarios**:
 
 1. **Given** a user who has previously completed sign-up, **When** they sign in via OAuth, **Then** they are redirected directly to `/posts` with no sign-up step.
-2. **Given** a user who has previously completed sign-up, **When** the system processes their OAuth callback, **Then** `get_or_create_user` finds the existing record and returns it without modification.
+2. **Given** a user who has previously completed sign-up, **When** the system processes their OAuth callback, **Then** the system looks up the existing record by `(provider, provider_id)` and returns it without modification.
 
 ---
 
@@ -74,9 +74,15 @@ The sign-up form is pre-populated with data from the OAuth provider (name, email
 - **FR-006**: After sign-up form submission, system MUST create the user record and establish a full session.
 - **FR-007**: System MUST redirect returning users (who exist in DB) directly to the app — no sign-up step.
 - **FR-008**: Protected routes MUST block access for users who have not completed sign-up (i.e., no user record in DB yet).
-- **FR-009**: System MUST store pending OAuth data in the session (server-side) between OAuth callback and sign-up completion.
+- **FR-009**: System MUST store pending OAuth data in the session cookie between OAuth callback and sign-up completion, with a 15-minute expiration after which the pending data is discarded.
 - **FR-010**: System MUST add a database unique constraint on `(provider, provider_id)` to prevent duplicate accounts.
 - **FR-011**: Frontend MUST detect the browser timezone and pre-select it in the sign-up form.
+
+### Non-Functional Requirements
+
+- **NFR-001**: Sign-up completion (`POST /auth/complete-signup`) MUST respond within 200ms at p95 (single DB insert, no expensive hashing).
+- **NFR-002**: Session cookie attributes MUST include `HttpOnly`, `SameSite=Lax`, and `Secure` (in production) — inherited from existing session mechanism.
+- **NFR-003**: All cookie data MUST remain under 4,096 bytes including pending OAuth fields (~400 bytes).
 
 ### Key Entities *(include if feature involves data)*
 

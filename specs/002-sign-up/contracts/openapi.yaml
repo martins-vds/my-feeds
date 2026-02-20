@@ -323,6 +323,10 @@ components:
           type: string
           format: uri
           nullable: true
+        timezone:
+          type: string
+          description: IANA timezone identifier set during sign-up
+          example: "America/New_York"
         provider:
           type: string
           enum: [github, google, microsoft]

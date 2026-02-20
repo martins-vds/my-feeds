@@ -77,7 +77,6 @@ backend/
 │   │   └── routes/
 │   │       └── auth.py                  # MODIFIED: callback branches new vs returning user
 │   │                                    # NEW: POST /auth/complete-signup endpoint
-│   │                                    # NEW: GET /auth/pending-signup endpoint
 │   └── config/
 │       └── container.py                 # MINOR: no structural changes expected
 ├── migrations/
@@ -95,7 +94,7 @@ frontend/
 │   │   └── auth/
 │   │       └── SignUpPage.tsx           # NEW: post-OAuth sign-up form
 │   ├── services/
-│   │   └── api.ts                       # EXTENDED: completeSignup(), getPendingSignup() 
+│   │   └── api.ts                       # EXTENDED: completeSignup()
 │   ├── contexts/
 │   │   └── AuthContext.tsx              # MODIFIED: handle pending-signup state in auth flow
 │   ├── components/
