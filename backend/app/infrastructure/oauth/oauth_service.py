@@ -243,3 +243,29 @@ class OAuthService:
             avatar_url=user_info.get("avatar_url"),
         )
         return await self._user_repository.save(user)
+
+    async def get_user_by_provider(
+        self,
+        provider: Literal["github", "google", "microsoft"],
+        provider_id: str,
+    ) -> User | None:
+        """Look up a user by their OAuth provider and provider ID.
+
+        Unlike get_or_create_user(), this does NOT create a new user
+        if one is not found. Used during the sign-up flow to determine
+        if an OAuth identity is new or returning.
+
+        Args:
+            provider: OAuth provider name
+            provider_id: User ID from the OAuth provider
+
+        Returns:
+            User if found, None if no user exists with this provider identity
+
+        Raises:
+            ValueError: If user_repository is not configured
+        """
+        if self._user_repository is None:
+            raise ValueError("UserRepository not configured")
+
+        return await self._user_repository.get_by_provider(provider, provider_id)

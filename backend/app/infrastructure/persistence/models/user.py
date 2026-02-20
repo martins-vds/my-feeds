@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum, String, func
+from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -107,7 +107,7 @@ class UserModel(Base):
     )
 
     __table_args__ = (
-        # Composite unique constraint for OAuth lookup
+        UniqueConstraint("provider", "provider_id", name="uq_user_provider_id"),
         {"comment": "Authenticated users from OAuth providers"},
     )
 
