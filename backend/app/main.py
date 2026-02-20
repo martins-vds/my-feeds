@@ -35,12 +35,10 @@ def create_app() -> Quart:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        
+
         if settings.is_production:
             # Production: strict CORS
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
                 "script-src 'self'; "
@@ -56,9 +54,7 @@ def create_app() -> Quart:
             response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             )
-            response.headers["Access-Control-Allow-Headers"] = (
-                "Content-Type, Authorization"
-            )
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
 
@@ -77,10 +73,16 @@ def create_app() -> Quart:
 
     @app.teardown_request
     async def teardown_request_container(exception=None):
-        """Cleanup request container and close session."""
+        """Commit or rollback, then close the session."""
         from app.config.container import get_request_container
+
         try:
             container = get_request_container()
+            if container._session is not None:
+                if exception is None:
+                    await container._session.commit()
+                else:
+                    await container._session.rollback()
             await container.close()
         except RuntimeError:
             pass  # No container was set

@@ -41,6 +41,33 @@ class TestListCategories:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
+    async def test_created_category_persists_across_requests(self, client, auth_headers):
+        """A newly created category should appear in a subsequent list call.
+
+        Regression: flush without commit caused the category to be lost
+        after the create request finished.
+        """
+        unique_name = f"Persist-{uuid4().hex[:8]}"
+
+        # Create a category
+        create_resp = await client.post(
+            "/api/categories",
+            json={"name": unique_name},
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        # List categories in a NEW request — should include the created one
+        list_resp = await client.get("/api/categories", headers=auth_headers)
+        assert list_resp.status_code == 200
+
+        categories = await list_resp.get_json()
+        names = [c["name"] for c in categories]
+        assert unique_name in names, (
+            f"Category '{unique_name}' was not found in list response. Got: {names}"
+        )
+
+    @pytest.mark.asyncio
     async def test_list_categories_returns_user_categories_only(self, client):
         """Should return only categories owned by authenticated user."""
         # This test requires category creation + auth mock
