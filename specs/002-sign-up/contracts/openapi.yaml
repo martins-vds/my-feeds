@@ -248,13 +248,16 @@ components:
       properties:
         name:
           type: string
-          description: Display name (trimmed, must not be empty)
+          description: >
+            Display name. Server trims leading/trailing whitespace before validation.
+            After trimming, must be non-empty (1-255 chars). Schema minLength/maxLength
+            apply to the raw value; server-side trim+validate is authoritative.
           minLength: 1
           maxLength: 255
           example: "Jane Doe"
         timezone:
           type: string
-          description: IANA timezone identifier
+          description: IANA timezone identifier (validated against zoneinfo.available_timezones())
           example: "America/New_York"
 
     AuthStatus:

@@ -61,28 +61,39 @@ The sign-up form is pre-populated with data from the OAuth provider (name, email
 - What happens if the OAuth provider doesn't return a name? → Display name field is empty; user must fill it in.
 - What happens if the OAuth provider doesn't return an email? → The system should reject the OAuth login and show an error (email is required).
 - What happens if the user navigates to `/signup` without an active OAuth session? → Redirect to `/signin`.
+- What happens if the pending cookie is tampered with or contains invalid JSON? → Treat as no session: discard cookie, redirect to `/signin`.
+- What happens if `pending_created_at` is in the future (clock skew)? → Treat as expired: discard cookie, redirect to `/signin`.
+- What happens if a user submits sign-up from two tabs simultaneously? → First submission succeeds; second receives 409 Conflict. Frontend handles 409 by redirecting to `/signin` (which now finds the user and routes to `/posts`).
+- What happens if a pending user clicks logout? → Pending cookie is cleared, user is redirected to `/signin`.
+- What happens if a pending user re-authenticates with a different OAuth provider? → New OAuth data overwrites the pending cookie. Sign-up proceeds with the new provider identity.
+- What happens if the unique constraint migration finds duplicate rows? → Migration aborts with a clear error message. Admin must manually resolve duplicates before re-running.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST NOT auto-create a user record on first OAuth login. Instead, OAuth data MUST be held temporarily until sign-up is complete.
-- **FR-002**: System MUST redirect new users to a sign-up page after OAuth callback where they confirm their profile.
-- **FR-003**: Sign-up form MUST collect: display name (editable, pre-filled from OAuth), timezone (selectable, defaulting to browser-detected).
-- **FR-004**: Sign-up form MUST display as read-only context: email (from OAuth), avatar (from OAuth if available).
-- **FR-005**: System MUST validate that display name is non-empty (1-255 chars after trimming).
-- **FR-006**: After sign-up form submission, system MUST create the user record and establish a full session.
-- **FR-007**: System MUST redirect returning users (who exist in DB) directly to the app — no sign-up step.
-- **FR-008**: Protected routes MUST block access for users who have not completed sign-up (i.e., no user record in DB yet).
+- **FR-002**: System MUST redirect new users to a dedicated full-page sign-up form after OAuth callback where they confirm their profile.
+- **FR-003**: Sign-up form MUST collect: display name (editable `TextField`, pre-filled from OAuth), timezone (searchable `Autocomplete` with ~400 IANA zones, defaulting to browser-detected).
+- **FR-004**: Sign-up form MUST display as read-only context: email (plain text `Typography`), avatar (`Avatar` component; when absent from OAuth, render MUI default avatar with user initials or generic icon).
+- **FR-005**: System MUST validate display name on form submission — non-empty, 1-255 chars after trimming leading/trailing whitespace. Both frontend (inline error) and backend MUST trim and validate.
+- **FR-006**: After sign-up form submission, system MUST create the user record and establish a full session, then redirect to `/posts`.
+- **FR-007**: System MUST redirect returning users (looked up by `(provider, provider_id)` composite key) directly to the app — no sign-up step.
+- **FR-008**: Protected routes MUST block access for users who have not completed sign-up (i.e., no user record in DB yet). "Protected routes" are all routes wrapped in `ProtectedRoute` — currently `/posts`, `/posts/:id`, `/feeds`, `/settings`.
 - **FR-009**: System MUST store pending OAuth data in the session cookie between OAuth callback and sign-up completion, with a 15-minute expiration after which the pending data is discarded.
 - **FR-010**: System MUST add a database unique constraint on `(provider, provider_id)` to prevent duplicate accounts.
-- **FR-011**: Frontend MUST detect the browser timezone and pre-select it in the sign-up form.
+- **FR-011**: Frontend MUST detect the browser timezone using `Intl.DateTimeFormat().resolvedOptions().timeZone` and pre-select it. If detection returns `undefined` or an unrecognized value, fall back to `"UTC"`.
+- **FR-012**: If the OAuth provider does not return an email address, the system MUST reject the OAuth login and redirect to `/signin` with an error message.
+- **FR-013**: Sign-up form MUST disable the submit button and show a loading indicator during submission to prevent double-submit.
+- **FR-014**: Frontend MUST handle 409 Conflict from `POST /auth/complete-signup` by redirecting the user to `/signin` (where they will be recognized as existing and routed to `/posts`).
 
 ### Non-Functional Requirements
 
 - **NFR-001**: Sign-up completion (`POST /auth/complete-signup`) MUST respond within 200ms at p95 (single DB insert, no expensive hashing).
 - **NFR-002**: Session cookie attributes MUST include `HttpOnly`, `SameSite=Lax`, and `Secure` (in production) — inherited from existing session mechanism.
 - **NFR-003**: All cookie data MUST remain under 4,096 bytes including pending OAuth fields (~400 bytes).
+- **NFR-004**: Zero new Python or JavaScript dependencies. This feature MUST use only existing project dependencies.
+- **NFR-005**: PII fields (email, name) MUST NOT be logged at INFO level or above. Debug-level logging may include provider and provider_id but MUST NOT include email or name.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -96,4 +107,4 @@ The sign-up form is pre-populated with data from the OAuth provider (name, email
 - **SC-001**: New users must complete sign-up (confirm name + pick timezone) before accessing any protected page.
 - **SC-002**: Returning users experience zero change — OAuth login goes straight to `/posts`.
 - **SC-003**: Sign-up form is pre-populated with OAuth-provided data; user only needs to confirm/edit and submit.
-- **SC-004**: Contract tests cover the modified OAuth callback flow and new sign-up completion endpoint.
+- **SC-004**: Contract tests cover the modified OAuth callback flow (new-user → pending cookie, returning-user → full session) and the new sign-up completion endpoint (valid, empty name, invalid timezone, no pending, expired pending, duplicate user).
