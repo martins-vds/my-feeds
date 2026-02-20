@@ -1,0 +1,962 @@
+openapi: 3.0.3
+info:
+  title: my-feeds API
+  description: RSS Feed Reader Core API
+  version: 1.0.0
+  contact:
+    name: my-feeds team
+
+servers:
+  - url: /api
+    description: API served by Quart backend
+
+tags:
+  - name: auth
+    description: Authentication endpoints (OAuth2)
+  - name: categories
+    description: Feed category management
+  - name: feeds
+    description: Feed subscription management
+  - name: posts
+    description: Post viewing and read state
+  - name: audio
+    description: Text-to-Speech audio
+  - name: user
+    description: User profile and settings
+
+paths:
+  # ============================================================================
+  # Authentication
+  # ============================================================================
+  /auth/login/{provider}:
+    get:
+      tags: [auth]
+      summary: Initiate OAuth login
+      description: Redirects to OAuth provider for authentication
+      operationId: initiateOAuthLogin
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [github, google, microsoft]
+      responses:
+        "302":
+          description: Redirect to OAuth provider
+        "400":
+          description: Invalid provider
+
+  /auth/{provider}/callback:
+    get:
+      tags: [auth]
+      summary: OAuth callback
+      description: Handles OAuth callback, creates session, redirects to frontend
+      operationId: handleOAuthCallback
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [github, google, microsoft]
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to frontend with session established
+        "400":
+          description: Invalid state or code
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      description: Returns authenticated user info or 401 if not authenticated
+      operationId: getCurrentUser
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Authenticated user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+        "401":
+          description: Not authenticated
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout
+      description: Terminates user session
+      operationId: logout
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Session terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+
+  # ============================================================================
+  # Categories
+  # ============================================================================
+  /categories:
+    get:
+      tags: [categories]
+      summary: List categories
+      description: Returns all categories for the authenticated user
+      operationId: listCategories
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [categories]
+      summary: Create category
+      description: Creates a new category
+      operationId: createCategory
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryCreate"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Category with this name already exists
+
+  /categories/{categoryId}:
+    get:
+      tags: [categories]
+      summary: Get category
+      description: Returns a single category with its feeds
+      operationId: getCategory
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/categoryId"
+      responses:
+        "200":
+          description: Category details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryWithFeeds"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [categories]
+      summary: Update category
+      description: Updates category name or position
+      operationId: updateCategory
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/categoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdate"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Category with this name already exists
+
+    delete:
+      tags: [categories]
+      summary: Delete category
+      description: Deletes a category and all its feeds
+      operationId: deleteCategory
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/categoryId"
+      responses:
+        "204":
+          description: Category deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ============================================================================
+  # Feeds
+  # ============================================================================
+  /categories/{categoryId}/feeds:
+    get:
+      tags: [feeds]
+      summary: List feeds in category
+      description: Returns all feeds in a category
+      operationId: listFeedsInCategory
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/categoryId"
+      responses:
+        "200":
+          description: List of feeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      tags: [feeds]
+      summary: Add feed to category
+      description: Validates and subscribes to a new feed
+      operationId: addFeed
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/categoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedCreate"
+      responses:
+        "201":
+          description: Feed added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+        "400":
+          description: Invalid feed URL or not a valid RSS/Atom feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Feed already subscribed in this category
+
+  /feeds/{feedId}:
+    get:
+      tags: [feeds]
+      summary: Get feed details
+      description: Returns feed metadata and recent posts
+      operationId: getFeed
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/feedId"
+      responses:
+        "200":
+          description: Feed details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedWithPosts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [feeds]
+      summary: Move feed to different category
+      description: Updates the category a feed belongs to
+      operationId: moveFeed
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/feedId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedMove"
+      responses:
+        "200":
+          description: Feed moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [feeds]
+      summary: Unsubscribe from feed
+      description: Removes feed subscription
+      operationId: deleteFeed
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/feedId"
+      responses:
+        "204":
+          description: Feed unsubscribed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ============================================================================
+  # Posts
+  # ============================================================================
+  /posts:
+    get:
+      tags: [posts]
+      summary: List latest posts
+      description: Returns posts from all subscribed feeds, sorted by date
+      operationId: listPosts
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: categoryId
+          in: query
+          description: Filter by category
+          schema:
+            type: string
+            format: uuid
+        - name: feedId
+          in: query
+          description: Filter by feed
+          schema:
+            type: string
+            format: uuid
+        - name: readState
+          in: query
+          description: Filter by read state
+          schema:
+            type: string
+            enum: [all, unread, read]
+            default: all
+        - name: limit
+          in: query
+          description: Maximum number of posts to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: before
+          in: query
+          description: Cursor for pagination (ISO 8601 timestamp)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: List of posts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /posts/{postId}:
+    get:
+      tags: [posts]
+      summary: Get post content
+      description: Returns full post content and marks as read
+      operationId: getPost
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/postId"
+      responses:
+        "200":
+          description: Post content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /posts/{postId}/read-state:
+    put:
+      tags: [posts]
+      summary: Update read state
+      description: Manually toggle read/unread state
+      operationId: updateReadState
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/postId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReadStateUpdate"
+      responses:
+        "200":
+          description: Read state updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ============================================================================
+  # Audio (Text-to-Speech)
+  # ============================================================================
+  /posts/{postId}/audio:
+    get:
+      tags: [audio]
+      summary: Get or generate audio
+      description: Returns audio URL; generates on first request (lazy)
+      operationId: getPostAudio
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/postId"
+      responses:
+        "200":
+          description: Audio ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioInfo"
+        "202":
+          description: Audio generation in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioPending"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /audio/{cacheKey}:
+    get:
+      tags: [audio]
+      summary: Stream audio file
+      description: Streams audio with range request support
+      operationId: streamAudio
+      parameters:
+        - name: cacheKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Range
+          in: header
+          description: Byte range for partial content
+          schema:
+            type: string
+            example: bytes=0-1023
+      responses:
+        "200":
+          description: Full audio file
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial content (range request)
+          headers:
+            Content-Range:
+              schema:
+                type: string
+                example: bytes 0-1023/10240
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ============================================================================
+  # Notifications (OUT OF SCOPE)
+  # ============================================================================
+  # Daily notification feature was removed from scope per spec clarification
+  # session 2026-02-13. No notification endpoints are required.
+
+  # ============================================================================
+  # User Settings
+  # ============================================================================
+  /user/settings:
+    get:
+      tags: [user]
+      summary: Get user settings
+      description: Returns user preferences
+      operationId: getUserSettings
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      tags: [user]
+      summary: Update user settings
+      description: Updates user preferences
+      operationId: updateUserSettings
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSettingsUpdate"
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+# ==============================================================================
+# Components
+# ==============================================================================
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: HttpOnly session cookie
+
+  parameters:
+    categoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    feedId:
+      name: feedId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    postId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: Resource not found
+
+    AuthStatus:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - provider
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
+        provider:
+          type: string
+          enum: [github, google, microsoft]
+
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - position
+        - feedCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        position:
+          type: integer
+          minimum: 0
+        feedCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+
+    CategoryCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        position:
+          type: integer
+          minimum: 0
+
+    CategoryWithFeeds:
+      allOf:
+        - $ref: "#/components/schemas/Category"
+        - type: object
+          properties:
+            feeds:
+              type: array
+              items:
+                $ref: "#/components/schemas/Feed"
+
+    Feed:
+      type: object
+      required:
+        - id
+        - categoryId
+        - url
+        - title
+      properties:
+        id:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        description:
+          type: string
+        siteUrl:
+          type: string
+          format: uri
+        iconUrl:
+          type: string
+          format: uri
+        lastFetchedAt:
+          type: string
+          format: date-time
+        hasError:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    FeedCreate:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: RSS or Atom feed URL
+
+    FeedMove:
+      type: object
+      required:
+        - categoryId
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+          description: Target category ID
+
+    FeedWithPosts:
+      allOf:
+        - $ref: "#/components/schemas/Feed"
+        - type: object
+          properties:
+            posts:
+              type: array
+              items:
+                $ref: "#/components/schemas/PostSummary"
+
+    PostSummary:
+      type: object
+      required:
+        - id
+        - feedId
+        - title
+        - link
+        - publishedAt
+        - isRead
+      properties:
+        id:
+          type: string
+          format: uuid
+        feedId:
+          type: string
+          format: uuid
+        feedTitle:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+          description: Excerpt or first 200 chars of content
+        author:
+          type: string
+        link:
+          type: string
+          format: uri
+        publishedAt:
+          type: string
+          format: date-time
+        isRead:
+          type: boolean
+        hasAudio:
+          type: boolean
+
+    PostDetail:
+      allOf:
+        - $ref: "#/components/schemas/PostSummary"
+        - type: object
+          required:
+            - content
+          properties:
+            content:
+              type: string
+              description: Full HTML content
+
+    PostList:
+      type: object
+      required:
+        - posts
+        - hasMore
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PostSummary"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          format: date-time
+          description: Use as 'before' parameter for next page
+
+    ReadState:
+      type: object
+      required:
+        - postId
+        - isRead
+      properties:
+        postId:
+          type: string
+          format: uuid
+        isRead:
+          type: boolean
+        readAt:
+          type: string
+          format: date-time
+
+    ReadStateUpdate:
+      type: object
+      required:
+        - isRead
+      properties:
+        isRead:
+          type: boolean
+
+    AudioInfo:
+      type: object
+      required:
+        - postId
+        - status
+        - url
+      properties:
+        postId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ready]
+        url:
+          type: string
+          format: uri
+          description: Audio streaming URL
+        durationSeconds:
+          type: number
+        format:
+          type: string
+          example: mp3
+
+    AudioPending:
+      type: object
+      required:
+        - postId
+        - status
+      properties:
+        postId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [generating]
+        estimatedSeconds:
+          type: integer
+          description: Estimated time until ready
+
+    # PushSubscriptionCreate - OUT OF SCOPE (notifications removed)
+    # PushSubscription - OUT OF SCOPE (notifications removed)
+
+    UserSettings:
+      type: object
+      properties:
+        feedCount:
+          type: integer
+          description: Number of subscribed feeds
+        categoryCount:
+          type: integer
+          description: Number of categories
+
+    UserSettingsUpdate:
+      type: object
+      description: No mutable settings currently (notifications removed from scope)

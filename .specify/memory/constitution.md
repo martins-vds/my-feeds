@@ -2,24 +2,40 @@
   ============================================================================
   SYNC IMPACT REPORT
   ============================================================================
-  Version change: 0.0.0 → 1.0.0 (Initial ratification)
+  Version change: 1.1.0 → 1.2.0 (DI mechanism changed)
   
-  Modified principles: N/A (initial version)
+  Modified principles:
+    - II. Dependency Injection
+      - REMOVED: quart-injector library (no longer viable)
+      - ADDED: OOP-based DI using inheritance and abstract classes
+      - Services MUST depend on abstract base classes, not concrete implementations
   
-  Added sections:
-    - Core Principles (6 principles)
-    - Technology Stack
-    - Development Workflow
-    - Governance
+  Technology Stack changes:
+    - Removed quart-injector row
+    - Added "ABC + Inheritance" for Dependency Injection layer
   
-  Removed sections: N/A (initial version)
+  Added sections: None
+  
+  Removed sections: None
   
   Templates requiring updates:
-    ✅ plan-template.md - No changes required (generic structure)
-    ✅ spec-template.md - No changes required (generic structure)
-    ✅ tasks-template.md - No changes required (generic structure)
+    ✅ plan-template.md - No changes required (no DI library references)
+    ✅ spec-template.md - No changes required (no DI references)
+    ✅ tasks-template.md - No changes required (no DI tool references)
   
-  Follow-up TODOs: None
+  Files requiring manual follow-up (not templates):
+    ⚠️ README.md - References quart-injector (lines 20, 129)
+    ⚠️ .github/agents/copilot-instructions.md - References quart-injector (lines 7, 26)
+    ⚠️ backend/pyproject.toml - quart-injector dependency (line 12)
+    ⚠️ backend/app/config/container.py - Uses quart-injector (entire file)
+    ⚠️ specs/001-rss-feed-reader/research.md - Documents quart-injector decision
+    ⚠️ specs/001-rss-feed-reader/plan.md - Lists quart-injector in dependencies
+    ⚠️ specs/001-rss-feed-reader/quickstart.md - DI instructions reference quart-injector
+    ⚠️ specs/001-rss-feed-reader/tasks.md - Task T012 references quart-injector
+  
+  Follow-up TODOs:
+    - Migrate existing DI container from quart-injector to ABC-based approach
+    - Update all affected spec/documentation files listed above
   ============================================================================
 -->
 
@@ -38,26 +54,53 @@ All backend code MUST follow Domain-Driven Design principles:
 
 **Rationale**: DDD ensures the codebase remains maintainable and refactor-safe over the multi-year project scope. Clean domain boundaries enable independent testing and evolution.
 
-### II. Dependency Injection
+### II. Dependency Injection via Abstract Base Classes
 
-All backend services MUST use dependency injection via `quart-injector`:
+All backend services MUST use dependency injection via OOP inheritance:
+- Services MUST depend on abstract base classes (ABCs), not concrete implementations
+- All external dependencies (database, TTS, feed fetchers) MUST be injected via constructor
+- Concrete implementations inherit from ABCs and are injected at composition root
 - No hard-coded dependencies in business logic
-- All external dependencies (database, TTS, feed fetchers) MUST be injected
-- Constructor injection preferred; avoid service locator patterns
-- DI configuration MUST be centralized and explicit
+- Avoid service locator patterns; prefer explicit constructor injection
 
-**Rationale**: DI enables trivial mocking for tests, supports swapping implementations, and enforces loose coupling between components.
+**Implementation Pattern**:
+```python
+from abc import ABC, abstractmethod
 
-### III. Test-First Development
+class FeedRepository(ABC):
+    @abstractmethod
+    async def get_feeds(self, user_id: str) -> list[Feed]: ...
 
-Testing is mandatory across the stack:
+class FeedService:
+    def __init__(self, repository: FeedRepository):  # Depends on ABC
+        self._repository = repository
+```
+
+**Rationale**: OOP-based DI using abstract classes provides loose coupling without external dependencies. ABCs are built into Python, require no additional libraries, and integrate naturally with type checkers and IDE tooling.
+
+### III. Test-Driven Development (NON-NEGOTIABLE)
+
+All code MUST be developed using TDD (Test-Driven Development):
+
+**The Red-Green-Refactor Cycle**:
+1. **RED**: Write a failing test that defines expected behavior
+2. **GREEN**: Write the minimum code to make the test pass
+3. **REFACTOR**: Improve code quality while keeping tests green
+
+**TDD Rules**:
+- No production code may be written without a failing test
+- Tests MUST be written before implementation, not after
+- Each test MUST fail for the right reason before implementation
+- Keep the Red-Green-Refactor cycle short (minutes, not hours)
+
+**Testing Requirements**:
 - **Backend**: pytest + pytest-asyncio for unit and integration tests
-- **Frontend**: Playwright for UI tests
-- Tests MUST be written before or alongside implementation
+- **Frontend**: Playwright for UI tests; Vitest for component/unit tests
 - Contract tests MUST exist for all API endpoints
 - Integration tests MUST cover cross-layer interactions
+- Test coverage SHOULD be tracked but not blindly maximized
 
-**Rationale**: Comprehensive testing is essential for a multi-year project. Tests serve as living documentation and prevent regressions.
+**Rationale**: TDD produces better-designed, more testable code with fewer defects. The discipline of writing tests first forces clear thinking about requirements and interfaces before implementation.
 
 ### IV. Modern Toolchain
 
@@ -93,21 +136,21 @@ Expensive operations MUST be deferred and cached:
 
 All implementations MUST adhere to the following stack:
 
-| Layer | Technology | Version/Notes |
-|-------|------------|---------------|
-| **Frontend** | React + TypeScript | Via Vite |
-| **UI Framework** | Material UI | Latest stable |
-| **Frontend Build** | Vite | PWA plugin enabled |
-| **Frontend Package Manager** | pnpm | Strict mode |
-| **Backend** | Python + Quart | Python 3.12+ |
-| **Dependency Injection** | quart-injector | Required for all services |
-| **Database** | PostgreSQL | Primary data store |
-| **ORM** | SQLAlchemy + asyncpg | Async-first |
-| **Migrations** | Alembic | Schema versioning |
-| **Feed Parsing** | feedparser | RSS/Atom support |
-| **Backend Package Manager** | uv | Required |
-| **Authentication** | OAuth2 | GitHub, Gmail, or Outlook |
-| **Dev Environment** | Dev Containers | Docker-based |
+| Layer                        | Technology           | Version/Notes             |
+| ---------------------------- | -------------------- | ------------------------- |
+| **Frontend**                 | React + TypeScript   | Via Vite                  |
+| **UI Framework**             | Material UI          | Latest stable             |
+| **Frontend Build**           | Vite                 | PWA plugin enabled        |
+| **Frontend Package Manager** | pnpm                 | Strict mode               |
+| **Backend**                  | Python + Quart       | Python 3.12+              |
+| **Dependency Injection**     | ABC + Inheritance    | No external library       |
+| **Database**                 | PostgreSQL           | Primary data store        |
+| **ORM**                      | SQLAlchemy + asyncpg | Async-first               |
+| **Migrations**               | Alembic              | Schema versioning         |
+| **Feed Parsing**             | feedparser           | RSS/Atom support          |
+| **Backend Package Manager**  | uv                   | Required                  |
+| **Authentication**           | OAuth2               | GitHub, Gmail, or Outlook |
+| **Dev Environment**          | Dev Containers       | Docker-based              |
 
 **Stack Deviations**: Any deviation from this stack MUST be documented with justification and approved before implementation.
 
@@ -165,4 +208,4 @@ This constitution supersedes all other development practices for the my-feeds pr
 
 **Compliance**: All code contributions MUST be verified against this constitution during review.
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-01-30
+**Version**: 1.2.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-13

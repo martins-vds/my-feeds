@@ -1,0 +1,64 @@
+# =============================================================================
+# my-feeds .dockerignore
+# =============================================================================
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+specs/
+.github/
+.specify/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg-info/
+
+# Node.js
+node_modules/
+.pnpm-store/
+coverage/
+frontend/playwright-report/
+frontend/playwright/.cache/
+frontend/test-results/
+
+# Build outputs (rebuild in container)
+frontend/dist/
+backend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files (inject via secrets)
+.env
+.env.*
+backend/.env
+frontend/.env
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev Container (for production builds)
+.devcontainer/
+
+# Lock files are included for reproducibility
+# !pnpm-lock.yaml
+# !uv.lock

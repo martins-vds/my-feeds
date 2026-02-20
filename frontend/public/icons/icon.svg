@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+    <defs>
+        <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#1976d2;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#1565c0;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+
+    <!-- Background -->
+    <rect width="192" height="192" rx="24" fill="url(#bg-gradient)" />
+
+    <!-- RSS Icon -->
+    <g transform="translate(32, 32)" fill="#ffffff">
+        <!-- Dot -->
+        <circle cx="24" cy="104" r="16" />
+
+        <!-- Inner arc -->
+        <path d="M24 64 A56 56 0 0 1 80 120 L80 104 A40 40 0 0 0 24 80 Z" />
+
+        <!-- Outer arc -->
+        <path d="M24 24 A96 96 0 0 1 120 120 L120 104 A80 80 0 0 0 24 40 Z" />
+    </g>
+</svg>
