@@ -8,6 +8,7 @@ Auto-generated from all feature plans. Last updated: 2026-02-13
 - Dependency Injection via ABC + Inheritance (no external library) - Constitution v1.2.0
 - Python 3.12+ (backend), TypeScript (frontend via React + Vite) + Quart (backend framework), React + Material UI (frontend), bcrypt (new — password hashing) (002-sign-up)
 - PostgreSQL via SQLAlchemy + asyncpg (existing) (002-sign-up)
+- Python 3.12+ (backend), TypeScript (frontend via React + Vite) + Quart (backend framework), React + Material UI (frontend) — no new backend libraries (002-sign-up)
 
 ## Project Structure
 
@@ -48,9 +49,9 @@ cd frontend && pnpm lint
 - TypeScript: ESLint, Prettier
 
 ## Recent Changes
+- 002-sign-up: Added Python 3.12+ (backend), TypeScript (frontend via React + Vite) + Quart (backend framework), React + Material UI (frontend) — no new backend libraries
 - 002-sign-up: Added Python 3.12+ (backend), TypeScript (frontend via React + Vite) + Quart (backend framework), React + Material UI (frontend), bcrypt (new — password hashing)
 - 001-rss-feed-reader: Constitution v1.2.0 - ABC-based DI replaces quart-injector
-- 001-rss-feed-reader: Notifications feature removed from scope
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

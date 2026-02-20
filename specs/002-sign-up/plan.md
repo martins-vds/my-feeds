@@ -1,22 +1,22 @@
-# Implementation Plan: User Sign-Up
+# Implementation Plan: Post-OAuth Sign-Up / Onboarding
 
 **Branch**: `002-sign-up` | **Date**: 2026-02-20 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/002-sign-up/spec.md`
 
 ## Summary
 
-Add email/password sign-up and login to the existing OAuth-only authentication system. This involves extending the User domain entity with a `password_hash` field, adding a `"local"` provider type, creating backend registration and login endpoints, and building frontend sign-up/sign-in forms that coexist with the existing OAuth buttons.
+Modify the OAuth authentication flow so that first-time users are **not** auto-created. Instead, OAuth data is held in a temporary "pending sign-up" session state, and the user is redirected to a sign-up page to confirm their display name and set their timezone. Only after submitting the sign-up form is the user record created. Returning users bypass this entirely and go straight to the app.
 
 ## Technical Context
 
 **Language/Version**: Python 3.12+ (backend), TypeScript (frontend via React + Vite)
-**Primary Dependencies**: Quart (backend framework), React + Material UI (frontend), bcrypt (new — password hashing)
+**Primary Dependencies**: Quart (backend framework), React + Material UI (frontend) — no new backend libraries
 **Storage**: PostgreSQL via SQLAlchemy + asyncpg (existing)
 **Testing**: pytest + pytest-asyncio (backend), Playwright (frontend E2E), Vitest (frontend unit)
 **Target Platform**: Web (PWA) — Linux server backend, browser frontend
 **Project Type**: Web application (monorepo: backend/ + frontend/)
-**Performance Goals**: Sign-up/login response < 500ms p95 (bcrypt hashing is intentionally slow ~100-300ms)
-**Constraints**: Must coexist with existing OAuth flow without breaking changes. Session mechanism shared.
+**Performance Goals**: Sign-up completion < 200ms p95 (no expensive hashing — just a DB insert)
+**Constraints**: Must not break existing returning-user OAuth flow. Session mechanism shared. No new backend libraries required.
 **Scale/Scope**: Single-user personal app, but architecture should be clean for future growth.
 
 ## Constitution Check
@@ -25,13 +25,13 @@ Add email/password sign-up and login to the existing OAuth-only authentication s
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Domain-Driven Design | ✅ PASS | New `AuthService` follows DDD layers. Password hashing is infrastructure concern, domain defines the contract via ABCs. |
-| II. Dependency Injection via ABCs | ✅ PASS | `AuthService` will depend on `UserRepository` ABC and a `PasswordHasher` ABC. Concrete bcrypt implementation injected at composition root. |
-| III. Test-Driven Development | ✅ PASS | All new endpoints will have contract tests. Unit tests for password validation, hashing service. TDD red-green-refactor cycle will be followed. |
-| IV. Modern Toolchain | ✅ PASS | bcrypt added via `uv add bcrypt`. Frontend deps via `pnpm add`. |
-| V. PWA-First Mobile Strategy | ✅ PASS | Sign-up form is a standard React component, works in PWA context. |
-| VI. Lazy Resource Generation | N/A | No expensive resource generation in auth flow. |
-| Technology Stack | ✅ PASS | All technologies from the constitution stack. bcrypt is a standard Python library, not a framework deviation. |
+| I. Domain-Driven Design | ✅ PASS | Callback logic change is in infrastructure/oauth. Sign-up completion endpoint is a thin route calling existing `UserRepository.save()`. No domain layer changes needed (User entity unchanged). |
+| II. Dependency Injection via ABCs | ✅ PASS | No new services or ABCs needed. Existing `OAuthService` and `UserRepository` are sufficient. |
+| III. Test-Driven Development | ✅ PASS | Contract tests for modified callback behavior and new `/auth/complete-signup` endpoint. Unit tests for pending-session logic. |
+| IV. Modern Toolchain | ✅ PASS | No new dependencies. Zero package changes. |
+| V. PWA-First Mobile Strategy | ✅ PASS | Sign-up page is a standard React + MUI form. |
+| VI. Lazy Resource Generation | N/A | No expensive resource generation. |
+| Technology Stack | ✅ PASS | Pure existing stack. |
 
 **Gate Result**: ✅ ALL PASS — Proceeding to Phase 0.
 
@@ -39,13 +39,13 @@ Add email/password sign-up and login to the existing OAuth-only authentication s
 
 | Principle | Status | Post-Design Notes |
 |-----------|--------|-------------------|
-| I. Domain-Driven Design | ✅ PASS | `PasswordHasher` ABC lives in domain/shared. `AuthService` in application layer. `BcryptPasswordHasher` in infrastructure. Clean layer separation confirmed. |
-| II. Dependency Injection via ABCs | ✅ PASS | `AuthService(user_repository: UserRepository, password_hasher: PasswordHasher)` — both dependencies are ABCs. Wired in `container.py`. |
-| III. Test-Driven Development | ✅ PASS | Test plan: unit tests for PasswordHasher + AuthService, contract tests for /signup + /login, Playwright E2E for full flow. TDD cycle to be followed during implementation. |
-| IV. Modern Toolchain | ✅ PASS | `bcrypt` added via `uv add`. No frontend dependency changes. |
-| V. PWA-First Mobile Strategy | ✅ PASS | Sign-up/sign-in forms are standard React + MUI components, fully PWA-compatible. |
+| I. Domain-Driven Design | ✅ PASS | No domain entity changes. User schema unchanged. Session cookie logic is infrastructure concern. Route level is API layer. Clean separation confirmed. |
+| II. Dependency Injection via ABCs | ✅ PASS | No new ABCs or services needed. Existing `OAuthService` + `UserRepository` handle everything. `SessionManager` remains a standalone utility. |
+| III. Test-Driven Development | ✅ PASS | Test plan: unit tests for session pending state, contract tests for modified callback + new complete-signup endpoint, Playwright E2E for full flow. |
+| IV. Modern Toolchain | ✅ PASS | Zero new dependencies. Alembic for migration. |
+| V. PWA-First Mobile Strategy | ✅ PASS | Sign-up page is a standard React + MUI form, fully PWA-compatible. |
 | VI. Lazy Resource Generation | N/A | No expensive resource generation. |
-| Technology Stack | ✅ PASS | `bcrypt` is a standard Python security library, not a framework deviation. All other tech from existing stack. |
+| Technology Stack | ✅ PASS | Pure existing stack. No deviations. |
 
 **Post-Design Gate Result**: ✅ ALL PASS — No violations. No complexity tracking needed.
 
@@ -69,54 +69,40 @@ specs/002-sign-up/
 ```text
 backend/
 ├── app/
-│   ├── domain/
-│   │   └── feed_management/
-│   │       ├── entities/
-│   │       │   └── user.py              # Extended: password_hash field, "local" provider
-│   │       └── repositories/
-│   │           └── user_repository.py   # Extended: get_by_provider_and_id()
-│   ├── application/
-│   │   └── services/
-│   │       └── auth_service.py          # NEW: sign-up, login logic
 │   ├── infrastructure/
-│   │   ├── auth/
-│   │   │   └── password_hasher.py       # NEW: bcrypt PasswordHasher implementation
-│   │   └── persistence/
-│   │       ├── models/
-│   │       │   └── user.py              # Extended: password_hash column
-│   │       └── repositories/
-│   │           └── user_repository.py   # Extended: get_by_provider_and_id()
+│   │   └── oauth/
+│   │       ├── oauth_service.py         # MODIFIED: split get_or_create_user into get_user + hold pending
+│   │       └── session.py               # MODIFIED: support pending_signup session state
 │   ├── api/
 │   │   └── routes/
-│   │       └── auth.py                  # Extended: POST /signup, POST /login
+│   │       └── auth.py                  # MODIFIED: callback branches new vs returning user
+│   │                                    # NEW: POST /auth/complete-signup endpoint
+│   │                                    # NEW: GET /auth/pending-signup endpoint
 │   └── config/
-│       └── container.py                 # Extended: wire AuthService + PasswordHasher
+│       └── container.py                 # MINOR: no structural changes expected
 ├── migrations/
 │   └── versions/
-│       └── xxx_add_password_hash.py     # NEW: Alembic migration
+│       └── xxx_add_unique_constraint.py # NEW: Alembic migration for (provider, provider_id) unique
 └── tests/
     ├── contract/
-    │   └── test_auth.py                 # Extended: sign-up and login contract tests
+    │   └── test_auth.py                 # EXTENDED: new/returning user callback tests, complete-signup tests
     └── unit/
-        ├── test_auth_service.py         # NEW: unit tests for AuthService
-        └── test_password_hasher.py      # NEW: unit tests for PasswordHasher
+        └── test_session.py              # NEW: pending signup session state tests
 
 frontend/
 ├── src/
 │   ├── pages/
 │   │   └── auth/
-│   │       ├── SignInPage.tsx           # Extended: add email/password form
-│   │       └── SignUpPage.tsx           # NEW: registration form
+│   │       └── SignUpPage.tsx           # NEW: post-OAuth sign-up form
 │   ├── services/
-│   │   └── api.ts                      # Extended: signup(), login() API calls
+│   │   └── api.ts                       # EXTENDED: completeSignup(), getPendingSignup() 
 │   ├── contexts/
-│   │   └── AuthContext.tsx             # Extended: "local" provider type
-│   └── types/
-│       └── index.ts                    # Extended: provider union type
+│   │   └── AuthContext.tsx              # MODIFIED: handle pending-signup state in auth flow
+│   ├── components/
+│   │   └── ProtectedRoute.tsx           # MODIFIED: redirect pending-signup users to /signup
+│   └── App.tsx                          # MODIFIED: add /signup route
 ├── playwright/
-│   └── auth.spec.ts                    # Extended: sign-up E2E tests
-└── src/test/
-    └── auth.test.ts                    # NEW/Extended: Vitest tests for auth
+│   └── auth.spec.ts                     # EXTENDED: sign-up flow E2E tests
 ```
 
-**Structure Decision**: Web application monorepo (Option 2). All changes extend existing files or add new files within the established DDD layer structure. No new top-level directories needed.
+**Structure Decision**: Web application monorepo. Primarily modifying existing files in the auth flow. One new frontend page (`SignUpPage.tsx`), one new backend endpoint. No new domain entities, services, or ABCs.

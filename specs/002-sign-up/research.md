@@ -1,108 +1,93 @@
-# Research: User Sign-Up Feature
+# Research: Post-OAuth Sign-Up Feature
 
 **Feature**: 002-sign-up  
 **Date**: 2026-02-20  
 **Status**: Complete
 
-## R1: Password Hashing Library for Async Python
+## R1: Holding Pending OAuth Data Between Callback and Sign-Up Completion
 
-**Decision**: Use `bcrypt==5.0.0` with `asyncio.to_thread()` to avoid blocking the Quart event loop.
+**Decision**: Store pending data in the session cookie by extending the existing JSON cookie with a `pending_signup` field. No server-side session store needed.
 
-**Rationale**: `bcrypt` is actively maintained (Rust-backed since 4.1+), has pre-built wheels for Python 3.12+, and is the industry standard for password hashing. `passlib` is effectively abandoned (last release 2020, throws deprecation warnings on Python 3.12+). `argon2-cffi` is technically superior but adds unnecessary CFFI dependency for this use case.
-
-**Alternatives considered**:
-- `passlib[bcrypt]` — abandoned, not viable on Python 3.12+
-- `argon2-cffi` — good but overkill; adds CFFI build dependency
-- `hashlib.scrypt` — built-in but lacks conveniences (no cost factor in hash, manual salt management)
-
-**Implementation notes**:
-- Cost factor: **12** (library default, OWASP-compliant, ~250ms per hash)
-- Must use `asyncio.to_thread()` for both hashing and verification to prevent blocking the event loop
-- bcrypt truncates input at 72 bytes — enforce max password length of 128 characters at validation layer
-
-## R2: Password Validation Policy
-
-**Decision**: Enforce minimum 8 characters with at least one uppercase, one lowercase, and one digit (per spec FR-003). Cap maximum at 128 characters.
-
-**Rationale**: NIST SP 800-63B (2024) actually recommends against composition rules in favor of length-only + blocklist. However, the spec's FR-003 and acceptance scenarios explicitly require these character class rules. Following the spec as written for MVP; can revisit post-MVP.
+**Rationale**: The app is single-process with no Redis or server-side session store. The cookie is already a plain JSON blob (~120 bytes today). Adding pending OAuth data (provider, provider_id, email, name, avatar_url) brings it to ~350-400 bytes — well under the 4,096-byte browser limit. The data naturally expires with the cookie. A 15-minute effective TTL enforced via `pending_created_at` timestamp prevents stale sign-ups.
 
 **Alternatives considered**:
-- NIST-pure approach (length only + blocklist) — better in theory, but contradicts spec
-- `zxcvbn` strength estimation — heavy dependency, overkill for MVP
-- Common password blocklist (HIBP top 100k) — good idea long-term, deferred
+- Server-side temp store (in-memory dict / Redis / DB table) — overkill for single-process app. In-memory loses data on restart. Redis adds dependency. DB table needs cleanup.
+- URL query params — insecure (OAuth data visible in browser history, referer headers, logs).
 
-## R3: OAuth and Local Auth Coexistence
+**Cookie structure for pending state**:
+```json
+{
+  "pending_signup": {
+    "provider": "github",
+    "provider_id": "12345",
+    "email": "user@example.com",
+    "name": "Jane Doe",
+    "avatar_url": "https://..."
+  },
+  "pending_created_at": "2026-02-20T12:00:00Z"
+}
+```
 
-**Decision**: Add `provider="local"` with `provider_id=lowercase_email`. No automatic account linking. Show informative error if email already exists under a different provider.
+## R2: Frontend Routing for Pending Sign-Up
 
-**Rationale**: Using email as `provider_id` for local accounts is natural — it's the login identifier and avoids extra lookups. Automatic account linking is dangerous without email verification (attacker could claim any email). The spec explicitly requires showing "try signing in with [provider] instead" for duplicate emails.
+**Decision**: `GET /auth/me` returns a different response shape for pending users. Backend always redirects to the same frontend URL (`/`). Frontend `AuthContext` detects the pending state and routes accordingly.
 
-**Alternatives considered**:
-- `provider_id = UUID` for local accounts — adds no value; still need email lookup
-- Automatic account linking by email — security risk without verification
-- Separate `credentials` table — over-engineered for 4 providers; can refactor later
-- Allow both OAuth and local for same email — causes confusion, data duplication
-
-## R4: Security — Rate Limiting
-
-**Decision**: Add basic in-memory rate limiting on `/auth/signup` (10/min per IP) and `/auth/login` (5/min per IP).
-
-**Rationale**: The codebase currently has zero rate limiting. Auth endpoints are the most critical to protect. In-memory rate limiting is sufficient for a single-process MVP. Can migrate to `quart-rate-limiter` or Redis-backed solution later.
-
-**Alternatives considered**:
-- Redis-backed rate limiting — adds dependency; not warranted for MVP
-- CAPTCHA on sign-up — adds UX friction and external dependency; deferred
-- No rate limiting — unacceptable for auth endpoints
-
-## R5: Security — Timing Attack Prevention
-
-**Decision**: Perform a dummy `bcrypt.checkpw()` against a pre-computed hash when the user is not found, so login response times are constant regardless of email existence.
-
-**Rationale**: `bcrypt.checkpw()` is already timing-safe for the comparison itself. But skipping bcrypt entirely for nonexistent users creates a measurable timing difference (~250ms) that reveals email existence. The dummy check eliminates this side channel.
+**Rationale**: Fits the existing pattern — the SPA already calls `/auth/me` on mount and uses its response to set auth state. Adding a new response shape is the minimal change. Keeps backend decoupled from frontend route names. Single source of truth: backend decides who's pending, frontend reacts.
 
 **Alternatives considered**:
-- Skip the dummy check — creates timing oracle for email enumeration
-- Return error before hash check — same timing leak
+- Backend redirects to `/signup` — couples backend to frontend routing, doesn't work with dev proxy setup.
+- Backend redirects with `?pending=true` — leaks state into URL, still needs `/auth/me` for data.
 
-## R6: Security — Email Enumeration Prevention
+**Three response states for `/auth/me`**:
 
-**Decision**: Login returns generic "Invalid email or password" for all failures. Sign-up reveals email existence (with provider hint) — acceptable tradeoff per spec.
+| State | Cookie | Response | Frontend |
+|-------|--------|----------|----------|
+| No session | None/invalid | `401` | `isAuthenticated: false` |
+| Pending sign-up | `{pending_signup: {...}}` | `200 {pending_signup: true, ...profile}` | `isPendingSignup: true` |
+| Fully signed in | `{user_id, provider}` | `200 {authenticated: true, user: {...}}` | `isAuthenticated: true` |
 
-**Rationale**: Login must not distinguish between wrong email and wrong password (spec Stories 2.2, 2.3). Sign-up inherently reveals email existence when preventing duplicates — this is an accepted tradeoff. OWASP acknowledges this for consumer apps.
+## R3: Protecting Routes During Pending Sign-Up
+
+**Decision**: Three-state auth check. Pending users have `isAuthenticated: false` + `isPendingSignup: true`. `ProtectedRoute` redirects them to `/signup` (not `/signin`). The `/signup` route itself guards against direct access (no pending session → redirect to `/signin`).
+
+**Rationale**: Pending sign-up is NOT "authenticated" — no user_id exists in DB yet. All existing protected API routes already reject pending cookies (no `user_id` field → `get_user_id()` returns None → 401). Only the new `POST /auth/complete-signup` reads the `pending_signup` field from the cookie.
+
+**ProtectedRoute logic**:
+- `!isAuthenticated && !isPendingSignup` → redirect to `/signin`
+- `!isAuthenticated && isPendingSignup` → redirect to `/signup`
+- `isAuthenticated` → render children
+
+## R4: Database Unique Constraint Migration
+
+**Decision**: Two-step Alembic migration — check for duplicates, then add `(provider, provider_id)` unique constraint. Add `UniqueConstraint` to SQLAlchemy model's `__table_args__`.
+
+**Rationale**: The constraint is currently missing despite being referenced in model comments. Checking for duplicates in the migration itself is safer than a separate script — it runs in the same transaction and fails cleanly with a clear message if duplicates exist.
 
 **Alternatives considered**:
-- Always return 200 on sign-up and send verification email — sophisticated but overkill for MVP
-- Hide all email existence — impossible while preventing duplicate accounts
+- Add constraint without checking — risky if dev/test data has duplicates.
+- Separate pre-migration script — adds operational complexity.
 
-## R7: Session Management
+**Constraint name**: `uq_user_provider_id` (follows existing project convention: `uq_feed_category_url`, `uq_post_feed_guid`, etc.)
 
-**Decision**: Reuse existing `SessionManager.create_session()` for local auth. Fresh session cookie on sign-up (same pattern as OAuth callback).
+## R5: Browser Timezone Detection
 
-**Rationale**: Existing session infrastructure already creates fresh cookies on authentication. No session fixation risk. Unified session management means local and OAuth users are indistinguishable after login.
+**Decision**: Use `Intl.DateTimeFormat().resolvedOptions().timeZone` — native API, zero dependencies.
 
-**Alternatives considered**:
-- Separate session mechanism for local auth — unnecessary complexity
-- JWT tokens instead of cookies — would require rewriting existing OAuth session handling
-
-## R8: Database Schema Changes
-
-**Decision**: Add nullable `password_hash` column (String 255) to users table. Add composite unique constraint on `(provider, provider_id)`.
-
-**Rationale**: `password_hash` is nullable because OAuth users don't have passwords. The unique constraint on `(provider, provider_id)` is currently missing despite being mentioned in model comments — this is an existing bug that should be fixed regardless. Alembic migration required.
+**Rationale**: Returns IANA timezone strings (e.g., `"America/New_York"`) which matches the backend's `timezone` field format. Supported by 97%+ of browsers (Chrome 24+, Firefox 29+, Safari 10+). Reads the actual OS timezone setting, not a guess based on IP. Fallback to `"UTC"` for edge cases.
 
 **Alternatives considered**:
-- Non-nullable `password_hash` with empty string default — violates DDD (misleading for OAuth users)
-- Separate `local_credentials` table — over-engineered for MVP
+- `moment-timezone` — 200KB bundle size just to call the same `Intl` API.
+- `jstz` — legacy library for IE11 era, unmaintained.
+- IP-based geolocation — unreliable (VPNs), privacy concerns.
+
+**Timezone dropdown**: Use `Intl.supportedValuesOf('timeZone')` where available (Chrome 93+, Firefox 93+, Safari 15.4+), with a static fallback list of ~400 IANA zones.
 
 ## Summary of All Decisions
 
 | # | Decision | Key Rationale |
 |---|---|---|
-| R1 | `bcrypt==5.0.0` + `asyncio.to_thread()` | Active, Rust-backed, spec-mandated |
-| R2 | 8+ chars, uppercase, lowercase, digit, max 128 | Matches spec FR-003 |
-| R3 | `provider="local"`, `provider_id=email`, no account linking | Simple, secure, spec-aligned |
-| R4 | In-memory rate limiting (5/min login, 10/min signup) | Critical gap, minimal dependency |
-| R5 | Dummy bcrypt check on user-not-found | Prevents timing-based enumeration |
-| R6 | Generic login errors, allow sign-up email hints | Spec-required behavior |
-| R7 | Reuse SessionManager, fresh cookie on sign-up | Unified, no fixation risk |
-| R8 | Nullable `password_hash`, composite unique constraint | Clean schema extension |
+| R1 | Pending OAuth data in session cookie | Zero new infrastructure, naturally expires, stateless |
+| R2 | `/auth/me` returns different shape for pending | Fits existing SPA pattern, backend decoupled from frontend routes |
+| R3 | Three-state auth: none / pending / full | Existing protected routes already reject pending cookies |
+| R4 | Alembic migration with duplicate check | Fixes existing gap, safe for dev/prod |
+| R5 | `Intl.DateTimeFormat().resolvedOptions().timeZone` | Native, 97%+ support, zero dependencies |

@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: my-feeds API — Sign-Up Extension
   description: |
-    New and modified endpoints for email/password authentication.
+    New and modified endpoints for the post-OAuth sign-up flow.
     These endpoints extend the existing auth API defined in 001-rss-feed-reader.
   version: 1.1.0
   contact:
@@ -14,40 +14,42 @@ servers:
 
 tags:
   - name: auth
-    description: Authentication endpoints (OAuth2 + local email/password)
+    description: Authentication endpoints (OAuth2 + sign-up completion)
 
 paths:
   # ============================================================================
-  # New: Email/Password Sign-Up
+  # New: Complete Sign-Up (after first OAuth login)
   # ============================================================================
-  /auth/signup:
+  /auth/complete-signup:
     post:
       tags: [auth]
-      summary: Register with email/password
+      summary: Complete sign-up after first OAuth login
       description: |
-        Creates a new local account with email, password, and display name.
-        On success, a session cookie is set and the new user is returned.
-        Rejects if the email is already registered under any provider.
-      operationId: signUp
+        Called after a new user's first OAuth authentication. Reads pending OAuth
+        data from the session cookie, creates the user record with the submitted
+        display name and timezone, and establishes a full session.
+
+        Requires a valid `pending_signup` session cookie (set by OAuth callback
+        for new users). Returns 401 if no pending session exists or if it has expired.
+      operationId: completeSignUp
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SignUpRequest"
+              $ref: "#/components/schemas/CompleteSignUpRequest"
             examples:
               valid:
-                summary: Valid sign-up
+                summary: Valid sign-up completion
                 value:
-                  email: "user@example.com"
-                  password: "Str0ngPass"
                   name: "Jane Doe"
+                  timezone: "America/New_York"
       responses:
         "201":
-          description: Account created, session cookie set
+          description: User created, full session cookie set
           headers:
             Set-Cookie:
-              description: Session cookie (HttpOnly, SameSite=Lax)
+              description: Full session cookie replacing the pending cookie (HttpOnly, SameSite=Lax)
               schema:
                 type: string
           content:
@@ -63,149 +65,143 @@ paths:
                       id: "550e8400-e29b-41d4-a716-446655440000"
                       email: "user@example.com"
                       name: "Jane Doe"
-                      provider: "local"
+                      avatarUrl: "https://avatars.githubusercontent.com/u/12345"
+                      provider: "github"
         "400":
-          description: Validation error (invalid email, weak password, etc.)
+          description: Validation error (empty name, invalid timezone)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationError"
               examples:
-                weak_password:
-                  summary: Password too weak
+                empty_name:
+                  summary: Empty display name
                   value:
                     error: "validation_error"
-                    message: "Password must be at least 8 characters with uppercase, lowercase, and digit"
+                    message: "Validation failed"
                     fields:
-                      password: "Must contain at least one uppercase letter, one lowercase letter, and one digit"
-                invalid_email:
-                  summary: Invalid email
+                      name: "Display name is required"
+                invalid_timezone:
+                  summary: Invalid timezone
                   value:
                     error: "validation_error"
-                    message: "Invalid email format"
+                    message: "Validation failed"
                     fields:
-                      email: "Invalid email format"
+                      timezone: "Invalid timezone"
+        "401":
+          description: No pending sign-up session or session expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                no_pending:
+                  summary: No pending sign-up
+                  value:
+                    error: "no_pending_signup"
+                    message: "No pending sign-up session. Please sign in again."
+                expired:
+                  summary: Pending session expired
+                  value:
+                    error: "pending_expired"
+                    message: "Sign-up session expired. Please sign in again."
         "409":
-          description: Email already registered
+          description: User already exists (race condition — another request completed sign-up)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
               examples:
-                duplicate_local:
-                  summary: Email already registered (local)
+                exists:
                   value:
-                    error: "email_exists"
-                    message: "An account with this email already exists"
-                duplicate_oauth:
-                  summary: Email already registered (OAuth)
-                  value:
-                    error: "email_exists"
-                    message: "An account with this email already exists. Try signing in with github instead."
-        "429":
-          description: Rate limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                rate_limited:
-                  value:
-                    error: "rate_limited"
-                    message: "Too many requests. Please try again later."
+                    error: "user_exists"
+                    message: "Account already exists. Redirecting to sign-in."
 
   # ============================================================================
-  # New: Email/Password Login
+  # Modified: Get Current User (new response shape for pending users)
   # ============================================================================
-  /auth/login:
-    post:
+  /auth/me:
+    get:
       tags: [auth]
-      summary: Login with email/password
+      summary: Get current user or pending sign-up status
       description: |
-        Authenticates a local user with email and password.
-        On success, a session cookie is set and the user is returned.
-        Returns generic error message for all failure types to prevent email enumeration.
-      operationId: loginLocal
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
-            examples:
-              valid:
-                summary: Valid login
-                value:
-                  email: "user@example.com"
-                  password: "Str0ngPass"
+        Returns one of three states:
+        - **Fully authenticated**: `200` with `{authenticated: true, user: {...}}`
+        - **Pending sign-up**: `200` with `{pending_signup: true, profile: {...}}`
+        - **No session**: `401`
+
+        **Modified from 001**: Now returns pending sign-up data for new users
+        who have completed OAuth but not yet completed the sign-up form.
+      operationId: getCurrentUser
       responses:
         "200":
-          description: Login successful, session cookie set
-          headers:
-            Set-Cookie:
-              description: Session cookie (HttpOnly, SameSite=Lax)
-              schema:
-                type: string
+          description: Authenticated user or pending sign-up profile
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthStatus"
+                oneOf:
+                  - $ref: "#/components/schemas/AuthStatus"
+                  - $ref: "#/components/schemas/PendingSignUpStatus"
               examples:
-                success:
-                  summary: Successful login
+                authenticated:
+                  summary: Fully authenticated user
                   value:
                     authenticated: true
                     user:
                       id: "550e8400-e29b-41d4-a716-446655440000"
                       email: "user@example.com"
                       name: "Jane Doe"
-                      provider: "local"
+                      avatarUrl: "https://avatars.githubusercontent.com/u/12345"
+                      provider: "github"
+                pending:
+                  summary: Pending sign-up (new user)
+                  value:
+                    pending_signup: true
+                    profile:
+                      email: "user@example.com"
+                      name: "Jane Doe"
+                      avatarUrl: "https://avatars.githubusercontent.com/u/12345"
+                      provider: "github"
         "401":
-          description: Invalid credentials (generic message for all failure types)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                invalid:
-                  summary: Wrong email or password
-                  value:
-                    error: "invalid_credentials"
-                    message: "Invalid email or password"
-        "429":
-          description: Rate limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                rate_limited:
-                  value:
-                    error: "rate_limited"
-                    message: "Too many requests. Please try again later."
+          description: No session (not authenticated, not pending)
 
   # ============================================================================
-  # Modified: Get Current User (schema change only)
+  # Unchanged: OAuth endpoints (behavior change documented here)
   # ============================================================================
-  /auth/me:
+  /auth/{provider}/callback:
     get:
       tags: [auth]
-      summary: Get current user
+      summary: OAuth callback (behavior modified)
       description: |
-        Returns authenticated user info or 401 if not authenticated.
-        **Modified**: User schema now includes `"local"` as a valid provider value.
-      operationId: getCurrentUser
-      security:
-        - sessionCookie: []
+        **Behavioral change from 001**: The callback now checks if the user exists
+        in the database BEFORE creating an account.
+
+        - **Returning user (exists in DB)**: Sets full session cookie `{user_id, provider}`,
+          redirects to frontend root. Same as before.
+        - **New user (NOT in DB)**: Sets pending session cookie `{pending_signup: {...}}`,
+          redirects to frontend root. Frontend detects pending state via `/auth/me`
+          and routes to `/signup`.
+
+        No change to the URL, parameters, or redirect target.
+      operationId: handleOAuthCallback
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [github, google, microsoft]
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
-        "200":
-          description: Authenticated user info
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthStatus"
-        "401":
-          description: Not authenticated
+        "302":
+          description: |
+            Redirect to frontend root. Cookie set depends on whether user exists:
+            - Existing user: full session cookie
+            - New user: pending sign-up cookie
 
 components:
   securitySchemes:
@@ -213,7 +209,7 @@ components:
       type: apiKey
       in: cookie
       name: my_feeds_session
-      description: HttpOnly session cookie
+      description: HttpOnly session cookie (full session or pending sign-up)
 
   schemas:
     Error:
@@ -224,10 +220,8 @@ components:
       properties:
         error:
           type: string
-          example: not_found
         message:
           type: string
-          example: Resource not found
 
     ValidationError:
       type: object
@@ -240,84 +234,78 @@ components:
           example: validation_error
         message:
           type: string
-          example: "Validation failed"
         fields:
           type: object
           additionalProperties:
             type: string
           description: Field-level error messages
-          example:
-            email: "Invalid email format"
-            password: "Must be at least 8 characters"
 
-    SignUpRequest:
+    CompleteSignUpRequest:
       type: object
       required:
-        - email
-        - password
         - name
+        - timezone
       properties:
-        email:
-          type: string
-          format: email
-          description: User email address (will be normalized to lowercase)
-          maxLength: 255
-          example: "user@example.com"
-        password:
-          type: string
-          format: password
-          description: |
-            Password requirements:
-            - Minimum 8 characters
-            - Maximum 128 characters
-            - At least one uppercase letter
-            - At least one lowercase letter
-            - At least one digit
-          minLength: 8
-          maxLength: 128
-          example: "Str0ngPass"
         name:
           type: string
           description: Display name (trimmed, must not be empty)
           minLength: 1
           maxLength: 255
           example: "Jane Doe"
-
-    LoginRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
+        timezone:
           type: string
-          format: email
-          description: User email address (will be normalized to lowercase)
-          maxLength: 255
-          example: "user@example.com"
-        password:
-          type: string
-          format: password
-          description: User password
-          minLength: 1
-          maxLength: 128
-          example: "Str0ngPass"
+          description: IANA timezone identifier
+          example: "America/New_York"
 
     AuthStatus:
       type: object
+      description: Response for fully authenticated users
       required:
         - authenticated
       properties:
         authenticated:
           type: boolean
+          enum: [true]
         user:
           $ref: "#/components/schemas/User"
 
+    PendingSignUpStatus:
+      type: object
+      description: Response for users who completed OAuth but not sign-up
+      required:
+        - pending_signup
+        - profile
+      properties:
+        pending_signup:
+          type: boolean
+          enum: [true]
+        profile:
+          $ref: "#/components/schemas/PendingProfile"
+
+    PendingProfile:
+      type: object
+      description: OAuth-provided profile data for the sign-up form
+      required:
+        - email
+        - provider
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          nullable: true
+          description: Pre-fill value from OAuth provider
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        provider:
+          type: string
+          enum: [github, google, microsoft]
+
     User:
       type: object
-      description: |
-        **Modified**: `provider` enum now includes `"local"` for email/password accounts.
-        `avatarUrl` is always null for local accounts.
       required:
         - id
         - email
@@ -337,5 +325,4 @@ components:
           nullable: true
         provider:
           type: string
-          enum: [github, google, microsoft, local]
-          description: Authentication provider. "local" = email/password account.
+          enum: [github, google, microsoft]

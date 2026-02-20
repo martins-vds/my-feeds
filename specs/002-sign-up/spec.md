@@ -1,96 +1,93 @@
-# Feature Specification: User Sign-Up
+# Feature Specification: Post-OAuth Sign-Up / Onboarding
 
 **Feature Branch**: `002-sign-up`  
 **Created**: 2026-02-20  
 **Status**: Draft  
-**Input**: User description: "i need a sign up feature"
+**Input**: User description: "when the user signs in, the user must complete a signup process if that user doesn't exist in the database"
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Email/Password Registration (Priority: P1)
+### User Story 1 - New User Completes Sign-Up After First OAuth Login (Priority: P1)
 
-A new user visits the app and creates an account using their email address and a password. After signing up, they are immediately logged in and can start using the app (e.g., subscribing to RSS feeds).
+A new user clicks an OAuth button (GitHub, Google, or Microsoft) on the sign-in page. After authenticating with the provider, the system detects this is their first visit. Instead of going straight to the app, the user is redirected to a sign-up form where they confirm/edit their display name and set their timezone. Once submitted, their account is fully created and they land on the posts page.
 
-**Why this priority**: This is the core sign-up flow — without it, no user can create an account via email/password. Currently only OAuth is available, which limits user acquisition.
+**Why this priority**: This is the entire feature — without it, new users are auto-created with defaults and get no onboarding.
 
-**Independent Test**: Can be fully tested by navigating to the sign-up page, filling in email + password + name, submitting, and verifying the user is redirected to `/posts` with an active session.
+**Independent Test**: Sign in with a new OAuth identity. Verify the user is redirected to the sign-up page (not `/posts`). Fill out the form and submit. Verify the user is now on `/posts` and their profile reflects the submitted values.
 
 **Acceptance Scenarios**:
 
-1. **Given** a visitor on the sign-in page, **When** they click "Sign Up", **Then** they see a registration form with email, password, confirm password, and display name fields.
-2. **Given** a visitor on the sign-up form, **When** they submit valid email, password (min 8 chars, at least one uppercase, one lowercase, one digit), matching confirm password, and a display name, **Then** an account is created, a session is established, and they are redirected to `/posts`.
-3. **Given** a visitor on the sign-up form, **When** they submit an email that is already registered (as a local account), **Then** they see an error message "An account with this email already exists".
-4. **Given** a visitor on the sign-up form, **When** they submit a password shorter than 8 characters or missing required character types, **Then** they see inline validation errors describing the password requirements.
-5. **Given** a visitor on the sign-up form, **When** the password and confirm password do not match, **Then** they see an error "Passwords do not match".
+1. **Given** a new user who has never signed in, **When** they complete OAuth authentication, **Then** they are redirected to a sign-up page showing their OAuth-provided name and email, with editable display name and timezone fields.
+2. **Given** the sign-up page after first OAuth login, **When** the user confirms/edits their display name, selects a timezone, and clicks "Complete Sign-Up", **Then** their user record is created in the database with the submitted values and they are redirected to `/posts`.
+3. **Given** the sign-up page, **When** the user submits an empty display name, **Then** they see a validation error "Display name is required".
+4. **Given** a new user on the sign-up page, **When** they try to navigate directly to `/posts` or any protected route, **Then** they are redirected back to the sign-up page because their account is not yet complete.
 
 ---
 
-### User Story 2 - Email/Password Login (Priority: P1)
+### User Story 2 - Returning User Signs In Normally (Priority: P1)
 
-An existing user who registered via email/password can log in using their credentials.
+An existing user who has already completed sign-up clicks an OAuth button. The system finds their account in the database and sends them straight to the posts page — no sign-up form.
 
-**Why this priority**: Without login, sign-up is useless. This is part of the same critical flow.
+**Why this priority**: Existing users must not be disrupted. The sign-up flow should only appear for genuinely new users.
 
-**Independent Test**: After creating a local account, log out, navigate to sign-in, enter email/password, and verify successful login.
+**Independent Test**: After completing sign-up once, log out. Sign in again with the same OAuth provider. Verify the user goes directly to `/posts` with no sign-up prompt.
 
 **Acceptance Scenarios**:
 
-1. **Given** the sign-in page, **When** an existing local user enters their email and password, **Then** a session is established and they are redirected to `/posts`.
-2. **Given** the sign-in page, **When** a user enters an incorrect password, **Then** they see "Invalid email or password" (generic to prevent email enumeration).
-3. **Given** the sign-in page, **When** a user enters a non-existent email, **Then** they see "Invalid email or password" (same generic message).
+1. **Given** a user who has previously completed sign-up, **When** they sign in via OAuth, **Then** they are redirected directly to `/posts` with no sign-up step.
+2. **Given** a user who has previously completed sign-up, **When** the system processes their OAuth callback, **Then** `get_or_create_user` finds the existing record and returns it without modification.
 
 ---
 
-### User Story 3 - Seamless Coexistence with OAuth (Priority: P2)
+### User Story 3 - Sign-Up Form Pre-populated from OAuth (Priority: P2)
 
-The sign-up/sign-in page presents both OAuth buttons and email/password form, allowing users to choose their preferred authentication method.
+The sign-up form is pre-populated with data from the OAuth provider (name, email) so the user doesn't have to retype information the provider already shared.
 
-**Why this priority**: Existing OAuth users must not be disrupted. Both methods must coexist cleanly.
+**Why this priority**: Improves UX by reducing friction. The sign-up should feel like a confirmation step, not a full form fill.
 
-**Independent Test**: Verify the sign-in page shows both OAuth buttons and email/password form. Verify an OAuth user can still log in normally.
+**Independent Test**: Sign in with GitHub (which provides name + email + avatar). Verify the sign-up form shows the name pre-filled and the email displayed (read-only). The user only needs to pick a timezone and optionally edit their name.
 
 **Acceptance Scenarios**:
 
-1. **Given** the sign-in page, **When** a user views it, **Then** they see OAuth buttons (GitHub, Google, Microsoft) AND an email/password sign-in form with a link to sign-up.
-2. **Given** a user who previously signed up via OAuth, **When** they try to sign up with the same email via email/password, **Then** they see "An account with this email already exists. Try signing in with GitHub/Google/Microsoft instead."
+1. **Given** a new user who authenticated via GitHub, **When** the sign-up page loads, **Then** the display name field is pre-filled with the name from GitHub, and the email is shown as read-only context.
+2. **Given** a new user who authenticated via Google, **When** the sign-up page loads, **Then** the timezone selector defaults to the browser's detected timezone.
+3. **Given** a new user, **When** they edit the pre-filled display name to something different, **Then** the edited name is saved (not the OAuth-provided name).
 
 ---
 
 ### Edge Cases
 
-- What happens when the database is unreachable during sign-up? → Return HTTP 500 with a generic error.
-- What happens if the user's email is mixed-case? → Emails are normalized to lowercase before storage.
-- What happens if the session cookie is tampered with after sign-up? → Session validation rejects it (existing behavior).
-- What happens if two users try to register the same email concurrently? → Database unique constraint on (provider, provider_id) prevents duplicates; second request gets an error.
+- What happens if the user closes the browser during sign-up? → On next OAuth login, the system still doesn't find a user → sign-up form appears again (OAuth data is re-fetched from provider).
+- What happens if the OAuth provider doesn't return a name? → Display name field is empty; user must fill it in.
+- What happens if the OAuth provider doesn't return an email? → The system should reject the OAuth login and show an error (email is required).
+- What happens if the user navigates to `/signup` without an active OAuth session? → Redirect to `/signin`.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: System MUST allow new users to create an account with email, password, and display name.
-- **FR-002**: System MUST validate email format (RFC 5322 basic) and reject duplicates for the "local" provider.
-- **FR-003**: System MUST enforce password policy: minimum 8 characters, at least one uppercase letter, one lowercase letter, and one digit.
-- **FR-004**: System MUST hash passwords using bcrypt before storage (never store plaintext).
-- **FR-005**: System MUST authenticate local users by verifying email + password against stored hash.
-- **FR-006**: System MUST issue the same session cookie for local auth as for OAuth (unified session management).
-- **FR-007**: System MUST normalize email addresses to lowercase before storage and lookup.
-- **FR-008**: System MUST return generic error messages for failed login attempts to prevent email enumeration.
-- **FR-009**: System MUST add a `password_hash` field to the User entity for local accounts (nullable, since OAuth users won't have one).
-- **FR-010**: System MUST extend the `provider` type to include `"local"` for email/password accounts.
-- **FR-011**: Frontend MUST provide a sign-up page/form and integrate email/password login into the existing sign-in page.
-- **FR-012**: System MUST add a database unique constraint on `(provider, provider_id)` to prevent duplicate accounts.
+- **FR-001**: System MUST NOT auto-create a user record on first OAuth login. Instead, OAuth data MUST be held temporarily until sign-up is complete.
+- **FR-002**: System MUST redirect new users to a sign-up page after OAuth callback where they confirm their profile.
+- **FR-003**: Sign-up form MUST collect: display name (editable, pre-filled from OAuth), timezone (selectable, defaulting to browser-detected).
+- **FR-004**: Sign-up form MUST display as read-only context: email (from OAuth), avatar (from OAuth if available).
+- **FR-005**: System MUST validate that display name is non-empty (1-255 chars after trimming).
+- **FR-006**: After sign-up form submission, system MUST create the user record and establish a full session.
+- **FR-007**: System MUST redirect returning users (who exist in DB) directly to the app — no sign-up step.
+- **FR-008**: Protected routes MUST block access for users who have not completed sign-up (i.e., no user record in DB yet).
+- **FR-009**: System MUST store pending OAuth data in the session (server-side) between OAuth callback and sign-up completion.
+- **FR-010**: System MUST add a database unique constraint on `(provider, provider_id)` to prevent duplicate accounts.
+- **FR-011**: Frontend MUST detect the browser timezone and pre-select it in the sign-up form.
 
 ### Key Entities *(include if feature involves data)*
 
-- **User**: Extended with `password_hash` (nullable string) and `provider` now includes `"local"`. For local users, `provider_id` is the email address.
-- **SignUpRequest**: Value object containing email, password, display name for registration.
-- **LoginRequest**: Value object containing email and password for authentication.
+- **User**: Unchanged schema. Created only after sign-up form submission (not during OAuth callback).
+- **PendingSignUp**: Temporary session data holding OAuth info (provider, provider_id, email, name, avatar_url) until sign-up is completed. Not persisted to database.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Users can complete email/password account creation and reach the posts page in under 30 seconds.
-- **SC-002**: All existing OAuth login flows continue to work without modification.
-- **SC-003**: Contract tests cover all new API endpoints (sign-up, local login).
-- **SC-004**: Password is never stored or logged in plaintext — only bcrypt hash is persisted.
+- **SC-001**: New users must complete sign-up (confirm name + pick timezone) before accessing any protected page.
+- **SC-002**: Returning users experience zero change — OAuth login goes straight to `/posts`.
+- **SC-003**: Sign-up form is pre-populated with OAuth-provided data; user only needs to confirm/edit and submit.
+- **SC-004**: Contract tests cover the modified OAuth callback flow and new sign-up completion endpoint.

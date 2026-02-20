@@ -1,24 +1,31 @@
-# Data Model: User Sign-Up
+# Data Model: Post-OAuth Sign-Up
 
 **Feature Branch**: `002-sign-up`  
 **Date**: 2026-02-20  
-**Purpose**: Define entity changes, new value objects, and validation rules for email/password authentication
+**Purpose**: Define entity changes, session state changes, and validation rules for the post-OAuth sign-up flow
 
-## Entity Changes Diagram
+## Overview
+
+This feature does **not** add new database entities. The `User` table schema is unchanged. The key changes are:
+
+1. **Session cookie structure** — new `pending_signup` transient state (not persisted to DB)
+2. **Database constraint** — add missing `(provider, provider_id)` unique constraint
+3. **Behavioral change** — `get_or_create_user` split into lookup + deferred creation
+
+## Entity Diagram
 
 ```
 ┌──────────────────────────┐
 │         User             │
-│  (MODIFIED entity)       │
+│    (UNCHANGED schema)    │
 ├──────────────────────────┤
 │ id (PK)          UUID    │
-│ provider         ENUM    │ ← MODIFIED: added "local"
+│ provider         ENUM    │   github | google | microsoft
 │ provider_id      VARCHAR │
 │ email            VARCHAR │
 │ name             VARCHAR │
-│ password_hash    VARCHAR │ ← NEW: nullable, bcrypt hash
 │ avatar_url       VARCHAR │
-│ timezone         VARCHAR │
+│ timezone         VARCHAR │   ← now set by user during sign-up (was always "UTC")
 │ notifications_en BOOLEAN │
 │ created_at       TIMESTAMP│
 │ updated_at       TIMESTAMP│
@@ -28,135 +35,141 @@
 │ INDEX(email)              │
 └──────────────────────────┘
 
-┌──────────────────────────┐       ┌──────────────────────────┐
-│    SignUpRequest          │       │    LoginRequest           │
-│    (Value Object)        │       │    (Value Object)         │
-├──────────────────────────┤       ├──────────────────────────┤
-│ email: str               │       │ email: str               │
-│ password: str            │       │ password: str            │
-│ name: str                │       └──────────────────────────┘
+┌─────────────────────────────────┐
+│     PendingSignUp               │
+│     (Session cookie - transient)│
+├─────────────────────────────────┤
+│ provider: str                   │   From OAuth
+│ provider_id: str                │   From OAuth
+│ email: str                      │   From OAuth
+│ name: str | None                │   From OAuth (pre-fill)
+│ avatar_url: str | None          │   From OAuth
+│ pending_created_at: str         │   ISO timestamp, 15-min TTL
+└─────────────────────────────────┘
+
+┌──────────────────────────┐
+│     CompleteSignUpRequest │
+│     (Value Object)       │
+├──────────────────────────┤
+│ name: str                │   1-255 chars, trimmed
+│ timezone: str            │   IANA timezone string
 └──────────────────────────┘
 ```
 
 ---
 
-## Modified Entities
+## Existing Entity: User (UNCHANGED schema, NEW constraint)
 
-### User (MODIFIED)
-
-**Description**: Authenticated individual — now supports both OAuth and local (email/password) authentication.
+**Description**: Authenticated individual from an OAuth provider. Schema unchanged — the only database change is adding the missing unique constraint.
 
 | Field                    | Type         | Constraints                            | Description                             | Change    |
 | ------------------------ | ------------ | -------------------------------------- | --------------------------------------- | --------- |
 | `id`                     | UUID         | PK                                     | Internal unique identifier              | Unchanged |
-| `provider`               | ENUM         | NOT NULL                               | `github`, `google`, `microsoft`, `local`| **MODIFIED**: added `"local"` |
-| `provider_id`            | VARCHAR(255) | NOT NULL, UNIQUE with provider         | OAuth user ID or email (for local)      | Unchanged type, new semantic |
-| `email`                  | VARCHAR(255) | NOT NULL                               | User email address                      | Unchanged |
-| `name`                   | VARCHAR(255) | NULL                                   | Display name                            | Unchanged |
-| `password_hash`          | VARCHAR(255) | NULL                                   | bcrypt hash of password                 | **NEW** |
+| `provider`               | ENUM         | NOT NULL                               | `github`, `google`, `microsoft`         | Unchanged |
+| `provider_id`            | VARCHAR(255) | NOT NULL, UNIQUE with provider         | User ID from OAuth provider             | Unchanged |
+| `email`                  | VARCHAR(255) | NOT NULL                               | Email from OAuth provider               | Unchanged |
+| `name`                   | VARCHAR(255) | NULL                                   | Display name                            | Unchanged (now user-confirmed during sign-up) |
 | `avatar_url`             | VARCHAR(512) | NULL                                   | Profile picture URL                     | Unchanged |
-| `timezone`               | VARCHAR(64)  | NOT NULL, DEFAULT 'UTC'                | User timezone                           | Unchanged |
+| `timezone`               | VARCHAR(64)  | NOT NULL, DEFAULT 'UTC'                | User timezone                           | Unchanged (now set to real value during sign-up) |
 | `notifications_enabled`  | BOOLEAN      | NOT NULL, DEFAULT FALSE                | Push notification preference            | Unchanged |
 | `created_at`             | TIMESTAMP    | NOT NULL, DEFAULT NOW()                | Account creation time                   | Unchanged |
 | `updated_at`             | TIMESTAMP    | NOT NULL                               | Last profile update                     | Unchanged |
 
-**New Validation Rules**:
-- `provider` now accepts `"local"` in addition to OAuth providers
-- `password_hash` MUST be non-null when `provider = "local"`
-- `password_hash` MUST be null when `provider != "local"`
-- For local users: `provider_id` = normalized (lowercase) email
-- `provider` + `provider_id` MUST be unique (composite unique constraint — **NEW**)
+**New Constraint (database only)**:
+- `uq_user_provider_id` UNIQUE on (`provider`, `provider_id`) — **NEW** (fixes existing gap)
 
-**New/Modified Indexes**:
-- `uq_user_provider_provider_id` UNIQUE on (`provider`, `provider_id`) — **NEW** (was missing, fixes existing gap)
-- `idx_user_email` on (`email`) — Unchanged
-
-**State Transitions**:
-- No state transitions for users (stateless entity)
+**Behavioral Change**:
+- Previously: `User` was auto-created during OAuth callback with defaults (`timezone="UTC"`, `name` from OAuth)
+- Now: `User` is only created after sign-up form submission, with user-confirmed `name` and user-selected `timezone`
 
 ---
 
-## New Value Objects
+## Transient State: PendingSignUp (Session Cookie)
 
-### SignUpRequest
+**Description**: Temporary OAuth data stored in the session cookie between OAuth callback and sign-up form submission. NOT persisted to the database.
 
-**Description**: Encapsulates and validates registration form input.
+| Field                | Type         | Source       | Description                             |
+| -------------------- | ------------ | ------------ | --------------------------------------- |
+| `provider`           | str          | OAuth        | OAuth provider name                     |
+| `provider_id`        | str          | OAuth        | User ID from provider                   |
+| `email`              | str          | OAuth        | Email from provider                     |
+| `name`               | str \| None  | OAuth        | Display name from provider (pre-fill)   |
+| `avatar_url`         | str \| None  | OAuth        | Avatar URL from provider                |
+| `pending_created_at` | str (ISO)    | Server       | Timestamp of pending creation, 15-min TTL |
+
+**Validation Rules**:
+- `pending_created_at` must be within 15 minutes of current time; otherwise, the pending data is discarded and user is redirected to `/signin`
+- All fields except `name` and `avatar_url` are required
+- No `user_id` field exists in the pending cookie — this is what distinguishes it from a fully-authenticated session
+
+**Lifecycle**:
+1. Created: OAuth callback for new user → sets `pending_signup` in cookie
+2. Read: `GET /auth/me` detects pending cookie → returns pending profile to frontend
+3. Read: `POST /auth/complete-signup` reads pending data → creates User → replaces cookie with normal session
+4. Discarded: If expired (>15 min) or if user navigates to `/signin` and re-authenticates
+
+---
+
+## New Value Object: CompleteSignUpRequest
+
+**Description**: Encapsulates the sign-up form submission.
 
 | Field      | Type   | Constraints                                                      |
 | ---------- | ------ | ---------------------------------------------------------------- |
-| `email`    | str    | Valid email format (RFC 5322 basic), normalized to lowercase     |
-| `password` | str    | 8-128 chars, ≥1 uppercase, ≥1 lowercase, ≥1 digit               |
-| `name`     | str    | 1-255 chars, stripped of leading/trailing whitespace              |
+| `name`     | str    | 1-255 chars after trimming leading/trailing whitespace           |
+| `timezone` | str    | Valid IANA timezone string (e.g., `"America/New_York"`)          |
 
 **Validation Rules**:
-- Email: must match basic RFC 5322 pattern, normalized to lowercase before use
-- Password minimum: 8 characters
-- Password maximum: 128 characters (bcrypt 72-byte truncation safety)
-- Password complexity: at least one uppercase letter (`[A-Z]`), one lowercase letter (`[a-z]`), one digit (`[0-9]`)
-- Name: must not be empty after stripping whitespace, max 255 characters
-
-### LoginRequest
-
-**Description**: Encapsulates login form input.
-
-| Field      | Type   | Constraints                                                  |
-| ---------- | ------ | ------------------------------------------------------------ |
-| `email`    | str    | Valid email format, normalized to lowercase                  |
-| `password` | str    | 1-128 chars (no complexity check on login — only on sign-up) |
-
-**Validation Rules**:
-- Email: normalized to lowercase before lookup
-- Password: cannot be empty, max 128 characters
+- `name`: must not be empty after stripping whitespace, max 255 characters
+- `timezone`: must be a valid IANA timezone identifier (validate against `zoneinfo.available_timezones()` in Python stdlib)
 
 ---
 
 ## Database Migration
 
-### Migration: `add_password_hash_and_unique_constraint`
+### Migration: `add_provider_unique_constraint`
 
 **Changes**:
-1. `ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL`
-2. `ALTER TABLE users ADD CONSTRAINT uq_user_provider_provider_id UNIQUE (provider, provider_id)`
+1. `ALTER TABLE users ADD CONSTRAINT uq_user_provider_id UNIQUE (provider, provider_id)`
+
+**Pre-check** (in migration code):
+- Query for duplicate `(provider, provider_id)` pairs
+- If duplicates exist, raise a clear error message and abort migration
 
 **Rollback**:
-1. `ALTER TABLE users DROP CONSTRAINT uq_user_provider_provider_id`
-2. `ALTER TABLE users DROP COLUMN password_hash`
+1. `ALTER TABLE users DROP CONSTRAINT uq_user_provider_id`
 
 **Notes**:
-- Both operations are non-destructive and backwards compatible
-- No data migration needed (existing OAuth users will have `password_hash = NULL`)
-- The unique constraint may fail if there are existing duplicate `(provider, provider_id)` pairs — verify before applying
+- Non-destructive and backwards compatible
+- No new columns — just a constraint on existing columns
+- This fixes an existing gap regardless of the sign-up feature
 
 ---
 
-## Domain Abstractions (New)
+## Flow Changes Summary
 
-### PasswordHasher (ABC)
-
-**Description**: Abstract interface for password hashing, following Constitution II (DI via ABCs).
+### OAuth Callback (Modified)
 
 ```
-PasswordHasher (ABC)
-├── hash_password(password: str) → str        # Returns bcrypt hash
-└── verify_password(password: str, hash: str) → bool  # Timing-safe comparison
+Before:
+  OAuth callback → get_or_create_user() → set session {user_id} → redirect to /
+
+After (returning user):
+  OAuth callback → get_user() → found → set session {user_id} → redirect to /
+
+After (new user):
+  OAuth callback → get_user() → NOT found → set cookie {pending_signup} → redirect to /
 ```
 
-**Implementation**: `BcryptPasswordHasher` in infrastructure layer using `bcrypt` library with `asyncio.to_thread()`.
-
-### AuthService (Application Service)
-
-**Description**: Orchestrates sign-up and login flows.
+### Sign-Up Completion (New)
 
 ```
-AuthService
-├── Dependencies:
-│   ├── user_repository: UserRepository (ABC)
-│   └── password_hasher: PasswordHasher (ABC)
-├── sign_up(request: SignUpRequest) → User     # Creates local account
-└── login(request: LoginRequest) → User | None # Authenticates local user
+POST /auth/complete-signup {name, timezone}
+  → read pending_signup from cookie
+  → validate pending not expired
+  → validate name + timezone
+  → create User(provider, provider_id, email, name, timezone, avatar_url)
+  → save to DB
+  → replace cookie with {user_id, provider}
+  → return AuthStatus with user
 ```
-
-**Business Rules**:
-- `sign_up`: Check email uniqueness across all providers, hash password, create user with `provider="local"`
-- `login`: Lookup by `("local", email)`, verify password hash, return user or None
-- `login`: On user-not-found, still perform dummy bcrypt check (timing attack prevention)
