@@ -1,0 +1,341 @@
+openapi: 3.0.3
+info:
+  title: my-feeds API — Sign-Up Extension
+  description: |
+    New and modified endpoints for email/password authentication.
+    These endpoints extend the existing auth API defined in 001-rss-feed-reader.
+  version: 1.1.0
+  contact:
+    name: my-feeds team
+
+servers:
+  - url: /api
+    description: API served by Quart backend
+
+tags:
+  - name: auth
+    description: Authentication endpoints (OAuth2 + local email/password)
+
+paths:
+  # ============================================================================
+  # New: Email/Password Sign-Up
+  # ============================================================================
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: Register with email/password
+      description: |
+        Creates a new local account with email, password, and display name.
+        On success, a session cookie is set and the new user is returned.
+        Rejects if the email is already registered under any provider.
+      operationId: signUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpRequest"
+            examples:
+              valid:
+                summary: Valid sign-up
+                value:
+                  email: "user@example.com"
+                  password: "Str0ngPass"
+                  name: "Jane Doe"
+      responses:
+        "201":
+          description: Account created, session cookie set
+          headers:
+            Set-Cookie:
+              description: Session cookie (HttpOnly, SameSite=Lax)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+              examples:
+                success:
+                  summary: Successful sign-up
+                  value:
+                    authenticated: true
+                    user:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      email: "user@example.com"
+                      name: "Jane Doe"
+                      provider: "local"
+        "400":
+          description: Validation error (invalid email, weak password, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                weak_password:
+                  summary: Password too weak
+                  value:
+                    error: "validation_error"
+                    message: "Password must be at least 8 characters with uppercase, lowercase, and digit"
+                    fields:
+                      password: "Must contain at least one uppercase letter, one lowercase letter, and one digit"
+                invalid_email:
+                  summary: Invalid email
+                  value:
+                    error: "validation_error"
+                    message: "Invalid email format"
+                    fields:
+                      email: "Invalid email format"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                duplicate_local:
+                  summary: Email already registered (local)
+                  value:
+                    error: "email_exists"
+                    message: "An account with this email already exists"
+                duplicate_oauth:
+                  summary: Email already registered (OAuth)
+                  value:
+                    error: "email_exists"
+                    message: "An account with this email already exists. Try signing in with github instead."
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                rate_limited:
+                  value:
+                    error: "rate_limited"
+                    message: "Too many requests. Please try again later."
+
+  # ============================================================================
+  # New: Email/Password Login
+  # ============================================================================
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login with email/password
+      description: |
+        Authenticates a local user with email and password.
+        On success, a session cookie is set and the user is returned.
+        Returns generic error message for all failure types to prevent email enumeration.
+      operationId: loginLocal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              valid:
+                summary: Valid login
+                value:
+                  email: "user@example.com"
+                  password: "Str0ngPass"
+      responses:
+        "200":
+          description: Login successful, session cookie set
+          headers:
+            Set-Cookie:
+              description: Session cookie (HttpOnly, SameSite=Lax)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    authenticated: true
+                    user:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      email: "user@example.com"
+                      name: "Jane Doe"
+                      provider: "local"
+        "401":
+          description: Invalid credentials (generic message for all failure types)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalid:
+                  summary: Wrong email or password
+                  value:
+                    error: "invalid_credentials"
+                    message: "Invalid email or password"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                rate_limited:
+                  value:
+                    error: "rate_limited"
+                    message: "Too many requests. Please try again later."
+
+  # ============================================================================
+  # Modified: Get Current User (schema change only)
+  # ============================================================================
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      description: |
+        Returns authenticated user info or 401 if not authenticated.
+        **Modified**: User schema now includes `"local"` as a valid provider value.
+      operationId: getCurrentUser
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Authenticated user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+        "401":
+          description: Not authenticated
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: my_feeds_session
+      description: HttpOnly session cookie
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: Resource not found
+
+    ValidationError:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
+          example: "Validation failed"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Field-level error messages
+          example:
+            email: "Invalid email format"
+            password: "Must be at least 8 characters"
+
+    SignUpRequest:
+      type: object
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (will be normalized to lowercase)
+          maxLength: 255
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          description: |
+            Password requirements:
+            - Minimum 8 characters
+            - Maximum 128 characters
+            - At least one uppercase letter
+            - At least one lowercase letter
+            - At least one digit
+          minLength: 8
+          maxLength: 128
+          example: "Str0ngPass"
+        name:
+          type: string
+          description: Display name (trimmed, must not be empty)
+          minLength: 1
+          maxLength: 255
+          example: "Jane Doe"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (will be normalized to lowercase)
+          maxLength: 255
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          description: User password
+          minLength: 1
+          maxLength: 128
+          example: "Str0ngPass"
+
+    AuthStatus:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      description: |
+        **Modified**: `provider` enum now includes `"local"` for email/password accounts.
+        `avatarUrl` is always null for local accounts.
+      required:
+        - id
+        - email
+        - provider
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        provider:
+          type: string
+          enum: [github, google, microsoft, local]
+          description: Authentication provider. "local" = email/password account.
