@@ -14,4 +14,7 @@ cd /workspace/frontend
 sudo chown vscode:vscode node_modules
 pnpm install
 
+echo "🎭 Installing Playwright browsers..."
+npx playwright install --with-deps chromium
+
 echo "✅ Post-create setup complete!"

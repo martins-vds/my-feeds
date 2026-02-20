@@ -15,8 +15,8 @@ import pytest
 from quart import Quart
 from quart.testing import QuartClient
 
-from app.main import create_app
 from app.infrastructure.oauth.session import SessionManager
+from app.main import create_app
 
 
 @pytest.fixture
