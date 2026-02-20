@@ -24,8 +24,8 @@
 
 **Purpose**: Add missing `(provider, provider_id)` unique constraint — prerequisite for safe user creation
 
-- [ ] T001 Add `UniqueConstraint("provider", "provider_id", name="uq_user_provider_id")` to `__table_args__` in `backend/app/infrastructure/persistence/models/user.py`
-- [ ] T002 Generate Alembic migration via `uv run alembic revision --autogenerate -m "add_provider_unique_constraint"`, then customize: add pre-check query for duplicate `(provider, provider_id)` rows that raises a clear error before applying constraint, in `backend/migrations/versions/`
+- [x] T001 Add `UniqueConstraint("provider", "provider_id", name="uq_user_provider_id")` to `__table_args__` in `backend/app/infrastructure/persistence/models/user.py`
+- [x] T002 Generate Alembic migration via `uv run alembic revision --autogenerate -m "add_provider_unique_constraint"`, then customize: add pre-check query for duplicate `(provider, provider_id)` rows that raises a clear error before applying constraint, in `backend/migrations/versions/`
 
 ---
 
@@ -37,12 +37,12 @@
 
 ### Tests (Red phase — write first, verify they fail)
 
-- [ ] T003 [P] Write failing unit tests for `SessionManager` pending session: `create_pending_session()` sets cookie with pending_signup fields, `get_pending_signup()` reads and returns pending data, expired pending (>15 min) returns `None`, `clear_session()` removes pending cookie, in `backend/tests/unit/test_session.py`
+- [x] T003 [P] Write failing unit tests for `SessionManager` pending session: `create_pending_session()` sets cookie with pending_signup fields, `get_pending_signup()` reads and returns pending data, expired pending (>15 min) returns `None`, `clear_session()` removes pending cookie, in `backend/tests/unit/test_session.py`
 
 ### Implementation (Green phase)
 
-- [ ] T004 Implement `create_pending_session(response, provider, provider_id, email, name, avatar_url)` and `get_pending_signup(request)` with 15-minute TTL validation on `pending_created_at` in `backend/app/infrastructure/oauth/session.py`
-- [ ] T005 Add `get_user_by_provider(provider, provider_id)` method to `OAuthService` that looks up user by `(provider, provider_id)` and returns `User | None` (no auto-creation), in `backend/app/infrastructure/oauth/oauth_service.py`
+- [x] T004 Implement `create_pending_session(response, provider, provider_id, email, name, avatar_url)` and `get_pending_signup(request)` with 15-minute TTL validation on `pending_created_at` in `backend/app/infrastructure/oauth/session.py`
+- [x] T005 Add `get_user_by_provider(provider, provider_id)` method to `OAuthService` that looks up user by `(provider, provider_id)` and returns `User | None` (no auto-creation), in `backend/app/infrastructure/oauth/oauth_service.py`
 
 **Checkpoint**: Session layer supports three states (none / pending / full). OAuth service can look up without creating. Unit tests pass.
 
@@ -56,23 +56,23 @@
 
 ### Tests (Red phase)
 
-- [ ] T006 [P] [US1] Write failing contract tests for new-user callback flow: callback with unknown `(provider, provider_id)` → sets pending cookie → 302 redirect, in `backend/tests/contract/test_auth.py`
-- [ ] T007 [P] [US1] Write failing contract tests for `POST /auth/complete-signup`: valid request → 201 with `AuthStatus`, empty name → 400 validation error, invalid timezone → 400, no pending cookie → 401, expired pending → 401, duplicate user → 409, in `backend/tests/contract/test_auth.py`
-- [ ] T008 [P] [US1] Write failing contract test for `GET /auth/me` with pending cookie: returns `{pending_signup: true, profile: {email, name, avatarUrl, provider}}`, in `backend/tests/contract/test_auth.py`
+- [x] T006 [P] [US1] Write failing contract tests for new-user callback flow: callback with unknown `(provider, provider_id)` → sets pending cookie → 302 redirect, in `backend/tests/contract/test_auth.py`
+- [x] T007 [P] [US1] Write failing contract tests for `POST /auth/complete-signup`: valid request → 201 with `AuthStatus`, empty name → 400 validation error, invalid timezone → 400, no pending cookie → 401, expired pending → 401, duplicate user → 409, in `backend/tests/contract/test_auth.py`
+- [x] T008 [P] [US1] Write failing contract test for `GET /auth/me` with pending cookie: returns `{pending_signup: true, profile: {email, name, avatarUrl, provider}}`, in `backend/tests/contract/test_auth.py`
 
 ### Backend Implementation (Green phase)
 
-- [ ] T009 [US1] Modify OAuth callback handler to check `get_user_by_provider()` — if user found, set full session (existing behavior); if not found, call `create_pending_session()` with OAuth data, in `backend/app/api/routes/auth.py`
-- [ ] T010 [US1] Add `POST /auth/complete-signup` endpoint: read pending data via `get_pending_signup()`, validate name (1-255 chars trimmed) and timezone (against `zoneinfo.available_timezones()`), create `User` via repository, replace pending cookie with full session, return `AuthStatus` JSON, in `backend/app/api/routes/auth.py`
-- [ ] T011 [US1] Modify `GET /auth/me` handler: if `get_pending_signup()` returns data, respond with `{pending_signup: true, profile: {...}}`; if `get_user_id()` returns id, respond with existing `{authenticated: true, user: {...}}`; otherwise 401, in `backend/app/api/routes/auth.py`
+- [x] T009 [US1] Modify OAuth callback handler to check `get_user_by_provider()` — if user found, set full session (existing behavior); if not found, call `create_pending_session()` with OAuth data, in `backend/app/api/routes/auth.py`
+- [x] T010 [US1] Add `POST /auth/complete-signup` endpoint: read pending data via `get_pending_signup()`, validate name (1-255 chars trimmed) and timezone (against `zoneinfo.available_timezones()`), create `User` via repository, replace pending cookie with full session, return `AuthStatus` JSON, in `backend/app/api/routes/auth.py`
+- [x] T011 [US1] Modify `GET /auth/me` handler: if `get_pending_signup()` returns data, respond with `{pending_signup: true, profile: {...}}`; if `get_user_id()` returns id, respond with existing `{authenticated: true, user: {...}}`; otherwise 401, in `backend/app/api/routes/auth.py`
 
 ### Frontend Implementation
 
-- [ ] T012 [P] [US1] Add `completeSignup(name: string, timezone: string): Promise<AuthStatus>` method that POSTs to `/auth/complete-signup` in `frontend/src/services/api.ts`
-- [ ] T013 [US1] Add `isPendingSignup: boolean` and `pendingProfile: PendingProfile | null` to `AuthState`; update `refreshUser()` to detect `pending_signup: true` response from `/auth/me` and set pending state, in `frontend/src/contexts/AuthContext.tsx`
-- [ ] T014 [US1] Modify `ProtectedRoute` for three-state routing: loading → spinner, `!isAuthenticated && !isPendingSignup` → `Navigate to="/signin"`, `!isAuthenticated && isPendingSignup` → `Navigate to="/signup"`, `isAuthenticated` → render children, in `frontend/src/components/ProtectedRoute.tsx`
-- [ ] T015 [US1] Create `SignUpPage` component: form with name `TextField` and timezone `TextField`, submit calls `completeSignup()` then `refreshUser()`, inline validation (name required), guard — if no `isPendingSignup` redirect to `/signin`, on success redirect to `/posts`, in `frontend/src/pages/auth/SignUpPage.tsx`
-- [ ] T016 [US1] Add `/signup` route pointing to `SignUpPage` (public route, outside `ProtectedRoute`) in `frontend/src/App.tsx`
+- [x] T012 [P] [US1] Add `completeSignup(name: string, timezone: string): Promise<AuthStatus>` method that POSTs to `/auth/complete-signup` in `frontend/src/services/api.ts`
+- [x] T013 [US1] Add `isPendingSignup: boolean` and `pendingProfile: PendingProfile | null` to `AuthState`; update `refreshUser()` to detect `pending_signup: true` response from `/auth/me` and set pending state, in `frontend/src/contexts/AuthContext.tsx`
+- [x] T014 [US1] Modify `ProtectedRoute` for three-state routing: loading → spinner, `!isAuthenticated && !isPendingSignup` → `Navigate to="/signin"`, `!isAuthenticated && isPendingSignup` → `Navigate to="/signup"`, `isAuthenticated` → render children, in `frontend/src/components/ProtectedRoute.tsx`
+- [x] T015 [US1] Create `SignUpPage` component: form with name `TextField` and timezone `TextField`, submit calls `completeSignup()` then `refreshUser()`, inline validation (name required), guard — if no `isPendingSignup` redirect to `/signin`, on success redirect to `/posts`, in `frontend/src/pages/auth/SignUpPage.tsx`
+- [x] T016 [US1] Add `/signup` route pointing to `SignUpPage` (public route, outside `ProtectedRoute`) in `frontend/src/App.tsx`
 
 **Checkpoint**: New users complete sign-up form after OAuth. Returning users unaffected. Contract tests pass. Full MVP flow works end-to-end.
 
@@ -86,8 +86,8 @@
 
 > **Note**: The backend implementation for returning users is in the callback modification (T009, Phase 3). This phase adds explicit verification tests.
 
-- [ ] T017 [P] [US2] Write contract test verifying returning-user callback: callback with known `(provider, provider_id)` → sets full session cookie (with `user_id`) → 302 redirect, no pending state, in `backend/tests/contract/test_auth.py`
-- [ ] T018 [US2] Write contract test verifying `GET /auth/me` for fully authenticated user returns `{authenticated: true, user: {...}}` (unchanged from feature 001 behavior), in `backend/tests/contract/test_auth.py`
+- [x] T017 [P] [US2] Write contract test verifying returning-user callback: callback with known `(provider, provider_id)` → sets full session cookie (with `user_id`) → 302 redirect, no pending state, in `backend/tests/contract/test_auth.py`
+- [x] T018 [US2] Write contract test verifying `GET /auth/me` for fully authenticated user returns `{authenticated: true, user: {...}}` (unchanged from feature 001 behavior), in `backend/tests/contract/test_auth.py`
 
 **Checkpoint**: Returning users confirmed unaffected. Both new-user and returning-user contract tests pass.
 
@@ -101,9 +101,9 @@
 
 > **Note**: Pending profile data is already available via `AuthContext.pendingProfile` (from Phase 3). This phase enhances the `SignUpPage` UX.
 
-- [ ] T019 [P] [US3] Implement browser timezone auto-detection using `Intl.DateTimeFormat().resolvedOptions().timeZone` with `"UTC"` fallback, set as default timezone value on form mount, in `frontend/src/pages/auth/SignUpPage.tsx`
-- [ ] T020 [US3] Replace basic timezone input with searchable MUI `Autocomplete` populated via `Intl.supportedValuesOf("timeZone")` with a static IANA fallback array for older browsers, in `frontend/src/pages/auth/SignUpPage.tsx`
-- [ ] T021 [US3] Pre-fill name `TextField` from `pendingProfile.name`, display `pendingProfile.email` as read-only `Typography`, and show `pendingProfile.avatarUrl` as `Avatar` component on the sign-up form, in `frontend/src/pages/auth/SignUpPage.tsx`
+- [x] T019 [P] [US3] Implement browser timezone auto-detection using `Intl.DateTimeFormat().resolvedOptions().timeZone` with `"UTC"` fallback, set as default timezone value on form mount, in `frontend/src/pages/auth/SignUpPage.tsx`
+- [x] T020 [US3] Replace basic timezone input with searchable MUI `Autocomplete` populated via `Intl.supportedValuesOf("timeZone")` with a static IANA fallback array for older browsers, in `frontend/src/pages/auth/SignUpPage.tsx`
+- [x] T021 [US3] Pre-fill name `TextField` from `pendingProfile.name`, display `pendingProfile.email` as read-only `Typography`, and show `pendingProfile.avatarUrl` as `Avatar` component on the sign-up form, in `frontend/src/pages/auth/SignUpPage.tsx`
 
 **Checkpoint**: Sign-up form is pre-populated with OAuth data. Timezone auto-detected. User only needs to confirm and submit.
 
@@ -113,10 +113,10 @@
 
 **Purpose**: Edge cases, E2E coverage, and validation
 
-- [ ] T022 [P] Handle edge cases in `POST /auth/complete-signup`: tampered/malformed pending cookie → 401, missing required OAuth fields (email) → 401 with clear message, in `backend/app/api/routes/auth.py`
-- [ ] T023 [P] Add E2E Playwright tests: new user full sign-up flow, returning user bypass, form validation errors (empty name), expired pending redirect, in `frontend/playwright/auth.spec.ts`
-- [ ] T024 [P] Add integration test: full sign-up flow across layers — OAuth callback sets pending cookie → `GET /auth/me` returns pending profile → `POST /auth/complete-signup` creates user and returns full session → `GET /auth/me` returns authenticated user, in `backend/tests/integration/test_signup_flow.py`
-- [ ] T025 Run quickstart.md validation: execute all test commands from quickstart.md, verify all backend unit + contract + integration tests pass, verify E2E tests pass, confirm zero new dependencies in `pyproject.toml` and `package.json`
+- [x] T022 [P] Handle edge cases in `POST /auth/complete-signup`: tampered/malformed pending cookie → 401, missing required OAuth fields (email) → 401 with clear message, in `backend/app/api/routes/auth.py`
+- [x] T023 [P] Add E2E Playwright tests: new user full sign-up flow, returning user bypass, form validation errors (empty name), expired pending redirect, in `frontend/playwright/auth.spec.ts`
+- [x] T024 [P] Add integration test: full sign-up flow across layers — OAuth callback sets pending cookie → `GET /auth/me` returns pending profile → `POST /auth/complete-signup` creates user and returns full session → `GET /auth/me` returns authenticated user, in `backend/tests/integration/test_signup_flow.py`
+- [x] T025 Run quickstart.md validation: execute all test commands from quickstart.md, verify all backend unit + contract + integration tests pass, verify E2E tests pass, confirm zero new dependencies in `pyproject.toml` and `package.json`
 
 ---
 

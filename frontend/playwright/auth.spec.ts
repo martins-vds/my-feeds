@@ -2,10 +2,22 @@
  * E2E tests for authentication flow.
  *
  * Tests the sign-in page, OAuth button redirects, protected-route
- * guards, and the OAuth callback page.
+ * guards, the OAuth callback page, and the post-OAuth sign-up flow.
  */
 
 import { test, expect, mockApi, TEST_USER } from "./fixtures";
+
+// ── Pending sign-up mock data ──────────────────────────────────────────
+
+const PENDING_PROFILE = {
+  pending_signup: true,
+  profile: {
+    email: "newuser@example.com",
+    name: "New User",
+    avatarUrl: "https://avatars.example.com/new",
+    provider: "github" as const,
+  },
+};
 
 // ── Public sign-in page (no auth mock needed) ──────────────────────────
 
@@ -157,6 +169,108 @@ test.describe("Authenticated User", () => {
       })
     );
 
+    await expect(page).toHaveURL(/\/signin/, { timeout: 5000 });
+  });
+});
+
+// ── Sign-Up Flow (Post-OAuth) ──────────────────────────────────────────
+
+test.describe("Sign Up Flow", () => {
+  test("new user is redirected to /signup when pending", async ({ page }) => {
+    await mockApi(page, "**/api/auth/me", PENDING_PROFILE);
+
+    await page.goto("/posts");
+    await expect(page).toHaveURL(/\/signup/, { timeout: 5000 });
+  });
+
+  test("sign-up page displays profile and form fields", async ({ page }) => {
+    await mockApi(page, "**/api/auth/me", PENDING_PROFILE);
+
+    await page.goto("/signup");
+    await expect(page.getByRole("heading", { name: /complete your profile/i })).toBeVisible();
+    await expect(page.getByText("newuser@example.com")).toBeVisible();
+    // Name should be pre-filled
+    await expect(page.getByRole("textbox", { name: /display name/i })).toHaveValue("New User");
+    // Timezone autocomplete should be present
+    await expect(page.getByRole("combobox", { name: /timezone/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /complete sign up/i })).toBeVisible();
+  });
+
+  test("form validation rejects empty name", async ({ page }) => {
+    await mockApi(page, "**/api/auth/me", PENDING_PROFILE);
+
+    await page.goto("/signup");
+    // Clear the pre-filled name
+    const nameInput = page.getByRole("textbox", { name: /display name/i });
+    await nameInput.fill("   ");
+
+    await page.getByRole("button", { name: /complete sign up/i }).click();
+    await expect(page.getByText(/display name is required/i)).toBeVisible();
+  });
+
+  test("successful sign-up redirects to /posts", async ({ page }) => {
+    // First call: pending state
+    let callCount = 0;
+    await page.route("**/api/auth/me", (route) => {
+      callCount++;
+      if (callCount <= 1) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(PENDING_PROFILE),
+        });
+      }
+      // After sign-up: authenticated
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(TEST_USER),
+      });
+    });
+
+    // Mock complete-signup endpoint
+    await mockApi(
+      page,
+      "**/api/auth/complete-signup",
+      {
+        authenticated: true,
+        user: TEST_USER,
+      },
+      { method: "POST", status: 201 }
+    );
+
+    // Mock posts for landing page
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.goto("/signup");
+    await expect(page.getByRole("heading", { name: /complete your profile/i })).toBeVisible();
+
+    await page.getByRole("button", { name: /complete sign up/i }).click();
+
+    await expect(page).toHaveURL(/\/posts/, { timeout: 5000 });
+  });
+
+  test("returning user bypasses sign-up", async ({ authedPage: page }) => {
+    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.goto("/posts");
+    // Should NOT redirect to /signup
+    await expect(page).toHaveURL(/\/posts/, { timeout: 5000 });
+  });
+
+  test("expired pending redirects to signin via /signup guard", async ({ page }) => {
+    // Mock: /auth/me returns 401 (expired pending is treated as no session)
+    await mockApi(
+      page,
+      "**/api/auth/me",
+      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+      { status: 401 }
+    );
+
+    await page.goto("/signup");
+    // SignUpPage guard redirects to /signin when not pending
     await expect(page).toHaveURL(/\/signin/, { timeout: 5000 });
   });
 });

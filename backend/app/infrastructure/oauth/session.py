@@ -15,6 +15,7 @@ class SessionManager:
 
     COOKIE_NAME = "my_feeds_session"
     SESSION_DURATION_DAYS = 30
+    PENDING_TTL_MINUTES = 15
 
     def __init__(self) -> None:
         """Initialize session manager."""
@@ -125,6 +126,91 @@ class SessionManager:
             self.COOKIE_NAME,
             path="/",
         )
+
+    def create_pending_session(
+        self,
+        response: Response,
+        provider: str,
+        provider_id: str,
+        email: str,
+        name: str | None = None,
+        avatar_url: str | None = None,
+    ) -> None:
+        """Create a pending sign-up session cookie with OAuth data.
+
+        Sets a cookie that holds OAuth profile data while the user
+        completes the sign-up form. No user_id — distinguishes it
+        from a fully-authenticated session.
+
+        Args:
+            response: Quart response object
+            provider: OAuth provider name
+            provider_id: User ID from the OAuth provider
+            email: Email from the OAuth provider
+            name: Display name from OAuth (pre-fill)
+            avatar_url: Avatar URL from OAuth
+        """
+        pending_data = {
+            "provider": provider,
+            "provider_id": provider_id,
+            "email": email,
+            "name": name,
+            "avatar_url": avatar_url,
+            "pending_created_at": datetime.utcnow().isoformat(),
+        }
+
+        session_value = json.dumps(pending_data)
+
+        expires = datetime.utcnow() + timedelta(minutes=self.PENDING_TTL_MINUTES)
+
+        response.set_cookie(
+            self.COOKIE_NAME,
+            session_value,
+            httponly=True,
+            secure=self._settings.is_production,
+            samesite="Lax",
+            expires=expires,
+            path="/",
+        )
+
+    def get_pending_signup(self, request: Request) -> dict[str, Any] | None:
+        """Get pending sign-up data from request cookie.
+
+        Returns the pending OAuth data if the cookie exists, is valid,
+        and has not expired (within PENDING_TTL_MINUTES). Returns None
+        for fully-authenticated sessions (those with user_id).
+
+        Args:
+            request: Quart request object
+
+        Returns:
+            Pending sign-up data dict or None
+        """
+        session_cookie = request.cookies.get(self.COOKIE_NAME)
+
+        if not session_cookie:
+            return None
+
+        try:
+            data = json.loads(session_cookie)
+
+            # If it's a full session (has user_id), this is NOT a pending signup
+            if "user_id" in data:
+                return None
+
+            # Validate required pending fields
+            required = ("provider", "provider_id", "email", "pending_created_at")
+            if not all(k in data for k in required):
+                return None
+
+            # Check TTL
+            created_at = datetime.fromisoformat(data["pending_created_at"])
+            if datetime.utcnow() - created_at > timedelta(minutes=self.PENDING_TTL_MINUTES):
+                return None
+
+            return data
+        except (json.JSONDecodeError, ValueError, KeyError):
+            return None
 
 
 # Singleton instance
