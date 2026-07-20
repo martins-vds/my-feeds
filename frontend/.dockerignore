@@ -1,0 +1,24 @@
+# =============================================================================
+# my-feeds frontend build context excludes
+# =============================================================================
+
+# Dependencies & build output (installed/generated inside the image)
+node_modules/
+dist/
+.pnpm-store/
+
+# Test & tooling artifacts
+coverage/
+playwright-report/
+playwright/.cache/
+test-results/
+
+# Local env & secrets (VITE_* injected via build args / compose env)
+.env
+.env.*
+!.env.example
+
+# VCS / editor
+.git/
+.gitignore
+*.swp

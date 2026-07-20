@@ -1,0 +1,36 @@
+# =============================================================================
+# my-feeds backend build context excludes
+# =============================================================================
+
+# Local virtualenv (the image builds its own at /opt/venv)
+.venv/
+venv/
+
+# Python caches / artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+*.egg-info/
+dist/
+build/
+
+# Tests are exercised via the dev container with a bind mount, not the image
+tests/
+
+# Local env & secrets (injected at runtime)
+.env
+.env.*
+!.env.example
+
+# Runtime data
+audio_cache/
+
+# VCS / editor
+.git/
+.gitignore
+*.swp

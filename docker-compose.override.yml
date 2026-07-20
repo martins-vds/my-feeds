@@ -1,0 +1,43 @@
+# =============================================================================
+# my-feeds — development override (auto-merged on `docker compose up`).
+#
+# Turns the backend/frontend into hot-reloading dev servers with the source
+# tree bind-mounted into the containers:
+#   backend  -> quart run --reload   (http://localhost:5000)
+#   frontend -> vite dev server      (http://localhost:5173)
+#
+# Postgres and the one-shot Alembic `migrate` service are inherited unchanged
+# from docker-compose.yml.
+# =============================================================================
+services:
+  migrate:
+    build:
+      target: dev
+    volumes:
+      - ./backend:/app
+
+  backend:
+    build:
+      target: dev
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      VITE_API_URL: /api
+      VITE_PROXY_TARGET: http://backend:5000
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    # Replace (not append to) the base nginx port mapping with the Vite port.
+    # Override FRONTEND_DEV_PORT in .env if 5173 is already in use locally.
+    ports: !override
+      - "${FRONTEND_DEV_PORT:-5173}:5173"
+
+volumes:
+  frontend-node-modules:

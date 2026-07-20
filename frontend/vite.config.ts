@@ -57,7 +57,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:5000",
+        // Overridable so the Vite dev server can reach the backend both on the
+        // host (localhost) and inside docker compose (http://backend:5000).
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:5000",
         changeOrigin: true,
       },
     },

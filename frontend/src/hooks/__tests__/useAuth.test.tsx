@@ -35,7 +35,7 @@ describe("useAuth hook", () => {
   });
 
   it("should start with loading state", () => {
-    vi.mocked(api.get).mockImplementation(() => new Promise(() => {})); // Never resolves
+    vi.mocked(api.get).mockImplementation(() => new Promise(() => { })); // Never resolves
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
@@ -102,7 +102,7 @@ describe("useAuth hook", () => {
     const originalLocation = window.location;
     // @ts-expect-error - mocking location
     delete window.location;
-    window.location = { href: "" } as Location;
+    window.location = { href: "" } as unknown as string & Location;
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
@@ -110,7 +110,7 @@ describe("useAuth hook", () => {
 
     expect(window.location.href).toBe("/api/auth/login/github");
 
-    window.location = originalLocation;
+    window.location = originalLocation as unknown as string & Location;
   });
 
   it("should clear user on logout", async () => {
@@ -145,7 +145,7 @@ describe("useAuth hook", () => {
 
   it("should throw error when used outside AuthProvider", () => {
     // Suppress console.error for this test
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     expect(() => {
       renderHook(() => useAuth());

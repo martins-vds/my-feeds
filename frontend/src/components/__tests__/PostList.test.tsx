@@ -26,7 +26,9 @@ function makePost(overrides: Partial<PostSummary> = {}): PostSummary {
 }
 
 describe("PostList", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   describe("rendering", () => {
     it("should display loading state initially", () => {

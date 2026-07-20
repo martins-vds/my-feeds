@@ -1,8 +1,10 @@
 {
     "name": "my-feeds",
-    "dockerComposeFile": "docker-compose.yml",
-    "service": "app",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
     "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "features": {
         "ghcr.io/devcontainers/features/python:1": {
             "version": "3.12",
@@ -10,7 +12,8 @@
         },
         "ghcr.io/devcontainers/features/node:1": {
             "version": "20"
-        }
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
     "customizations": {
         "vscode": {
@@ -73,6 +76,5 @@
         }
     },
     "postCreateCommand": "bash .devcontainer/post-create.sh",
-    "postStartCommand": "bash .devcontainer/post-start.sh",
     "remoteUser": "vscode"
 }
