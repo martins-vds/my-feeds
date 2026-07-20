@@ -10,10 +10,6 @@ interface CategoryResponse {
   category: Category;
 }
 
-interface FeedResponse {
-  feed: Feed;
-}
-
 interface UseFeedsDataState {
   categories: Category[];
   feeds: Feed[];
@@ -29,8 +25,8 @@ interface UseFeedsDataActions {
   deleteCategory: (id: string) => Promise<void>;
 
   // Feed operations
-  addFeed: (categoryId: string, url: string) => Promise<Feed>;
-  moveFeed: (feedId: string, categoryId: string) => Promise<Feed>;
+  addFeed: (categoryId: string | null, url: string) => Promise<Feed>;
+  setFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
   deleteFeed: (feedId: string) => Promise<void>;
   refreshFeed: (feedId: string) => Promise<Feed>;
 
@@ -62,32 +58,11 @@ export function useFeedsData(): UseFeedsDataReturn {
   }, []);
 
   /**
-   * Fetch feeds for a specific category
+   * Fetch all of the user's feeds (each with its category ids)
    */
-  const fetchFeedsForCategory = useCallback(async (categoryId: string): Promise<Feed[]> => {
-    const response = await api.get<Feed[]>(`/categories/${categoryId}/feeds`);
-    return response;
+  const fetchAllFeeds = useCallback(async (): Promise<Feed[]> => {
+    return await api.get<Feed[]>("/feeds");
   }, []);
-
-  /**
-   * Fetch all feeds for the user (across all categories)
-   */
-  const fetchAllFeeds = useCallback(
-    async (categories: Category[]): Promise<Feed[]> => {
-      const allFeeds: Feed[] = [];
-      for (const category of categories) {
-        try {
-          const feeds = await fetchFeedsForCategory(category.id);
-          allFeeds.push(...feeds);
-        } catch {
-          // Continue if one category fails
-          console.error(`Failed to fetch feeds for category ${category.id}`);
-        }
-      }
-      return allFeeds;
-    },
-    [fetchFeedsForCategory]
-  );
 
   /**
    * Load initial data
@@ -96,7 +71,7 @@ export function useFeedsData(): UseFeedsDataReturn {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const categories = await fetchCategories();
-      const feeds = await fetchAllFeeds(categories);
+      const feeds = await fetchAllFeeds();
       setState((prev) => ({
         ...prev,
         categories,
@@ -151,39 +126,44 @@ export function useFeedsData(): UseFeedsDataReturn {
    */
   const deleteCategory = useCallback(async (id: string): Promise<void> => {
     await api.delete(`/categories/${id}`);
-    // Update local state
+    // Categories don't own feeds: keep the feeds, just drop the label.
     setState((prev) => ({
       ...prev,
       categories: prev.categories.filter((cat) => cat.id !== id),
-      feeds: prev.feeds.filter((feed) => feed.categoryId !== id),
+      feeds: prev.feeds.map((feed) =>
+        feed.categoryIds.includes(id)
+          ? { ...feed, categoryIds: feed.categoryIds.filter((cid) => cid !== id) }
+          : feed
+      ),
       selectedCategoryId: prev.selectedCategoryId === id ? null : prev.selectedCategoryId,
     }));
   }, []);
 
   /**
-   * Add a feed to a category
+   * Add a feed, optionally labelled with one category (null = uncategorized)
    */
   const addFeed = useCallback(
-    async (categoryId: string, url: string): Promise<Feed> => {
-      const response = await api.post<FeedResponse>(`/categories/${categoryId}/feeds`, { url });
+    async (categoryId: string | null, url: string): Promise<Feed> => {
+      const feed = await api.post<Feed>("/feeds", {
+        url,
+        categoryIds: categoryId ? [categoryId] : [],
+      });
       // Refresh to update feed counts
       await refresh();
-      return response.feed;
+      return feed;
     },
     [refresh]
   );
 
   /**
-   * Move a feed to a different category
+   * Replace the set of categories assigned to a feed
    */
-  const moveFeed = useCallback(
-    async (feedId: string, categoryId: string): Promise<Feed> => {
-      const response = await api.patch<FeedResponse>(`/feeds/${feedId}`, {
-        categoryId,
-      });
+  const setFeedCategories = useCallback(
+    async (feedId: string, categoryIds: string[]): Promise<Feed> => {
+      const feed = await api.patch<Feed>(`/feeds/${feedId}`, { categoryIds });
       // Refresh to update feed counts
       await refresh();
-      return response.feed;
+      return feed;
     },
     [refresh]
   );
@@ -196,11 +176,14 @@ export function useFeedsData(): UseFeedsDataReturn {
     // Update local state
     setState((prev) => {
       const deletedFeed = prev.feeds.find((f) => f.id === feedId);
+      const affected = new Set(deletedFeed?.categoryIds ?? []);
       return {
         ...prev,
         feeds: prev.feeds.filter((feed) => feed.id !== feedId),
         categories: prev.categories.map((cat) =>
-          cat.id === deletedFeed?.categoryId ? { ...cat, feedCount: cat.feedCount - 1 } : cat
+          affected.has(cat.id)
+            ? { ...cat, feedCount: Math.max(0, cat.feedCount - 1) }
+            : cat
         ),
       };
     });
@@ -210,13 +193,13 @@ export function useFeedsData(): UseFeedsDataReturn {
    * Refresh feed metadata
    */
   const refreshFeed = useCallback(async (feedId: string): Promise<Feed> => {
-    const response = await api.post<FeedResponse>(`/feeds/${feedId}/refresh`);
+    const updated = await api.post<Feed>(`/feeds/${feedId}/refresh`);
     // Update local feed
     setState((prev) => ({
       ...prev,
-      feeds: prev.feeds.map((feed) => (feed.id === feedId ? response.feed : feed)),
+      feeds: prev.feeds.map((feed) => (feed.id === feedId ? updated : feed)),
     }));
-    return response.feed;
+    return updated;
   }, []);
 
   /**
@@ -242,7 +225,7 @@ export function useFeedsData(): UseFeedsDataReturn {
     updateCategory,
     deleteCategory,
     addFeed,
-    moveFeed,
+    setFeedCategories,
     deleteFeed,
     refreshFeed,
     selectCategory,

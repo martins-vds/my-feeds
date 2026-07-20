@@ -1,5 +1,6 @@
 """Unit tests for FeedService.
 
+Feeds are owned by the user; categories are optional many-to-many labels.
 Tests use mock repositories and fetchers to isolate service logic.
 """
 
@@ -33,11 +34,12 @@ def _make_category(user_id=None, category_id=None):
     )
 
 
-def _make_feed(category_id=None, feed_id=None, url="https://example.com/feed.xml"):
+def _make_feed(user_id=None, category_ids=None, url="https://example.com/feed.xml"):
     return Feed.create(
-        category_id=category_id or uuid4(),
+        user_id=user_id or uuid4(),
         url=url,
         title="Test Feed",
+        category_ids=category_ids or [],
     )
 
 
@@ -50,110 +52,121 @@ def _make_service(feed_repo=None, cat_repo=None, fetcher=None, validator=None):
     )
 
 
+def _valid_result():
+    return ValidationResult(
+        is_valid=True,
+        title="Example Blog",
+        description="A blog about examples",
+        site_url="https://example.com",
+    )
+
+
 class TestFeedServiceAdd:
     """Tests for FeedService.add_feed()."""
 
     @pytest.mark.asyncio
-    async def test_add_feed_success(self):
-        """Should validate URL, fetch metadata, and create feed."""
+    async def test_add_feed_uncategorized(self):
+        """A feed can be added with no categories."""
         user_id = uuid4()
-        category_id = uuid4()
-
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
         feed_repo = AsyncMock()
-        feed_repo.count_by_user.return_value = 10
-        feed_repo.exists_by_url_in_category.return_value = False
+        feed_repo.count_by_user.return_value = 0
+        feed_repo.exists_by_url_for_user.return_value = False
         feed_repo.save.side_effect = lambda f: f
 
         validator = AsyncMock()
-        validator.validate_url.return_value = ValidationResult(
-            is_valid=True,
-            title="Example Blog",
-            description="A blog about examples",
-            site_url="https://example.com",
-        )
+        validator.validate_url.return_value = _valid_result()
 
-        service = _make_service(feed_repo, cat_repo, validator=validator)
-        result = await service.add_feed(user_id, category_id, "https://example.com/feed.xml")
+        service = _make_service(feed_repo, validator=validator)
+        result = await service.add_feed(user_id, "https://example.com/feed.xml")
 
         assert result.url == "https://example.com/feed.xml"
         assert result.title == "Example Blog"
+        assert result.user_id == user_id
+        assert result.category_ids == []
         feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_add_feed_validates_url_format(self):
-        """Invalid URL format should raise validation error."""
+    async def test_add_feed_with_multiple_categories(self):
+        """A feed can be added with several categories, verified for the user."""
         user_id = uuid4()
-        category_id = uuid4()
+        c1, c2 = uuid4(), uuid4()
 
         cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
+        cat_repo.get_by_id.side_effect = lambda cid: _make_category(user_id, cid)
 
         feed_repo = AsyncMock()
         feed_repo.count_by_user.return_value = 0
-        feed_repo.exists_by_url_in_category.return_value = False
+        feed_repo.exists_by_url_for_user.return_value = False
+        feed_repo.save.side_effect = lambda f: f
+
+        validator = AsyncMock()
+        validator.validate_url.return_value = _valid_result()
+
+        service = _make_service(feed_repo, cat_repo, validator=validator)
+        result = await service.add_feed(user_id, "https://example.com/feed.xml", [c1, c2])
+
+        assert result.category_ids == [c1, c2]
+        feed_repo.save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_add_feed_deduplicates_categories(self):
+        """Duplicate category ids are collapsed."""
+        user_id = uuid4()
+        c1 = uuid4()
+
+        cat_repo = AsyncMock()
+        cat_repo.get_by_id.side_effect = lambda cid: _make_category(user_id, cid)
+
+        feed_repo = AsyncMock()
+        feed_repo.count_by_user.return_value = 0
+        feed_repo.exists_by_url_for_user.return_value = False
+        feed_repo.save.side_effect = lambda f: f
+
+        validator = AsyncMock()
+        validator.validate_url.return_value = _valid_result()
+
+        service = _make_service(feed_repo, cat_repo, validator=validator)
+        result = await service.add_feed(user_id, "https://example.com/feed.xml", [c1, c1])
+
+        assert result.category_ids == [c1]
+
+    @pytest.mark.asyncio
+    async def test_add_feed_validates_url(self):
+        """Invalid URL / non-feed should raise validation error."""
+        user_id = uuid4()
+        feed_repo = AsyncMock()
+        feed_repo.count_by_user.return_value = 0
+        feed_repo.exists_by_url_for_user.return_value = False
 
         validator = AsyncMock()
         validator.validate_url.side_effect = FeedValidationError("Invalid URL")
 
-        service = _make_service(feed_repo, cat_repo, validator=validator)
+        service = _make_service(feed_repo, validator=validator)
         with pytest.raises(FeedValidationError):
-            await service.add_feed(user_id, category_id, "not-a-url")
-
-    @pytest.mark.asyncio
-    async def test_add_feed_validates_is_rss_atom(self):
-        """URL that is not RSS/Atom should raise validation error."""
-        user_id = uuid4()
-        category_id = uuid4()
-
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
-        feed_repo = AsyncMock()
-        feed_repo.count_by_user.return_value = 0
-        feed_repo.exists_by_url_in_category.return_value = False
-
-        validator = AsyncMock()
-        validator.validate_url.side_effect = FeedValidationError("Not a valid feed")
-
-        service = _make_service(feed_repo, cat_repo, validator=validator)
-        with pytest.raises(FeedValidationError):
-            await service.add_feed(user_id, category_id, "https://example.com/page.html")
+            await service.add_feed(user_id, "not-a-url")
 
     @pytest.mark.asyncio
     async def test_add_feed_enforces_100_limit(self):
         """Should raise error when user has 100 feeds total (FR-038)."""
         user_id = uuid4()
-        category_id = uuid4()
-
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
         feed_repo = AsyncMock()
         feed_repo.count_by_user.return_value = 100
 
-        service = _make_service(feed_repo, cat_repo)
+        service = _make_service(feed_repo)
         with pytest.raises(FeedLimitError):
-            await service.add_feed(user_id, category_id, "https://example.com/feed.xml")
+            await service.add_feed(user_id, "https://example.com/feed.xml")
 
     @pytest.mark.asyncio
-    async def test_add_feed_duplicate_url_same_category(self):
-        """Same URL in same category should raise conflict error."""
+    async def test_add_feed_duplicate_url_for_user(self):
+        """Same URL already subscribed by the user should raise conflict."""
         user_id = uuid4()
-        category_id = uuid4()
-
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
         feed_repo = AsyncMock()
         feed_repo.count_by_user.return_value = 5
-        feed_repo.exists_by_url_in_category.return_value = True
+        feed_repo.exists_by_url_for_user.return_value = True
 
-        service = _make_service(feed_repo, cat_repo)
+        service = _make_service(feed_repo)
         with pytest.raises(FeedConflictError):
-            await service.add_feed(user_id, category_id, "https://example.com/feed.xml")
+            await service.add_feed(user_id, "https://example.com/feed.xml")
 
     @pytest.mark.asyncio
     async def test_add_feed_category_not_found(self):
@@ -163,11 +176,11 @@ class TestFeedServiceAdd:
 
         service = _make_service(cat_repo=cat_repo)
         with pytest.raises(CategoryNotFoundError):
-            await service.add_feed(uuid4(), uuid4(), "https://example.com/feed.xml")
+            await service.add_feed(uuid4(), "https://example.com/feed.xml", [uuid4()])
 
     @pytest.mark.asyncio
     async def test_add_feed_category_different_user(self):
-        """Category belonging to different user should raise permission error."""
+        """Category belonging to a different user should raise permission error."""
         user_id = uuid4()
         other_user_id = uuid4()
         category_id = uuid4()
@@ -177,73 +190,114 @@ class TestFeedServiceAdd:
 
         service = _make_service(cat_repo=cat_repo)
         with pytest.raises(FeedPermissionError):
-            await service.add_feed(user_id, category_id, "https://example.com/feed.xml")
+            await service.add_feed(user_id, "https://example.com/feed.xml", [category_id])
 
 
-class TestFeedServiceMove:
-    """Tests for FeedService.move_feed()."""
+class TestFeedServiceSetCategories:
+    """Tests for FeedService.set_feed_categories()."""
 
     @pytest.mark.asyncio
-    async def test_move_feed_success(self):
-        """Should change feed's category_id."""
+    async def test_set_categories_success(self):
+        """Should replace the feed's categories with the given set."""
         user_id = uuid4()
-        old_category_id = uuid4()
-        new_category_id = uuid4()
+        c1, c2 = uuid4(), uuid4()
 
-        feed = Feed.create(
-            category_id=old_category_id, url="https://example.com/feed.xml", title="Feed"
-        )
-        feed_id = feed.id
-
+        feed = _make_feed(user_id=user_id, category_ids=[c1])
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.save.side_effect = lambda f: f
 
         cat_repo = AsyncMock()
-        cat_repo.get_by_id.side_effect = lambda cid: (
-            _make_category(user_id, old_category_id)
-            if cid == old_category_id
-            else _make_category(user_id, new_category_id)
-        )
+        cat_repo.get_by_id.side_effect = lambda cid: _make_category(user_id, cid)
 
         service = _make_service(feed_repo, cat_repo)
-        result = await service.move_feed(user_id, feed_id, new_category_id)
+        result = await service.set_feed_categories(user_id, feed.id, [c1, c2])
 
-        assert result.category_id == new_category_id
+        assert result.category_ids == [c1, c2]
+        feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_move_feed_target_category_not_found(self):
-        """Moving to non-existent category should raise error."""
+    async def test_set_categories_empty_makes_uncategorized(self):
+        """Passing an empty list removes all categories."""
         user_id = uuid4()
-        old_category_id = uuid4()
+        feed = _make_feed(user_id=user_id, category_ids=[uuid4()])
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+        feed_repo.save.side_effect = lambda f: f
 
-        feed = Feed.create(
-            category_id=old_category_id, url="https://example.com/feed.xml", title="Feed"
-        )
+        service = _make_service(feed_repo)
+        result = await service.set_feed_categories(user_id, feed.id, [])
 
+        assert result.category_ids == []
+
+    @pytest.mark.asyncio
+    async def test_set_categories_category_not_found(self):
+        """Assigning a non-existent category should raise error."""
+        user_id = uuid4()
+        feed = _make_feed(user_id=user_id)
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
 
         cat_repo = AsyncMock()
-        # First call (verify source) succeeds, second call (target) fails
-        cat_repo.get_by_id.side_effect = [
-            _make_category(user_id, old_category_id),
-            None,
-        ]
+        cat_repo.get_by_id.return_value = None
 
         service = _make_service(feed_repo, cat_repo)
         with pytest.raises(CategoryNotFoundError):
-            await service.move_feed(user_id, feed.id, uuid4())
+            await service.set_feed_categories(user_id, feed.id, [uuid4()])
 
     @pytest.mark.asyncio
-    async def test_move_feed_not_found(self):
+    async def test_set_categories_feed_not_found(self):
         """Non-existent feed should raise not found error."""
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = None
 
         service = _make_service(feed_repo=feed_repo)
         with pytest.raises(FeedNotFoundError):
-            await service.move_feed(uuid4(), uuid4(), uuid4())
+            await service.set_feed_categories(uuid4(), uuid4(), [])
+
+    @pytest.mark.asyncio
+    async def test_set_categories_other_users_feed(self):
+        """Editing another user's feed should raise permission error."""
+        feed = _make_feed(user_id=uuid4())
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedPermissionError):
+            await service.set_feed_categories(uuid4(), feed.id, [])
+
+
+class TestFeedServiceGet:
+    """Tests for FeedService.get_feed()."""
+
+    @pytest.mark.asyncio
+    async def test_get_feed_success(self):
+        user_id = uuid4()
+        feed = _make_feed(user_id=user_id)
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+
+        service = _make_service(feed_repo=feed_repo)
+        result = await service.get_feed(user_id, feed.id)
+        assert result.id == feed.id
+
+    @pytest.mark.asyncio
+    async def test_get_feed_other_user(self):
+        feed = _make_feed(user_id=uuid4())
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedPermissionError):
+            await service.get_feed(uuid4(), feed.id)
+
+    @pytest.mark.asyncio
+    async def test_get_feed_not_found(self):
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = None
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedNotFoundError):
+            await service.get_feed(uuid4(), uuid4())
 
 
 class TestFeedServiceDelete:
@@ -251,22 +305,13 @@ class TestFeedServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_feed_success(self):
-        """Should delete feed."""
         user_id = uuid4()
-        category_id = uuid4()
-
-        feed = Feed.create(
-            category_id=category_id, url="https://example.com/feed.xml", title="Feed"
-        )
-
+        feed = _make_feed(user_id=user_id)
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.delete.return_value = True
 
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
-        service = _make_service(feed_repo, cat_repo)
+        service = _make_service(feed_repo=feed_repo)
         result = await service.delete_feed(user_id, feed.id)
 
         assert result is True
@@ -274,94 +319,98 @@ class TestFeedServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_feed_not_found(self):
-        """Non-existent feed should raise error."""
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = None
-
         service = _make_service(feed_repo=feed_repo)
         with pytest.raises(FeedNotFoundError):
             await service.delete_feed(uuid4(), uuid4())
 
+    @pytest.mark.asyncio
+    async def test_delete_other_users_feed(self):
+        feed = _make_feed(user_id=uuid4())
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedPermissionError):
+            await service.delete_feed(uuid4(), feed.id)
+
 
 class TestFeedServiceList:
-    """Tests for FeedService.list_feeds()."""
+    """Tests for FeedService listing."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_feeds(self):
+        user_id = uuid4()
+        feeds = [_make_feed(user_id=user_id), _make_feed(user_id=user_id)]
+        feed_repo = AsyncMock()
+        feed_repo.get_by_user.return_value = feeds
+
+        service = _make_service(feed_repo=feed_repo)
+        result = await service.list_all_feeds(user_id)
+        assert len(result) == 2
+        feed_repo.get_by_user.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_list_feeds_in_category(self):
-        """Should return feeds in specified category."""
         user_id = uuid4()
         category_id = uuid4()
 
         cat_repo = AsyncMock()
         cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
 
-        feeds = [
-            Feed.create(category_id=category_id, url="https://a.com/feed.xml", title="Feed 1"),
-            Feed.create(category_id=category_id, url="https://b.com/feed.xml", title="Feed 2"),
-        ]
+        feeds = [_make_feed(user_id=user_id, category_ids=[category_id])]
         feed_repo = AsyncMock()
         feed_repo.get_by_category.return_value = feeds
 
         service = _make_service(feed_repo, cat_repo)
         result = await service.list_feeds_in_category(user_id, category_id)
 
-        assert len(result) == 2
+        assert len(result) == 1
         feed_repo.get_by_category.assert_called_once_with(category_id)
+
+    @pytest.mark.asyncio
+    async def test_list_feeds_in_category_other_user(self):
+        """Listing feeds in another user's category should raise permission error."""
+        cat_repo = AsyncMock()
+        cat_repo.get_by_id.return_value = _make_category(uuid4(), uuid4())
+
+        service = _make_service(cat_repo=cat_repo)
+        with pytest.raises(FeedPermissionError):
+            await service.list_feeds_in_category(uuid4(), uuid4())
 
 
 class TestFeedServiceRefresh:
     """Tests for FeedService.refresh_feed()."""
 
     @pytest.mark.asyncio
-    async def test_refresh_feed_fetches_new_posts(self):
-        """Should fetch and store new posts from feed."""
+    async def test_refresh_feed_success(self):
         user_id = uuid4()
-        category_id = uuid4()
-
-        feed = Feed.create(
-            category_id=category_id, url="https://example.com/feed.xml", title="Feed"
-        )
-
+        feed = _make_feed(user_id=user_id)
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.save.side_effect = lambda f: f
 
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
         fetcher = AsyncMock()
-        fetcher.fetch_posts.return_value = [
-            {"guid": "post-1", "title": "New Post 1"},
-            {"guid": "post-2", "title": "New Post 2"},
-        ]
+        fetcher.fetch_posts.return_value = [{"guid": "p1", "title": "New"}]
 
-        service = _make_service(feed_repo, cat_repo, fetcher=fetcher)
+        service = _make_service(feed_repo, fetcher=fetcher)
         result = await service.refresh_feed(user_id, feed.id)
 
         assert result.last_fetched_at is not None
         feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_refresh_feed_records_error_on_failure(self):
-        """Failed fetch should increment error count and store error message."""
+    async def test_refresh_feed_records_error(self):
         user_id = uuid4()
-        category_id = uuid4()
-
-        feed = Feed.create(
-            category_id=category_id, url="https://example.com/feed.xml", title="Feed"
-        )
-
+        feed = _make_feed(user_id=user_id)
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.save.side_effect = lambda f: f
 
-        cat_repo = AsyncMock()
-        cat_repo.get_by_id.return_value = _make_category(user_id, category_id)
-
         fetcher = AsyncMock()
         fetcher.fetch_posts.side_effect = Exception("Connection timeout")
 
-        service = _make_service(feed_repo, cat_repo, fetcher=fetcher)
+        service = _make_service(feed_repo, fetcher=fetcher)
         result = await service.refresh_feed(user_id, feed.id)
 
         assert result.fetch_error_count == 1

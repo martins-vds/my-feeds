@@ -21,9 +21,9 @@ import {
     DialogContent,
     DialogActions,
     Button,
-    Select,
-    FormControl,
-    InputLabel,
+    Checkbox,
+    FormGroup,
+    FormControlLabel,
     Alert,
     CircularProgress,
     Tooltip,
@@ -34,7 +34,7 @@ import {
     MoreVert as MoreVertIcon,
     Delete as DeleteIcon,
     Refresh as RefreshIcon,
-    DriveFileMove as MoveIcon,
+    LocalOffer as CategoriesIcon,
     Add as AddIcon,
     Error as ErrorIcon,
 } from "@mui/icons-material";
@@ -43,29 +43,27 @@ import { ApiError } from "../services/api";
 
 interface FeedListProps {
     feeds: Feed[];
-    categoryId: string;
     categories: Category[];
     onDeleteFeed: (feedId: string) => Promise<void>;
     onRefreshFeed: (feedId: string) => Promise<Feed>;
-    onMoveFeed: (feedId: string, categoryId: string) => Promise<Feed>;
+    onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
     onAddFeed: () => void;
 }
 
 export function FeedList({
     feeds,
-    categoryId,
     categories,
     onDeleteFeed,
     onRefreshFeed,
-    onMoveFeed,
+    onSetFeedCategories,
     onAddFeed,
 }: FeedListProps) {
     // Local state
     const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
     const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [showMoveDialog, setShowMoveDialog] = useState(false);
-    const [moveTargetCategory, setMoveTargetCategory] = useState<string>("");
+    const [showEditDialog, setShowEditDialog] = useState(false);
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [refreshingFeedId, setRefreshingFeedId] = useState<string | null>(
@@ -143,40 +141,48 @@ export function FeedList({
         setActionError(null);
     }, []);
 
-    // Move handlers
-    const handleMoveClick = useCallback(() => {
-        setMoveTargetCategory("");
-        setShowMoveDialog(true);
+    // Edit-categories handlers
+    const handleEditCategoriesClick = useCallback(() => {
+        const feed = selectedFeedId
+            ? feeds.find((f) => f.id === selectedFeedId)
+            : null;
+        setSelectedCategoryIds(feed ? [...feed.categoryIds] : []);
+        setShowEditDialog(true);
         setMenuAnchor(null); // Close menu but keep selectedFeedId
+    }, [selectedFeedId, feeds]);
+
+    const toggleCategory = useCallback((id: string) => {
+        setSelectedCategoryIds((prev) =>
+            prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+        );
     }, []);
 
-    const handleMoveConfirm = useCallback(async () => {
-        if (!selectedFeedId || !moveTargetCategory) return;
+    const handleEditConfirm = useCallback(async () => {
+        if (!selectedFeedId) return;
         setActionLoading(true);
         setActionError(null);
         try {
-            await onMoveFeed(selectedFeedId, moveTargetCategory);
-            setShowMoveDialog(false);
+            await onSetFeedCategories(selectedFeedId, selectedCategoryIds);
+            setShowEditDialog(false);
             setSelectedFeedId(null);
-            setMoveTargetCategory("");
+            setSelectedCategoryIds([]);
         } catch (err) {
             const message =
-                err instanceof ApiError ? err.message : "Failed to move feed";
+                err instanceof ApiError
+                    ? err.message
+                    : "Failed to update categories";
             setActionError(message);
         } finally {
             setActionLoading(false);
         }
-    }, [selectedFeedId, moveTargetCategory, onMoveFeed]);
+    }, [selectedFeedId, selectedCategoryIds, onSetFeedCategories]);
 
-    const handleMoveCancel = useCallback(() => {
-        setShowMoveDialog(false);
+    const handleEditCancel = useCallback(() => {
+        setShowEditDialog(false);
         setSelectedFeedId(null);
-        setMoveTargetCategory("");
+        setSelectedCategoryIds([]);
         setActionError(null);
     }, []);
-
-    // Get other categories (for move dialog)
-    const otherCategories = categories.filter((c) => c.id !== categoryId);
 
     // Empty state
     if (feeds.length === 0) {
@@ -200,7 +206,7 @@ export function FeedList({
     return (
         <Box sx={{ pl: 4 }}>
             {/* Action error */}
-            {actionError && !showDeleteConfirm && !showMoveDialog && (
+            {actionError && !showDeleteConfirm && !showEditDialog && (
                 <Alert severity="error" sx={{ mx: 2, my: 1 }}>
                     {actionError}
                 </Alert>
@@ -300,14 +306,12 @@ export function FeedList({
                     </ListItemIcon>
                     <ListItemText>Refresh</ListItemText>
                 </MenuItem>
-                {otherCategories.length > 0 && (
-                    <MenuItem onClick={handleMoveClick}>
-                        <ListItemIcon>
-                            <MoveIcon fontSize="small" />
-                        </ListItemIcon>
-                        <ListItemText>Move to...</ListItemText>
-                    </MenuItem>
-                )}
+                <MenuItem onClick={handleEditCategoriesClick}>
+                    <ListItemIcon>
+                        <CategoriesIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Edit categories</ListItemText>
+                </MenuItem>
                 <MenuItem onClick={handleDeleteClick}>
                     <ListItemIcon>
                         <DeleteIcon fontSize="small" color="error" />
@@ -352,38 +356,44 @@ export function FeedList({
                 </DialogActions>
             </Dialog>
 
-            {/* Move dialog */}
+            {/* Edit categories dialog */}
             <Dialog
-                open={showMoveDialog}
-                onClose={handleMoveCancel}
+                open={showEditDialog}
+                onClose={handleEditCancel}
                 maxWidth="sm"
                 fullWidth
             >
-                <DialogTitle>Move Feed</DialogTitle>
+                <DialogTitle>Edit categories</DialogTitle>
                 <DialogContent>
                     <Typography sx={{ mb: 2 }}>
-                        Move "{selectedFeed?.title || selectedFeed?.url}" to
-                        another category:
+                        Choose the categories for "
+                        {selectedFeed?.title || selectedFeed?.url}". A feed can
+                        belong to any number of categories, or none.
                     </Typography>
-                    <FormControl fullWidth>
-                        <InputLabel>Target Category</InputLabel>
-                        <Select
-                            value={moveTargetCategory}
-                            onChange={(e) =>
-                                setMoveTargetCategory(e.target.value)
-                            }
-                            label="Target Category"
-                        >
-                            {otherCategories.map((category) => (
-                                <MenuItem
+                    {categories.length === 0 ? (
+                        <Typography color="text.secondary" variant="body2">
+                            No categories yet. Create one first.
+                        </Typography>
+                    ) : (
+                        <FormGroup>
+                            {categories.map((category) => (
+                                <FormControlLabel
                                     key={category.id}
-                                    value={category.id}
-                                >
-                                    {category.name}
-                                </MenuItem>
+                                    control={
+                                        <Checkbox
+                                            checked={selectedCategoryIds.includes(
+                                                category.id
+                                            )}
+                                            onChange={() =>
+                                                toggleCategory(category.id)
+                                            }
+                                        />
+                                    }
+                                    label={category.name}
+                                />
                             ))}
-                        </Select>
-                    </FormControl>
+                        </FormGroup>
+                    )}
                     {actionError && (
                         <Alert severity="error" sx={{ mt: 2 }}>
                             {actionError}
@@ -391,18 +401,18 @@ export function FeedList({
                     )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleMoveCancel} disabled={actionLoading}>
+                    <Button onClick={handleEditCancel} disabled={actionLoading}>
                         Cancel
                     </Button>
                     <Button
-                        onClick={handleMoveConfirm}
+                        onClick={handleEditConfirm}
                         variant="contained"
-                        disabled={actionLoading || !moveTargetCategory}
+                        disabled={actionLoading}
                     >
                         {actionLoading ? (
                             <CircularProgress size={24} />
                         ) : (
-                            "Move"
+                            "Save"
                         )}
                     </Button>
                 </DialogActions>

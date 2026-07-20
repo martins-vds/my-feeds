@@ -51,7 +51,8 @@ export const PostsPage: React.FC = () => {
             categories.map((cat) => ({
                 id: cat.id,
                 name: cat.name,
-                feedCount: feeds.filter((f) => f.categoryId === cat.id).length,
+                feedCount: feeds.filter((f) => f.categoryIds.includes(cat.id))
+                    .length,
             })),
         [categories, feeds]
     );
@@ -60,7 +61,9 @@ export const PostsPage: React.FC = () => {
     const feedOptions = useMemo(
         () =>
             feeds
-                .filter((feed) => !categoryId || feed.categoryId === categoryId)
+                .filter(
+                    (feed) => !categoryId || feed.categoryIds.includes(categoryId)
+                )
                 .map((feed) => ({
                     id: feed.id,
                     title: feed.title || feed.url,

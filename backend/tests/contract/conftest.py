@@ -117,22 +117,38 @@ async def _seed_full_data():
             {"id": TEST_OTHER_CAT_ID, "uid": TEST_OTHER_USER_ID},
         )
 
-        # Feeds
+        # Feeds (owned by the user; categories assigned via feed_categories)
         await session.execute(
             text(
-                "INSERT INTO feeds (id, category_id, url, title, fetch_error_count) "
-                "VALUES (:id, :cid, 'https://example.com/feed.xml', 'Test Feed', 0) "
+                "INSERT INTO feeds (id, user_id, url, title, fetch_error_count) "
+                "VALUES (:id, :uid, 'https://example.com/feed.xml', 'Test Feed', 0) "
                 "ON CONFLICT (id) DO NOTHING"
             ),
-            {"id": TEST_FEED_ID, "cid": TEST_CATEGORY_ID},
+            {"id": TEST_FEED_ID, "uid": TEST_USER_ID},
         )
         await session.execute(
             text(
-                "INSERT INTO feeds (id, category_id, url, title, fetch_error_count) "
-                "VALUES (:id, :cid, 'https://other.com/feed.xml', 'Other Feed', 0) "
+                "INSERT INTO feeds (id, user_id, url, title, fetch_error_count) "
+                "VALUES (:id, :uid, 'https://other.com/feed.xml', 'Other Feed', 0) "
                 "ON CONFLICT (id) DO NOTHING"
             ),
-            {"id": TEST_OTHER_FEED_ID, "cid": TEST_OTHER_CAT_ID},
+            {"id": TEST_OTHER_FEED_ID, "uid": TEST_OTHER_USER_ID},
+        )
+
+        # Category assignments (many-to-many)
+        await session.execute(
+            text(
+                "INSERT INTO feed_categories (feed_id, category_id) "
+                "VALUES (:fid, :cid) ON CONFLICT DO NOTHING"
+            ),
+            {"fid": TEST_FEED_ID, "cid": TEST_CATEGORY_ID},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO feed_categories (feed_id, category_id) "
+                "VALUES (:fid, :cid) ON CONFLICT DO NOTHING"
+            ),
+            {"fid": TEST_OTHER_FEED_ID, "cid": TEST_OTHER_CAT_ID},
         )
 
         # Posts

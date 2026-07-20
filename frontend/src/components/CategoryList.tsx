@@ -40,6 +40,9 @@ import { FeedList } from "./FeedList";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { ApiError } from "../services/api";
 
+// Sentinel key for the pseudo-group that holds feeds with no categories.
+const UNCATEGORIZED_KEY = "__uncategorized__";
+
 interface CategoryListProps {
     categories: Category[];
     feeds: Feed[];
@@ -50,10 +53,10 @@ interface CategoryListProps {
     onCreateCategory: (name: string) => Promise<Category>;
     onUpdateCategory: (id: string, name: string) => Promise<Category>;
     onDeleteCategory: (id: string) => Promise<void>;
-    onAddFeed: (categoryId: string, url: string) => Promise<Feed>;
+    onAddFeed: (categoryId: string | null, url: string) => Promise<Feed>;
     onDeleteFeed: (feedId: string) => Promise<void>;
     onRefreshFeed: (feedId: string) => Promise<Feed>;
-    onMoveFeed: (feedId: string, categoryId: string) => Promise<Feed>;
+    onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
 }
 
 export function CategoryList({
@@ -69,7 +72,7 @@ export function CategoryList({
     onAddFeed,
     onDeleteFeed,
     onRefreshFeed,
-    onMoveFeed,
+    onSetFeedCategories,
 }: CategoryListProps) {
     // Local state
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -219,19 +222,19 @@ export function CategoryList({
 
     const handleAddFeedSubmit = useCallback(
         async (url: string) => {
-            if (!addFeedCategoryId) return;
             setActionLoading(true);
             setActionError(null);
             try {
                 await onAddFeed(addFeedCategoryId, url);
                 setShowAddFeedDialog(false);
-                setAddFeedCategoryId(null);
-                // Auto-expand the category
+                // Auto-expand the target group (a category or "Uncategorized")
+                const expandKey = addFeedCategoryId ?? UNCATEGORIZED_KEY;
                 setExpandedCategories((prev) => {
                     const newSet = new Set(prev);
-                    newSet.add(addFeedCategoryId);
+                    newSet.add(expandKey);
                     return newSet;
                 });
+                setAddFeedCategoryId(null);
             } catch (err) {
                 const message =
                     err instanceof ApiError
@@ -252,12 +255,17 @@ export function CategoryList({
         setActionError(null);
     }, []);
 
-    // Get feeds for a category
+    // Get feeds for a category (a feed can belong to several)
     const getFeedsForCategory = useCallback(
         (categoryId: string): Feed[] => {
-            return feeds.filter((feed) => feed.categoryId === categoryId);
+            return feeds.filter((feed) => feed.categoryIds.includes(categoryId));
         },
         [feeds]
+    );
+
+    // Feeds that carry no category at all
+    const uncategorizedFeeds = feeds.filter(
+        (feed) => feed.categoryIds.length === 0
     );
 
     // Get the category being deleted
@@ -291,7 +299,7 @@ export function CategoryList({
     }
 
     // Empty state
-    if (categories.length === 0) {
+    if (categories.length === 0 && uncategorizedFeeds.length === 0) {
         return (
             <Box sx={{ p: 2 }}>
                 <Typography color="text.secondary" sx={{ mb: 2 }}>
@@ -406,11 +414,10 @@ export function CategoryList({
                             >
                                 <FeedList
                                     feeds={categoryFeeds}
-                                    categoryId={category.id}
                                     categories={categories}
                                     onDeleteFeed={onDeleteFeed}
                                     onRefreshFeed={onRefreshFeed}
-                                    onMoveFeed={onMoveFeed}
+                                    onSetFeedCategories={onSetFeedCategories}
                                     onAddFeed={() => {
                                         setAddFeedCategoryId(category.id);
                                         setShowAddFeedDialog(true);
@@ -420,6 +427,49 @@ export function CategoryList({
                         </Box>
                     );
                 })}
+
+                {/* Uncategorized group */}
+                {uncategorizedFeeds.length > 0 && (
+                    <Box>
+                        <ListItem disablePadding>
+                            <ListItemButton
+                                onClick={() => toggleExpand(UNCATEGORIZED_KEY)}
+                            >
+                                <ListItemIcon sx={{ minWidth: 36 }}>
+                                    {expandedCategories.has(UNCATEGORIZED_KEY) ? (
+                                        <ExpandMoreIcon />
+                                    ) : (
+                                        <ChevronRightIcon />
+                                    )}
+                                </ListItemIcon>
+                                <ListItemIcon sx={{ minWidth: 36 }}>
+                                    <FolderIcon />
+                                </ListItemIcon>
+                                <ListItemText
+                                    primary="Uncategorized"
+                                    secondary={`${uncategorizedFeeds.length} feed${uncategorizedFeeds.length !== 1 ? "s" : ""}`}
+                                />
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse
+                            in={expandedCategories.has(UNCATEGORIZED_KEY)}
+                            timeout="auto"
+                            unmountOnExit
+                        >
+                            <FeedList
+                                feeds={uncategorizedFeeds}
+                                categories={categories}
+                                onDeleteFeed={onDeleteFeed}
+                                onRefreshFeed={onRefreshFeed}
+                                onSetFeedCategories={onSetFeedCategories}
+                                onAddFeed={() => {
+                                    setAddFeedCategoryId(null);
+                                    setShowAddFeedDialog(true);
+                                }}
+                            />
+                        </Collapse>
+                    </Box>
+                )}
             </List>
 
             {/* Context menu */}
@@ -466,8 +516,8 @@ export function CategoryList({
                 <DialogContent>
                     <Typography>
                         Are you sure you want to delete "{deletingCategory?.name}"?
-                        This will also delete all {deletingCategory?.feedCount || 0}{" "}
-                        feed(s) in this category.
+                        The feeds themselves are kept; they'll just lose this
+                        category label.
                     </Typography>
                     {actionError && (
                         <Alert severity="error" sx={{ mt: 2 }}>

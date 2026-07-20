@@ -19,7 +19,7 @@ export function FeedsPage() {
         updateCategory,
         deleteCategory,
         addFeed,
-        moveFeed,
+        setFeedCategories,
         deleteFeed,
         refreshFeed,
         refresh,
@@ -81,7 +81,7 @@ export function FeedsPage() {
                     onAddFeed={addFeed}
                     onDeleteFeed={deleteFeed}
                     onRefreshFeed={refreshFeed}
-                    onMoveFeed={moveFeed}
+                    onSetFeedCategories={setFeedCategories}
                 />
             </Paper>
         </Container>

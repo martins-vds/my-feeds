@@ -187,7 +187,9 @@ class TestPostServiceListPosts:
 
         user_id = uuid4()
         feed_id = uuid4()
-        mock_feed = MagicMock(id=feed_id, title="Test Feed", icon_url="https://example.com/icon.png")
+        mock_feed = MagicMock(
+            id=feed_id, title="Test Feed", icon_url="https://example.com/icon.png"
+        )
         mock_post = MagicMock(
             id=uuid4(),
             feed_id=feed_id,
@@ -247,7 +249,7 @@ class TestPostServiceReadState:
             feed_id=feed_id,
             is_read=False,
         )
-        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_feed = MagicMock(id=feed_id, user_id=user_id)
         mock_category = MagicMock(id=category_id, user_id=user_id)
 
         mock_post_repository.get_by_id.return_value = mock_post
@@ -281,7 +283,7 @@ class TestPostServiceReadState:
 
         # Setup mocks
         mock_post = MagicMock(id=post_id, feed_id=feed_id, is_read=True)
-        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_feed = MagicMock(id=feed_id, user_id=user_id)
         mock_category = MagicMock(id=category_id, user_id=user_id)
 
         mock_post_repository.get_by_id.return_value = mock_post
@@ -337,7 +339,7 @@ class TestPostServiceReadState:
 
         # Setup mocks - category belongs to another user
         mock_post = MagicMock(id=post_id, feed_id=feed_id)
-        mock_feed = MagicMock(id=feed_id, category_id=category_id)
+        mock_feed = MagicMock(id=feed_id, user_id=other_user_id)
         mock_category = MagicMock(id=category_id, user_id=other_user_id)
 
         mock_post_repository.get_by_id.return_value = mock_post

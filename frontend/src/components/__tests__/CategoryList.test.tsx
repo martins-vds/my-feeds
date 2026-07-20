@@ -23,7 +23,7 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
 function makeFeed(overrides: Partial<Feed> = {}): Feed {
   return {
     id: "feed-1",
-    categoryId: "cat-1",
+    categoryIds: ["cat-1"],
     url: "https://example.com/feed.xml",
     title: "Example Feed",
     description: null,
@@ -50,7 +50,7 @@ const defaultProps = {
   onAddFeed: vi.fn().mockResolvedValue(makeFeed()),
   onDeleteFeed: vi.fn().mockResolvedValue(undefined),
   onRefreshFeed: vi.fn().mockResolvedValue(makeFeed()),
-  onMoveFeed: vi.fn().mockResolvedValue(makeFeed()),
+  onSetFeedCategories: vi.fn().mockResolvedValue(makeFeed()),
 };
 
 describe("CategoryList", () => {

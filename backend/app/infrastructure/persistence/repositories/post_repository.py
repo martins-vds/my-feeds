@@ -11,8 +11,8 @@ from sqlalchemy.orm import selectinload
 from app.domain.feed_management.entities.post import Post
 from app.domain.feed_management.repositories.post_repository import PostRepository, ReadState
 from app.infrastructure.persistence.models.audio import AudioModel
-from app.infrastructure.persistence.models.category import CategoryModel
 from app.infrastructure.persistence.models.feed import FeedModel
+from app.infrastructure.persistence.models.feed_category import feed_categories
 from app.infrastructure.persistence.models.post import PostModel
 from app.infrastructure.persistence.models.user_post import UserPostModel
 
@@ -51,18 +51,19 @@ class SQLAlchemyPostRepository(PostRepository):
         limit: int = 50,
     ) -> List[Post]:
         """Get posts for a user with optional filters."""
-        # Base query joining posts -> feeds -> categories for user filter
+        # Base query joining posts -> feeds (owned by the user)
         query = (
             select(PostModel)
             .join(FeedModel, PostModel.feed_id == FeedModel.id)
-            .join(CategoryModel, FeedModel.category_id == CategoryModel.id)
-            .where(CategoryModel.user_id == user_id)
+            .where(FeedModel.user_id == user_id)
             .options(selectinload(PostModel.feed), selectinload(PostModel.audio))
         )
 
         # Apply filters
         if category_id is not None:
-            query = query.where(FeedModel.category_id == category_id)
+            query = query.join(feed_categories, FeedModel.id == feed_categories.c.feed_id).where(
+                feed_categories.c.category_id == category_id
+            )
 
         if feed_id is not None:
             query = query.where(PostModel.feed_id == feed_id)
@@ -116,10 +117,12 @@ class SQLAlchemyPostRepository(PostRepository):
     async def exists_by_guid(self, feed_id: UUID, guid: str) -> bool:
         """Check if a post with the given GUID exists in the feed."""
         result = await self._session.execute(
-            select(exists().where(
-                PostModel.feed_id == feed_id,
-                PostModel.guid == guid,
-            ))
+            select(
+                exists().where(
+                    PostModel.feed_id == feed_id,
+                    PostModel.guid == guid,
+                )
+            )
         )
         return result.scalar() or False
 
@@ -159,9 +162,7 @@ class SQLAlchemyPostRepository(PostRepository):
 
     async def delete(self, id: UUID) -> bool:
         """Delete a post by ID."""
-        result = await self._session.execute(
-            delete(PostModel).where(PostModel.id == id)
-        )
+        result = await self._session.execute(delete(PostModel).where(PostModel.id == id))
         await self._session.flush()
         return result.rowcount > 0
 
@@ -173,9 +174,7 @@ class SQLAlchemyPostRepository(PostRepository):
         await self._session.flush()
         return result.rowcount
 
-    async def mark_as_read(
-        self, user_id: UUID, post_id: UUID, is_read: bool = True
-    ) -> None:
+    async def mark_as_read(self, user_id: UUID, post_id: UUID, is_read: bool = True) -> None:
         """Mark a post as read/unread for a user."""
         # Check if user_post record exists
         result = await self._session.execute(
@@ -202,9 +201,7 @@ class SQLAlchemyPostRepository(PostRepository):
 
         await self._session.flush()
 
-    async def get_read_state(
-        self, user_id: UUID, post_id: UUID
-    ) -> tuple[bool, Optional[datetime]]:
+    async def get_read_state(self, user_id: UUID, post_id: UUID) -> tuple[bool, Optional[datetime]]:
         """Get read state for a specific post and user."""
         result = await self._session.execute(
             select(UserPostModel).where(

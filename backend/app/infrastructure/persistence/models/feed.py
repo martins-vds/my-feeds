@@ -36,9 +36,9 @@ class FeedModel(Base):
         primary_key=True,
         default=uuid4,
     )
-    category_id: Mapped[UUID] = mapped_column(
+    user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("categories.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -97,8 +97,9 @@ class FeedModel(Base):
     )
 
     # Relationships
-    category: Mapped["CategoryModel"] = relationship(
+    categories: Mapped[list["CategoryModel"]] = relationship(
         "CategoryModel",
+        secondary="feed_categories",
         back_populates="feeds",
     )
     posts: Mapped[list["PostModel"]] = relationship(
@@ -109,8 +110,8 @@ class FeedModel(Base):
     )
 
     __table_args__ = (
-        # Feed URL must be unique per category
-        UniqueConstraint("category_id", "url", name="uq_feed_category_url"),
+        # Feed URL must be unique per user
+        UniqueConstraint("user_id", "url", name="uq_feed_user_url"),
         {"comment": "RSS/Atom feed subscriptions"},
     )
 

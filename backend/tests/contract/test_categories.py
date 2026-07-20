@@ -83,15 +83,16 @@ class TestCreateCategory:
     @pytest.mark.asyncio
     async def test_create_category_success(self, client, auth_headers):
         """Valid category creation should return 201."""
+        unique_name = f"Tech-{uuid4().hex[:8]}"
         response = await client.post(
             "/api/categories",
-            json={"name": "Technology"},
+            json={"name": unique_name},
             headers=auth_headers,
         )
 
         assert response.status_code == 201
         data = await response.get_json()
-        assert data["name"] == "Technology"
+        assert data["name"] == unique_name
         assert "id" in data
         assert data["position"] >= 0
         assert data["feedCount"] == 0

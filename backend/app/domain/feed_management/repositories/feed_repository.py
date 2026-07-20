@@ -73,19 +73,6 @@ class FeedRepository(ABC):
         ...
 
     @abstractmethod
-    async def exists_by_url_in_category(self, category_id: UUID, url: str) -> bool:
-        """Check if a feed with the given URL exists in the category.
-
-        Args:
-            category_id: The category's UUID
-            url: Feed URL to check
-
-        Returns:
-            True if URL exists in category, False otherwise
-        """
-        ...
-
-    @abstractmethod
     async def exists_by_url_for_user(self, user_id: UUID, url: str) -> bool:
         """Check if a feed with the given URL exists for the user anywhere.
 

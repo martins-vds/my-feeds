@@ -4,6 +4,7 @@
 from app.infrastructure.persistence.models.user import UserModel
 from app.infrastructure.persistence.models.category import CategoryModel
 from app.infrastructure.persistence.models.feed import FeedModel
+from app.infrastructure.persistence.models.feed_category import feed_categories
 from app.infrastructure.persistence.models.post import PostModel
 from app.infrastructure.persistence.models.user_post import UserPostModel
 from app.infrastructure.persistence.models.audio import AudioModel
@@ -15,6 +16,7 @@ __all__ = [
     "UserModel",
     "CategoryModel",
     "FeedModel",
+    "feed_categories",
     "PostModel",
     "UserPostModel",
     "AudioModel",

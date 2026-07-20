@@ -131,13 +131,12 @@ class PostService:
         if not post:
             raise PostNotFoundError(f"Post {post_id} not found")
 
-        # Verify user has access to this post's feed
+        # Verify the post's feed belongs to the user
         feed = await self._feed_repository.get_by_id(post.feed_id)
         if not feed:
             raise PostNotFoundError(f"Post {post_id} not found")
 
-        category = await self._category_repository.get_by_id(feed.category_id)
-        if not category or category.user_id != user_id:
+        if feed.user_id != user_id:
             raise PostPermissionError("You don't have access to this post")
 
         # Get read state

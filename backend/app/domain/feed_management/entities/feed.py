@@ -13,7 +13,7 @@ class Feed:
     """
 
     id: UUID = field(default_factory=uuid4)
-    category_id: UUID = field(default_factory=uuid4)
+    user_id: UUID = field(default_factory=uuid4)
     url: str = ""
     title: str | None = None
     description: str | None = None
@@ -24,6 +24,7 @@ class Feed:
     fetch_error_count: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
+    category_ids: list[UUID] = field(default_factory=list)
 
     # Domain validation constants
     MAX_URL_LENGTH = 2048
@@ -59,7 +60,7 @@ class Feed:
             icon_url: Favicon/icon URL
         """
         if title is not None:
-            self.title = title[:self.MAX_TITLE_LENGTH] if title else None
+            self.title = title[: self.MAX_TITLE_LENGTH] if title else None
         if description is not None:
             self.description = description
         if site_url is not None:
@@ -108,34 +109,46 @@ class Feed:
         """
         return self.last_error is not None
 
-    def move_to_category(self, new_category_id: UUID) -> None:
-        """Move feed to a different category.
+    def set_categories(self, category_ids: list[UUID]) -> None:
+        """Replace the feed's category labels.
+
+        Categories are optional labels (0..many); this does not affect feed
+        ownership, which belongs to the user.
 
         Args:
-            new_category_id: Target category's UUID
+            category_ids: The categories to assign (may be empty).
         """
-        self.category_id = new_category_id
+        # De-duplicate while preserving order
+        seen: set[UUID] = set()
+        unique: list[UUID] = []
+        for cid in category_ids:
+            if cid not in seen:
+                seen.add(cid)
+                unique.append(cid)
+        self.category_ids = unique
         self.updated_at = datetime.utcnow()
 
     @classmethod
     def create(
         cls,
-        category_id: UUID,
+        user_id: UUID,
         url: str,
         title: str | None = None,
         description: str | None = None,
         site_url: str | None = None,
         icon_url: str | None = None,
+        category_ids: list[UUID] | None = None,
     ) -> "Feed":
         """Factory method to create a new feed subscription.
 
         Args:
-            category_id: Parent category's UUID
+            user_id: Owner's user UUID
             url: RSS/Atom feed URL
             title: Feed title (optional, can be fetched)
             description: Feed description (optional)
             site_url: Website URL (optional)
             icon_url: Icon URL (optional)
+            category_ids: Optional category labels to assign
 
         Returns:
             New Feed instance
@@ -144,12 +157,13 @@ class Feed:
             ValueError: If validation fails
         """
         return cls(
-            category_id=category_id,
+            user_id=user_id,
             url=url,
             title=title,
             description=description,
             site_url=site_url,
             icon_url=icon_url,
+            category_ids=list(category_ids or []),
         )
 
     def to_dict(self) -> dict:
@@ -160,13 +174,16 @@ class Feed:
         """
         return {
             "id": str(self.id),
-            "categoryId": str(self.category_id),
+            "userId": str(self.user_id),
+            "categoryIds": [str(cid) for cid in self.category_ids],
             "url": self.url,
             "title": self.title or self.url,  # Fallback to URL if no title
             "description": self.description,
             "siteUrl": self.site_url,
             "iconUrl": self.icon_url,
-            "lastFetchedAt": self.last_fetched_at.isoformat() + "Z" if self.last_fetched_at else None,
+            "lastFetchedAt": self.last_fetched_at.isoformat() + "Z"
+            if self.last_fetched_at
+            else None,
             "hasError": self.has_error(),
             "createdAt": self.created_at.isoformat() + "Z",
         }

@@ -64,8 +64,8 @@ class CategoryModel(Base):
     )
     feeds: Mapped[list["FeedModel"]] = relationship(
         "FeedModel",
-        back_populates="category",
-        cascade="all, delete-orphan",
+        secondary="feed_categories",
+        back_populates="categories",
     )
 
     __table_args__ = (

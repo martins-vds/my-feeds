@@ -30,7 +30,7 @@ export interface Category {
  */
 export interface Feed {
     id: string;
-    categoryId: string;
+    categoryIds: string[];
     url: string;
     title: string | null;
     description: string | null;

@@ -23,9 +23,7 @@ class SQLAlchemyCategoryRepository(CategoryRepository):
 
     async def get_by_id(self, id: UUID) -> Category | None:
         """Get a category by its ID."""
-        result = await self._session.execute(
-            select(CategoryModel).where(CategoryModel.id == id)
-        )
+        result = await self._session.execute(select(CategoryModel).where(CategoryModel.id == id))
         model = result.scalar_one_or_none()
         if model:
             # Get feed count for category
@@ -66,18 +64,14 @@ class SQLAlchemyCategoryRepository(CategoryRepository):
     async def count_by_user(self, user_id: UUID) -> int:
         """Count categories for a user."""
         result = await self._session.execute(
-            select(func.count()).select_from(CategoryModel).where(
-                CategoryModel.user_id == user_id
-            )
+            select(func.count()).select_from(CategoryModel).where(CategoryModel.user_id == user_id)
         )
         return result.scalar_one()
 
     async def get_max_position(self, user_id: UUID) -> int:
         """Get the maximum position value for a user's categories."""
         result = await self._session.execute(
-            select(func.max(CategoryModel.position)).where(
-                CategoryModel.user_id == user_id
-            )
+            select(func.max(CategoryModel.position)).where(CategoryModel.user_id == user_id)
         )
         max_pos = result.scalar_one_or_none()
         return max_pos if max_pos is not None else -1
@@ -117,21 +111,19 @@ class SQLAlchemyCategoryRepository(CategoryRepository):
 
     async def delete(self, id: UUID) -> bool:
         """Delete a category by ID (cascades to feeds)."""
-        result = await self._session.execute(
-            delete(CategoryModel).where(CategoryModel.id == id)
-        )
+        result = await self._session.execute(delete(CategoryModel).where(CategoryModel.id == id))
         await self._session.flush()
         return result.rowcount > 0
 
     async def _get_feed_count(self, category_id: UUID) -> int:
-        """Get count of feeds in a category."""
+        """Get count of feeds labelled with a category."""
         # Import here to avoid circular dependency
-        from app.infrastructure.persistence.models.feed import FeedModel
+        from app.infrastructure.persistence.models.feed_category import feed_categories
 
         result = await self._session.execute(
-            select(func.count()).select_from(FeedModel).where(
-                FeedModel.category_id == category_id
-            )
+            select(func.count())
+            .select_from(feed_categories)
+            .where(feed_categories.c.category_id == category_id)
         )
         return result.scalar_one()
 
