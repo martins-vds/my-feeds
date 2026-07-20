@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CategoryList } from "../CategoryList";
 import type { Category, Feed } from "../../types";
@@ -64,9 +64,9 @@ describe("CategoryList", () => {
       expect(screen.getByRole("progressbar")).toBeInTheDocument();
     });
 
-    it("should display empty state when no categories exist", () => {
+    it("should display empty state when no categories or feeds exist", () => {
       render(<CategoryList {...defaultProps} categories={[]} />);
-      expect(screen.getByText(/no categories yet/i)).toBeInTheDocument();
+      expect(screen.getByText(/no feeds yet/i)).toBeInTheDocument();
     });
 
     it("should display categories in position order", () => {
@@ -245,6 +245,52 @@ describe("CategoryList", () => {
 
       await userEvent.click(screen.getByText("Expandable"));
       expect(onSelectCategory).toHaveBeenCalledWith("c1");
+    });
+  });
+
+  describe("adding feeds without a category", () => {
+    it("shows a top-level add feed button", () => {
+      const cats = [makeCategory()];
+      render(<CategoryList {...defaultProps} categories={cats} />);
+      expect(screen.getByLabelText("add feed")).toBeInTheDocument();
+    });
+
+    it("adds an uncategorized feed from the empty state", async () => {
+      const onAddFeed = vi.fn().mockResolvedValue(makeFeed({ categoryIds: [] }));
+      render(<CategoryList {...defaultProps} categories={[]} onAddFeed={onAddFeed} />);
+
+      // Empty state offers a contained "Add Feed" button (no category needed)
+      await userEvent.click(screen.getByRole("button", { name: "Add Feed" }));
+
+      const dialog = screen.getByRole("dialog");
+      await userEvent.type(
+        within(dialog).getByLabelText("Feed URL"),
+        "https://example.com/feed.xml"
+      );
+      await userEvent.click(within(dialog).getByRole("button", { name: "Add Feed" }));
+
+      await waitFor(() => {
+        expect(onAddFeed).toHaveBeenCalledWith(null, "https://example.com/feed.xml");
+      });
+    });
+
+    it("adds an uncategorized feed from the header button", async () => {
+      const onAddFeed = vi.fn().mockResolvedValue(makeFeed({ categoryIds: [] }));
+      const cats = [makeCategory()];
+      render(<CategoryList {...defaultProps} categories={cats} onAddFeed={onAddFeed} />);
+
+      await userEvent.click(screen.getByLabelText("add feed"));
+
+      const dialog = screen.getByRole("dialog");
+      await userEvent.type(
+        within(dialog).getByLabelText("Feed URL"),
+        "https://news.example/rss"
+      );
+      await userEvent.click(within(dialog).getByRole("button", { name: "Add Feed" }));
+
+      await waitFor(() => {
+        expect(onAddFeed).toHaveBeenCalledWith(null, "https://news.example/rss");
+      });
     });
   });
 });

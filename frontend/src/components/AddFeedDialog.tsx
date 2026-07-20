@@ -138,7 +138,8 @@ export function AddFeedDialog({
                         sx={{ mb: 2 }}
                     >
                         Enter the URL of an RSS or Atom feed. We'll fetch the
-                        feed metadata and add it to your category.
+                        feed metadata and add it to your feeds. Categories are
+                        optional and can be assigned later.
                     </Typography>
                     <TextField
                         autoFocus

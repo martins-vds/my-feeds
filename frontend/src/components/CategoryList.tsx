@@ -33,6 +33,7 @@ import {
     Delete as DeleteIcon,
     ExpandMore as ExpandMoreIcon,
     ChevronRight as ChevronRightIcon,
+    RssFeed as RssFeedIcon,
 } from "@mui/icons-material";
 import type { Category, Feed } from "../types";
 import { CategoryForm } from "./CategoryForm";
@@ -220,6 +221,13 @@ export function CategoryList({
         handleMenuClose();
     }, [menuCategoryId, handleMenuClose]);
 
+    // Add a feed from the top level (no category required)
+    const handleAddFeedTopLevel = useCallback(() => {
+        setAddFeedCategoryId(null);
+        setShowAddFeedDialog(true);
+        setActionError(null);
+    }, []);
+
     const handleAddFeedSubmit = useCallback(
         async (url: string) => {
             setActionLoading(true);
@@ -298,35 +306,11 @@ export function CategoryList({
         );
     }
 
-    // Empty state
-    if (categories.length === 0 && uncategorizedFeeds.length === 0) {
-        return (
-            <Box sx={{ p: 2 }}>
-                <Typography color="text.secondary" sx={{ mb: 2 }}>
-                    No categories yet
-                </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={handleAddCategory}
-                >
-                    Add Category
-                </Button>
-                <CategoryForm
-                    open={showCategoryForm}
-                    category={editingCategory}
-                    onSubmit={handleCategoryFormSubmit}
-                    onCancel={handleCategoryFormCancel}
-                    error={actionError}
-                    loading={actionLoading}
-                />
-            </Box>
-        );
-    }
+    const isEmpty = categories.length === 0 && uncategorizedFeeds.length === 0;
 
     return (
         <Box>
-            {/* Header with Add button */}
+            {/* Header with add actions */}
             <Box
                 sx={{
                     display: "flex",
@@ -337,16 +321,27 @@ export function CategoryList({
                     borderColor: "divider",
                 }}
             >
-                <Typography variant="h6">Categories</Typography>
-                <Tooltip title="Add category">
-                    <IconButton
-                        onClick={handleAddCategory}
-                        color="primary"
-                        aria-label="add category"
-                    >
-                        <AddIcon />
-                    </IconButton>
-                </Tooltip>
+                <Typography variant="h6">Feeds &amp; Categories</Typography>
+                <Box sx={{ display: "flex", gap: 0.5 }}>
+                    <Tooltip title="Add feed">
+                        <IconButton
+                            onClick={handleAddFeedTopLevel}
+                            color="primary"
+                            aria-label="add feed"
+                        >
+                            <RssFeedIcon />
+                        </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Add category">
+                        <IconButton
+                            onClick={handleAddCategory}
+                            color="primary"
+                            aria-label="add category"
+                        >
+                            <AddIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
             </Box>
 
             {/* Action error */}
@@ -358,6 +353,21 @@ export function CategoryList({
 
             {/* Category list */}
             <List sx={{ py: 0 }}>
+                {isEmpty && (
+                    <Box sx={{ p: 3, textAlign: "center" }}>
+                        <Typography color="text.secondary" sx={{ mb: 2 }}>
+                            No feeds yet. Add a feed to get started &mdash;
+                            categories are optional.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            startIcon={<RssFeedIcon />}
+                            onClick={handleAddFeedTopLevel}
+                        >
+                            Add Feed
+                        </Button>
+                    </Box>
+                )}
                 {categories.map((category) => {
                     const isExpanded = expandedCategories.has(category.id);
                     const isSelected = selectedCategoryId === category.id;
