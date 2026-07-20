@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 from zoneinfo import available_timezones
 
-from quart import Blueprint, jsonify, redirect, request, url_for
+from quart import Blueprint, jsonify, redirect, request
 from sqlalchemy.exc import IntegrityError
 
 from app.api.middleware import ConflictError, UnauthorizedError, ValidationError
@@ -20,9 +20,15 @@ _VALID_TIMEZONES: frozenset[str] = available_timezones()
 
 
 def get_redirect_uri(provider: str) -> str:
-    """Build the OAuth callback redirect URI."""
-    # In production, use absolute URL from settings
-    return url_for("api.auth.callback", provider=provider, _external=True)
+    """Build the OAuth callback redirect URI.
+
+    Built from ``oauth_redirect_base_url`` so it points at the browser-reachable
+    backend URL and matches the callback registered with the OAuth provider,
+    rather than the internal ``backend:5000`` docker hostname seen via the proxy.
+    """
+    settings = get_settings_instance()
+    base = settings.oauth_redirect_base_url.rstrip("/")
+    return f"{base}/api/auth/{provider}/callback"
 
 
 @bp.route("/login/<provider>")
@@ -97,7 +103,7 @@ async def callback(provider: str):
             user_info["provider_id"],
         )
 
-        frontend_url = "/" if settings.is_production else "http://localhost:5173/"
+        frontend_url = "/" if settings.is_production else settings.frontend_url
         response = redirect(frontend_url)
 
         if existing_user:

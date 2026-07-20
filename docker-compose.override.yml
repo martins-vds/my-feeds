@@ -27,6 +27,10 @@ services:
       # Poll files for changes so hypercorn's --reload detects edits on the
       # bind mount (WSL2/Docker filesystem events don't cross it reliably).
       WATCHFILES_FORCE_POLLING: "true"
+      # OAuth callback + post-login redirect must be browser-reachable URLs
+      # (not internal docker hostnames). These track the published host ports.
+      OAUTH_REDIRECT_BASE_URL: http://localhost:${BACKEND_PORT:-5000}
+      FRONTEND_URL: http://localhost:${FRONTEND_DEV_PORT:-5173}
     volumes:
       - ./backend:/app
 

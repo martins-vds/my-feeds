@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     microsoft_client_id: str = ""
     microsoft_client_secret: str = ""
 
+    # Public URLs (browser-reachable; used for OAuth callbacks & redirects)
+    oauth_redirect_base_url: str = Field(
+        default="http://localhost:5000",
+        description=(
+            "Public base URL of the backend. OAuth callback URIs are built from "
+            "it and must match the URI registered with each provider."
+        ),
+    )
+    frontend_url: str = Field(
+        default="http://localhost:5173",
+        description="Public base URL of the frontend, used for post-login redirects in dev.",
+    )
+
     # Azure Text-to-Speech
     azure_speech_key: str = ""
     azure_speech_region: str = "eastus"
