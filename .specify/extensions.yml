@@ -1,0 +1,31 @@
+installed:
+- superb
+settings:
+  auto_execute_hooks: true
+hooks:
+  after_specify:
+  - extension: superb
+    command: speckit.superb.brainstorm
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Refine the new spec.md with Superpowers brainstorming before clarification
+      or planning?
+    description: 'Optional spec refinement gate. Uses an installed superpowers brainstorming
+      skill to strengthen the active Spec Kit spec.md while preserving Spec Kit ownership
+      of specification creation.
+
+      '
+    condition: null
+  before_implement:
+  - extension: superb
+    command: speckit.superb.implementation-gate
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.superb.implementation-gate?
+    description: 'Mandatory readiness gate. Reports test-first constraints without
+      executing tasks or taking ownership from speckit.implement.
+
+      '
+    condition: null

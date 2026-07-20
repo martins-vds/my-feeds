@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "extensions": {
+    "superb": {
+      "version": "1.9.0",
+      "source": "local",
+      "manifest_hash": "sha256:8eeb32744ff32d571e7b6da07acab43207e392d8b62c067344232c288727e2d8",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "agy": [
+          "speckit.superb.check",
+          "speckit.superb.brainstorm",
+          "speckit.superb.implementation-gate",
+          "speckit.superb.critique",
+          "speckit.superb.debug",
+          "speckit.superb.respond",
+          "speckit.superb.finish"
+        ],
+        "codex": [
+          "speckit.superb.check",
+          "speckit.superb.brainstorm",
+          "speckit.superb.implementation-gate",
+          "speckit.superb.critique",
+          "speckit.superb.debug",
+          "speckit.superb.respond",
+          "speckit.superb.finish"
+        ],
+        "copilot": [
+          "speckit.superb.check",
+          "speckit.superb.brainstorm",
+          "speckit.superb.implementation-gate",
+          "speckit.superb.critique",
+          "speckit.superb.debug",
+          "speckit.superb.respond",
+          "speckit.superb.finish"
+        ],
+        "zed": [
+          "speckit.superb.check",
+          "speckit.superb.brainstorm",
+          "speckit.superb.implementation-gate",
+          "speckit.superb.critique",
+          "speckit.superb.debug",
+          "speckit.superb.respond",
+          "speckit.superb.finish"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-07-20T16:57:15.363371+00:00"
+    }
+  }
+}
