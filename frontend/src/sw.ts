@@ -22,10 +22,12 @@ import { ExpirationPlugin } from "workbox-expiration";
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
 
 // Service worker global scope
-const sw = self as unknown as ServiceWorkerGlobalScope & typeof globalThis;
+declare let self: ServiceWorkerGlobalScope & typeof globalThis;
+const sw = self;
 
-// Precache static assets injected by VitePWA
-precacheAndRoute(sw.__WB_MANIFEST);
+// Precache static assets injected by VitePWA. The injectManifest build step
+// replaces the literal `self.__WB_MANIFEST` reference below with the manifest.
+precacheAndRoute(self.__WB_MANIFEST);
 
 // Clean up old caches
 cleanupOutdatedCaches();

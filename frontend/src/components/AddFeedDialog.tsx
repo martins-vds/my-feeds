@@ -54,7 +54,6 @@ function validateUrl(url: string): string | null {
 
 export function AddFeedDialog({
     open,
-    categoryId,
     onSubmit,
     onCancel,
     error,
