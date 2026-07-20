@@ -88,8 +88,10 @@ class Post:
         if len(title) > cls.MAX_TITLE_LENGTH:
             title = title[: cls.MAX_TITLE_LENGTH]
 
-        if not link or len(link) > cls.MAX_LINK_LENGTH:
-            raise ValueError(f"Link must be 1-{cls.MAX_LINK_LENGTH} characters")
+        # Link is optional: some feeds (e.g. podcasts) omit a per-item link.
+        link = link or ""
+        if len(link) > cls.MAX_LINK_LENGTH:
+            raise ValueError(f"Link must be at most {cls.MAX_LINK_LENGTH} characters")
 
         if author and len(author) > cls.MAX_AUTHOR_LENGTH:
             author = author[: cls.MAX_AUTHOR_LENGTH]
@@ -123,12 +125,13 @@ class Post:
         text = self.summary or self.content or ""
         # Strip HTML tags (simple approach)
         import re
+
         text = re.sub(r"<[^>]+>", "", text)
         text = text.strip()
-        
+
         if len(text) <= max_length:
             return text
-        
+
         # Truncate at word boundary
         truncated = text[:max_length]
         last_space = truncated.rfind(" ")

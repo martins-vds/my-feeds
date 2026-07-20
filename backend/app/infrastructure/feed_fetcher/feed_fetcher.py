@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
@@ -137,16 +137,12 @@ class FeedFetcher:
             async with aiohttp.ClientSession(timeout=self._timeout) as session:
                 async with session.get(url) as response:
                     if response.status != 200:
-                        raise FeedFetchError(
-                            f"HTTP {response.status}: {response.reason}"
-                        )
+                        raise FeedFetchError(f"HTTP {response.status}: {response.reason}")
 
                     # Check content length
                     content_length = response.content_length
                     if content_length and content_length > self.MAX_CONTENT_LENGTH:
-                        raise FeedFetchError(
-                            f"Feed too large: {content_length} bytes"
-                        )
+                        raise FeedFetchError(f"Feed too large: {content_length} bytes")
 
                     return await response.text()
 
@@ -216,6 +212,17 @@ class FeedFetcher:
                 if link_info.get("rel") == "alternate":
                     link = link_info.get("href", "")
                     break
+        # Fall back to an enclosure URL (e.g. podcast audio) when the entry
+        # has no web link of its own.
+        if not link:
+            for enclosure in entry.get("enclosures") or []:
+                href = enclosure.get("href")
+                if href:
+                    link = href
+                    break
+        # Last resort: use the guid when it is itself a URL.
+        if not link and isinstance(guid, str) and guid.startswith(("http://", "https://")):
+            link = guid
 
         # Get content
         content = None
@@ -232,20 +239,21 @@ class FeedFetcher:
         if not author and entry.get("authors"):
             author = entry.authors[0].get("name")
 
-        # Get published date
+        # Get published date (normalized to timezone-aware UTC so it can be
+        # compared against stored timestamps on incremental refreshes).
         published = None
         if entry.get("published_parsed"):
             try:
-                published = datetime(*entry.published_parsed[:6])
+                published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
             except (TypeError, ValueError):
                 pass
         if published is None and entry.get("updated_parsed"):
             try:
-                published = datetime(*entry.updated_parsed[:6])
+                published = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
             except (TypeError, ValueError):
                 pass
         if published is None:
-            published = datetime.utcnow()
+            published = datetime.now(timezone.utc)
 
         return FeedPost(
             guid=guid,

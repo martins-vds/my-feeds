@@ -3,8 +3,10 @@
 from uuid import UUID
 
 from app.domain.feed_management.entities.feed import Feed
+from app.domain.feed_management.entities.post import Post
 from app.domain.feed_management.repositories.category_repository import CategoryRepository
 from app.domain.feed_management.repositories.feed_repository import FeedRepository
+from app.domain.feed_management.repositories.post_repository import PostRepository
 from app.domain.feed_management.services.feed_validator import (
     FeedValidationError,
     FeedValidator,
@@ -54,6 +56,7 @@ class FeedService:
         self,
         feed_repository: FeedRepository,
         category_repository: CategoryRepository,
+        post_repository: PostRepository | None = None,
         feed_fetcher: FeedFetcher | None = None,
         feed_validator: FeedValidator | None = None,
     ) -> None:
@@ -62,11 +65,13 @@ class FeedService:
         Args:
             feed_repository: Repository for feed persistence
             category_repository: Repository for category lookup
+            post_repository: Repository for persisting fetched posts
             feed_fetcher: Service for fetching feed content
             feed_validator: Service for validating feed URLs
         """
         self._feed_repository = feed_repository
         self._category_repository = category_repository
+        self._post_repository = post_repository
         self._fetcher = feed_fetcher or FeedFetcher()
         self._validator = feed_validator or FeedValidator(self._fetcher)
 
@@ -174,7 +179,18 @@ class FeedService:
             category_ids=category_ids,
         )
 
-        return await self._feed_repository.save(feed)
+        saved = await self._feed_repository.save(feed)
+
+        # Ingest the feed's current posts so they appear immediately.
+        # Best-effort: the URL was just validated, so a transient fetch error
+        # must not block adding the (valid) feed — posts can be pulled later
+        # via refresh.
+        try:
+            await self._fetch_and_save_posts(saved)
+        except Exception:
+            pass
+
+        return saved
 
     async def set_feed_categories(
         self, user_id: UUID, feed_id: UUID, category_ids: list[UUID]
@@ -241,20 +257,60 @@ class FeedService:
         feed = await self.get_feed(user_id, feed_id)
 
         try:
-            # Fetch new posts
-            posts = await self._fetcher.fetch_posts(
-                feed.url,
-                since=feed.last_fetched_at,
-            )
-
-            # TODO: Save posts to repository (implemented in US3)
-            # For now, just update feed metadata
+            await self._fetch_and_save_posts(feed)
             feed.record_successful_fetch()
-
         except Exception as e:
             feed.record_fetch_error(str(e))
 
         return await self._feed_repository.save(feed)
+
+    async def _fetch_and_save_posts(self, feed: Feed) -> int:
+        """Fetch the feed's entries and persist any new posts.
+
+        The feed must already be persisted (posts reference it via FK).
+
+        Args:
+            feed: The feed to ingest posts for.
+
+        Returns:
+            The number of new posts saved.
+
+        Raises:
+            Exception: If fetching/parsing the feed fails. Callers decide
+                whether to swallow the error or record it on the feed.
+        """
+        if self._post_repository is None:
+            return 0
+
+        fetched = await self._fetcher.fetch_posts(
+            feed.url,
+            since=feed.last_fetched_at,
+        )
+
+        posts: list[Post] = []
+        for entry in fetched:
+            try:
+                posts.append(
+                    Post.create(
+                        feed_id=feed.id,
+                        guid=entry.guid,
+                        title=entry.title,
+                        link=entry.link,
+                        published_at=entry.published_at,
+                        content=entry.content,
+                        summary=entry.summary,
+                        author=entry.author,
+                    )
+                )
+            except (ValueError, AttributeError):
+                # Skip entries missing required fields.
+                continue
+
+        if not posts:
+            return 0
+
+        saved = await self._post_repository.save_many(posts)
+        return len(saved)
 
     async def get_feed_count(self, user_id: UUID) -> int:
         """Get total feed count for a user.

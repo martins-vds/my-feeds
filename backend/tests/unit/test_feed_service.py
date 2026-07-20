@@ -4,6 +4,7 @@ Feeds are owned by the user; categories are optional many-to-many labels.
 Tests use mock repositories and fetchers to isolate service logic.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from app.domain.feed_management.services.feed_validator import (
     FeedValidationError,
     ValidationResult,
 )
+from app.infrastructure.feed_fetcher.feed_fetcher import FeedPost
 
 
 def _make_category(user_id=None, category_id=None):
@@ -43,10 +45,11 @@ def _make_feed(user_id=None, category_ids=None, url="https://example.com/feed.xm
     )
 
 
-def _make_service(feed_repo=None, cat_repo=None, fetcher=None, validator=None):
+def _make_service(feed_repo=None, cat_repo=None, fetcher=None, validator=None, post_repo=None):
     return FeedService(
         feed_repository=feed_repo or AsyncMock(),
         category_repository=cat_repo or AsyncMock(),
+        post_repository=post_repo or AsyncMock(),
         feed_fetcher=fetcher or AsyncMock(),
         feed_validator=validator or AsyncMock(),
     )
@@ -58,6 +61,18 @@ def _valid_result():
         title="Example Blog",
         description="A blog about examples",
         site_url="https://example.com",
+    )
+
+
+def _make_feed_post(guid="p1"):
+    return FeedPost(
+        guid=guid,
+        title=f"Post {guid}",
+        content="<p>body</p>",
+        summary="A summary",
+        author="Author",
+        link=f"https://example.com/{guid}",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -177,6 +192,55 @@ class TestFeedServiceAdd:
         service = _make_service(cat_repo=cat_repo)
         with pytest.raises(CategoryNotFoundError):
             await service.add_feed(uuid4(), "https://example.com/feed.xml", [uuid4()])
+
+    @pytest.mark.asyncio
+    async def test_add_feed_ingests_posts(self):
+        """Adding a feed fetches and stores its current posts."""
+        user_id = uuid4()
+        feed_repo = AsyncMock()
+        feed_repo.count_by_user.return_value = 0
+        feed_repo.exists_by_url_for_user.return_value = False
+        feed_repo.save.side_effect = lambda f: f
+
+        validator = AsyncMock()
+        validator.validate_url.return_value = _valid_result()
+
+        fetcher = AsyncMock()
+        fetcher.fetch_posts.return_value = [_make_feed_post("a"), _make_feed_post("b")]
+
+        post_repo = AsyncMock()
+        post_repo.save_many.side_effect = lambda posts: posts
+
+        service = _make_service(
+            feed_repo, validator=validator, fetcher=fetcher, post_repo=post_repo
+        )
+        result = await service.add_feed(user_id, "https://example.com/feed.xml")
+
+        post_repo.save_many.assert_called_once()
+        saved_posts = post_repo.save_many.call_args[0][0]
+        assert {p.guid for p in saved_posts} == {"a", "b"}
+        assert all(p.feed_id == result.id for p in saved_posts)
+
+    @pytest.mark.asyncio
+    async def test_add_feed_succeeds_when_post_fetch_fails(self):
+        """A fetch error while ingesting posts must not fail add_feed."""
+        user_id = uuid4()
+        feed_repo = AsyncMock()
+        feed_repo.count_by_user.return_value = 0
+        feed_repo.exists_by_url_for_user.return_value = False
+        feed_repo.save.side_effect = lambda f: f
+
+        validator = AsyncMock()
+        validator.validate_url.return_value = _valid_result()
+
+        fetcher = AsyncMock()
+        fetcher.fetch_posts.side_effect = Exception("network down")
+
+        service = _make_service(feed_repo, validator=validator, fetcher=fetcher)
+        result = await service.add_feed(user_id, "https://example.com/feed.xml")
+
+        assert result.url == "https://example.com/feed.xml"
+        feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_add_feed_category_different_user(self):
@@ -391,12 +455,16 @@ class TestFeedServiceRefresh:
         feed_repo.save.side_effect = lambda f: f
 
         fetcher = AsyncMock()
-        fetcher.fetch_posts.return_value = [{"guid": "p1", "title": "New"}]
+        fetcher.fetch_posts.return_value = [_make_feed_post("p1")]
 
-        service = _make_service(feed_repo, fetcher=fetcher)
+        post_repo = AsyncMock()
+        post_repo.save_many.side_effect = lambda posts: posts
+
+        service = _make_service(feed_repo, fetcher=fetcher, post_repo=post_repo)
         result = await service.refresh_feed(user_id, feed.id)
 
         assert result.last_fetched_at is not None
+        post_repo.save_many.assert_called_once()
         feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
