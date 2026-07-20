@@ -35,6 +35,7 @@ services:
   # One-shot service: applies Alembic migrations, then exits. The backend waits
   # for this to complete successfully before it starts.
   migrate:
+    image: my-feeds-backend:prod
     build:
       context: ./backend
       target: prod
@@ -49,6 +50,7 @@ services:
       - myfeeds
 
   backend:
+    image: my-feeds-backend:prod
     build:
       context: ./backend
       target: prod
@@ -72,6 +74,7 @@ services:
       - myfeeds
 
   frontend:
+    image: my-feeds-frontend:prod
     build:
       context: ./frontend
       target: prod

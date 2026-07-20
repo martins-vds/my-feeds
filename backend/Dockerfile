@@ -36,10 +36,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ---- dev --------------------------------------------------------------------
 FROM base AS dev
 
-# Add development dependencies (pytest, ruff, ...). Application source is
-# bind-mounted at runtime via docker compose, so it is not copied here.
+# Add development dependencies (pytest, ruff, watchfiles, ...) from the `dev`
+# optional-dependencies extra. Application source is bind-mounted at runtime via
+# docker compose, so it is not copied here.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+    uv sync --frozen --extra dev --no-install-project
 
 ENV PYTHONPATH=/app
 EXPOSE 5000

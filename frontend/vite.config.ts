@@ -55,6 +55,9 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
+    // Poll the filesystem for changes when set (e.g. in Docker on WSL2/macOS,
+    // where native file-change events don't cross the bind mount).
+    watch: process.env.VITE_USE_POLLING ? { usePolling: true } : undefined,
     proxy: {
       "/api": {
         // Overridable so the Vite dev server can reach the backend both on the

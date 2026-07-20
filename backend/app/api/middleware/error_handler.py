@@ -5,6 +5,7 @@ from functools import wraps
 from typing import Any, Callable
 
 from quart import Response, jsonify
+from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,34 @@ async def handle_api_error(error: APIError) -> tuple[Response, int]:
     return error_response(error)
 
 
+async def handle_http_exception(error: HTTPException) -> tuple[Response, int]:
+    """Handle werkzeug/Quart HTTP exceptions (404, 405, ...).
+
+    These are expected client errors (e.g. requesting an unknown route), so they
+    are returned with their proper status code and logged without a traceback
+    rather than being treated as unexpected server errors.
+
+    Args:
+        error: The HTTP exception that was raised.
+
+    Returns:
+        Standardized error response using the exception's status code.
+    """
+    status_code = error.code or 500
+    logger.info("HTTP %d: %s", status_code, error.name)
+    return (
+        jsonify(
+            {
+                "error": {
+                    "code": error.name.upper().replace(" ", "_"),
+                    "message": error.description or error.name,
+                }
+            }
+        ),
+        status_code,
+    )
+
+
 async def handle_unexpected_error(error: Exception) -> tuple[Response, int]:
     """Handle unexpected exceptions.
 
@@ -125,4 +154,5 @@ def register_error_handlers(app: Any) -> None:
         app: The Quart application instance.
     """
     app.register_error_handler(APIError, handle_api_error)
+    app.register_error_handler(HTTPException, handle_http_exception)
     app.register_error_handler(Exception, handle_unexpected_error)

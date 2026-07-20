@@ -11,26 +11,34 @@
 # =============================================================================
 services:
   migrate:
+    image: my-feeds-backend:dev
     build:
       target: dev
     volumes:
       - ./backend:/app
 
   backend:
+    image: my-feeds-backend:dev
     build:
       target: dev
     environment:
       ENVIRONMENT: development
       DEBUG: "true"
+      # Poll files for changes so hypercorn's --reload detects edits on the
+      # bind mount (WSL2/Docker filesystem events don't cross it reliably).
+      WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./backend:/app
 
   frontend:
+    image: my-feeds-frontend:dev
     build:
       target: dev
     environment:
       VITE_API_URL: /api
       VITE_PROXY_TARGET: http://backend:5000
+      # Poll for file changes so Vite HMR works on the bind mount (WSL2/Docker).
+      VITE_USE_POLLING: "true"
     volumes:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules
