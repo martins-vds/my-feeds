@@ -194,8 +194,8 @@ class TestFeedServiceAdd:
             await service.add_feed(uuid4(), "https://example.com/feed.xml", [uuid4()])
 
     @pytest.mark.asyncio
-    async def test_add_feed_ingests_posts(self):
-        """Adding a feed fetches and stores its current posts."""
+    async def test_add_feed_does_not_ingest_posts_synchronously(self):
+        """Adding a feed must not fetch/save posts inline (that is backgrounded)."""
         user_id = uuid4()
         feed_repo = AsyncMock()
         feed_repo.count_by_user.return_value = 0
@@ -206,41 +206,17 @@ class TestFeedServiceAdd:
         validator.validate_url.return_value = _valid_result()
 
         fetcher = AsyncMock()
-        fetcher.fetch_posts.return_value = [_make_feed_post("a"), _make_feed_post("b")]
-
         post_repo = AsyncMock()
-        post_repo.save_many.side_effect = lambda posts: posts
 
         service = _make_service(
             feed_repo, validator=validator, fetcher=fetcher, post_repo=post_repo
         )
         result = await service.add_feed(user_id, "https://example.com/feed.xml")
 
-        post_repo.save_many.assert_called_once()
-        saved_posts = post_repo.save_many.call_args[0][0]
-        assert {p.guid for p in saved_posts} == {"a", "b"}
-        assert all(p.feed_id == result.id for p in saved_posts)
-
-    @pytest.mark.asyncio
-    async def test_add_feed_succeeds_when_post_fetch_fails(self):
-        """A fetch error while ingesting posts must not fail add_feed."""
-        user_id = uuid4()
-        feed_repo = AsyncMock()
-        feed_repo.count_by_user.return_value = 0
-        feed_repo.exists_by_url_for_user.return_value = False
-        feed_repo.save.side_effect = lambda f: f
-
-        validator = AsyncMock()
-        validator.validate_url.return_value = _valid_result()
-
-        fetcher = AsyncMock()
-        fetcher.fetch_posts.side_effect = Exception("network down")
-
-        service = _make_service(feed_repo, validator=validator, fetcher=fetcher)
-        result = await service.add_feed(user_id, "https://example.com/feed.xml")
-
         assert result.url == "https://example.com/feed.xml"
         feed_repo.save.assert_called_once()
+        fetcher.fetch_posts.assert_not_called()
+        post_repo.save_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_add_feed_category_different_user(self):
@@ -443,34 +419,33 @@ class TestFeedServiceList:
             await service.list_feeds_in_category(uuid4(), uuid4())
 
 
-class TestFeedServiceRefresh:
-    """Tests for FeedService.refresh_feed()."""
+class TestFeedServiceIngest:
+    """Tests for FeedService.ingest_feed() (the background ingestion op)."""
 
     @pytest.mark.asyncio
-    async def test_refresh_feed_success(self):
-        user_id = uuid4()
-        feed = _make_feed(user_id=user_id)
+    async def test_ingest_feed_saves_posts(self):
+        feed = _make_feed()
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.save.side_effect = lambda f: f
 
         fetcher = AsyncMock()
-        fetcher.fetch_posts.return_value = [_make_feed_post("p1")]
+        fetcher.fetch_posts.return_value = [_make_feed_post("p1"), _make_feed_post("p2")]
 
         post_repo = AsyncMock()
         post_repo.save_many.side_effect = lambda posts: posts
 
         service = _make_service(feed_repo, fetcher=fetcher, post_repo=post_repo)
-        result = await service.refresh_feed(user_id, feed.id)
+        count = await service.ingest_feed(feed.id)
 
-        assert result.last_fetched_at is not None
+        assert count == 2
         post_repo.save_many.assert_called_once()
+        assert feed.last_fetched_at is not None
         feed_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_refresh_feed_records_error(self):
-        user_id = uuid4()
-        feed = _make_feed(user_id=user_id)
+    async def test_ingest_feed_records_error(self):
+        feed = _make_feed()
         feed_repo = AsyncMock()
         feed_repo.get_by_id.return_value = feed
         feed_repo.save.side_effect = lambda f: f
@@ -479,7 +454,19 @@ class TestFeedServiceRefresh:
         fetcher.fetch_posts.side_effect = Exception("Connection timeout")
 
         service = _make_service(feed_repo, fetcher=fetcher)
-        result = await service.refresh_feed(user_id, feed.id)
+        count = await service.ingest_feed(feed.id)
 
-        assert result.fetch_error_count == 1
+        assert count == 0
+        assert feed.fetch_error_count == 1
         feed_repo.save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ingest_feed_missing_feed_is_noop(self):
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = None
+
+        service = _make_service(feed_repo)
+        count = await service.ingest_feed(uuid4())
+
+        assert count == 0
+        feed_repo.save.assert_not_called()

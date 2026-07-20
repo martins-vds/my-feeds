@@ -181,15 +181,8 @@ class FeedService:
 
         saved = await self._feed_repository.save(feed)
 
-        # Ingest the feed's current posts so they appear immediately.
-        # Best-effort: the URL was just validated, so a transient fetch error
-        # must not block adding the (valid) feed — posts can be pulled later
-        # via refresh.
-        try:
-            await self._fetch_and_save_posts(saved)
-        except Exception:
-            pass
-
+        # Post ingestion is handled separately as a background task, so adding
+        # a feed returns immediately instead of blocking on a full fetch.
         return saved
 
     async def set_feed_categories(
@@ -240,29 +233,31 @@ class FeedService:
 
         return await self._feed_repository.delete(feed_id)
 
-    async def refresh_feed(self, user_id: UUID, feed_id: UUID) -> Feed:
-        """Manually refresh a feed to fetch new posts.
+    async def ingest_feed(self, feed_id: UUID) -> int:
+        """Fetch and persist new posts for a feed (system operation).
+
+        Intended to be run from a background task, so there is no per-user
+        permission check. Fetch success/failure is recorded on the feed.
 
         Args:
-            user_id: The requesting user's UUID
-            feed_id: The feed's UUID
+            feed_id: The feed to ingest posts for.
 
         Returns:
-            The updated feed
-
-        Raises:
-            FeedNotFoundError: If feed doesn't exist
-            FeedPermissionError: If feed belongs to different user
+            The number of new posts saved (0 if the feed no longer exists).
         """
-        feed = await self.get_feed(user_id, feed_id)
+        feed = await self._feed_repository.get_by_id(feed_id)
+        if feed is None:
+            return 0
 
         try:
-            await self._fetch_and_save_posts(feed)
+            count = await self._fetch_and_save_posts(feed)
             feed.record_successful_fetch()
         except Exception as e:
             feed.record_fetch_error(str(e))
+            count = 0
 
-        return await self._feed_repository.save(feed)
+        await self._feed_repository.save(feed)
+        return count
 
     async def _fetch_and_save_posts(self, feed: Feed) -> int:
         """Fetch the feed's entries and persist any new posts.

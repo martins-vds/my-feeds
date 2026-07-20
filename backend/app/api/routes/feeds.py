@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from quart import Blueprint, jsonify, request
+from quart import Blueprint, current_app, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
 from app.application.services.feed_service import (
@@ -14,6 +14,7 @@ from app.application.services.feed_service import (
 )
 from app.config.container import get_request_container
 from app.domain.feed_management.services.feed_validator import FeedValidationError
+from app.infrastructure.jobs.feed_ingestion import ingest_feed_posts
 from app.infrastructure.oauth.session import session_manager
 
 bp = Blueprint("feeds", __name__)
@@ -97,6 +98,10 @@ async def add_feed(category_id: UUID):
     container = get_request_container()
     try:
         feed = await container.feed_service.add_feed(user_id, url, [category_id])
+        # Commit so the new feed is visible, then ingest its posts in the
+        # background instead of blocking the request.
+        await container.session.commit()
+        current_app.add_background_task(ingest_feed_posts, feed.id)
         return jsonify(feed.to_dict()), 201
     except FeedLimitError as e:
         raise ValidationError(str(e))
@@ -154,6 +159,10 @@ async def create_feed():
     container = get_request_container()
     try:
         feed = await container.feed_service.add_feed(user_id, url, category_ids)
+        # Commit so the new feed is visible, then ingest its posts in the
+        # background instead of blocking the request.
+        await container.session.commit()
+        current_app.add_background_task(ingest_feed_posts, feed.id)
         return jsonify(feed.to_dict()), 201
     except FeedLimitError as e:
         raise ValidationError(str(e))
@@ -248,18 +257,20 @@ async def delete_feed(feed_id: UUID):
 
 @bp.route("/feeds/<uuid:feed_id>/refresh", methods=["POST"])
 async def refresh_feed(feed_id: UUID):
-    """Manually refresh a feed to fetch new posts.
+    """Trigger a background refresh of a feed's posts.
 
     POST /api/feeds/{feedId}/refresh
 
-    Returns:
-        Updated feed with new posts
+    New posts are fetched and stored asynchronously; the response returns
+    immediately with the current feed.
     """
     user_id = get_current_user_id()
     container = get_request_container()
 
     try:
-        feed = await container.feed_service.refresh_feed(user_id, feed_id)
+        # Verify ownership, then re-fetch posts in the background.
+        feed = await container.feed_service.get_feed(user_id, feed_id)
+        current_app.add_background_task(ingest_feed_posts, feed_id)
         return jsonify(feed.to_dict())
     except FeedNotFoundError:
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
