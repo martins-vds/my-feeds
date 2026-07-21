@@ -3,6 +3,7 @@
  */
 
 import React, { useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Container,
     Box,
@@ -24,6 +25,8 @@ import { useFeedsData } from "../../hooks/useFeedsData";
  * PostsPage displays posts with filtering and pagination
  */
 export const PostsPage: React.FC = () => {
+    const navigate = useNavigate();
+
     // Posts data and filters
     const {
         posts,
@@ -76,15 +79,13 @@ export const PostsPage: React.FC = () => {
         [feeds, categoryId]
     );
 
-    // Handle post click - could navigate to detail page
-    const handlePostClick = useCallback((post: PostSummary) => {
-        // Auto-mark as read when opening
-        if (!post.isRead) {
-            markAsRead(post.id, true);
-        }
-        // Open in new tab (or could navigate to detail page)
-        window.open(post.link, "_blank", "noopener,noreferrer");
-    }, [markAsRead]);
+    // Handle post click - open the in-app reading page
+    const handlePostClick = useCallback(
+        (post: PostSummary) => {
+            navigate(`/posts/${post.id}`);
+        },
+        [navigate]
+    );
 
     // Load newly-ingested posts detected by background polling
     const handleShowNewPosts = useCallback(() => {

@@ -60,7 +60,7 @@ describe("AudioPlayer", () => {
 
     it("should display listen button with accessible label", () => {
       render(<AudioPlayer postId="post-1" />);
-      expect(screen.getByLabelText("Listen to post")).toBeInTheDocument();
+      expect(screen.getByLabelText("Listen to article")).toBeInTheDocument();
     });
 
     it("should call generateAudio when listen button is clicked", async () => {

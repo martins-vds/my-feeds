@@ -126,6 +126,51 @@ class AudioService:
                 error=str(e),
             )
 
+    async def generate_for_post(self, post_id: UUID) -> AudioResult:
+        """Generate audio for a post as a system operation (no user check).
+
+        Intended for background jobs. If audio already exists and is cached,
+        it is returned as-is rather than regenerated.
+
+        Args:
+            post_id: Post to generate audio for.
+
+        Returns:
+            AudioResult (READY on success, ERROR on TTS failure).
+
+        Raises:
+            ValueError: If the post doesn't exist.
+        """
+        post = await self._post_repo.get_by_id(post_id)
+        if not post:
+            raise ValueError(f"Post {post_id} not found")
+
+        existing_audio = await self._audio_repo.get_by_post_id(post_id)
+        if existing_audio and self._cache.exists(existing_audio.cache_key):
+            return AudioResult(
+                status=AudioStatus.READY,
+                post_id=post_id,
+                url=f"/api/audio/{existing_audio.cache_key}",
+                cache_key=existing_audio.cache_key,
+                duration_seconds=existing_audio.duration_seconds,
+            )
+
+        try:
+            audio = await self._generate_audio(post_id, post.content, post.title)
+            return AudioResult(
+                status=AudioStatus.READY,
+                post_id=post_id,
+                url=f"/api/audio/{audio.cache_key}",
+                cache_key=audio.cache_key,
+                duration_seconds=audio.duration_seconds,
+            )
+        except TTSError as e:
+            return AudioResult(
+                status=AudioStatus.ERROR,
+                post_id=post_id,
+                error=str(e),
+            )
+
     async def _generate_audio(
         self,
         post_id: UUID,

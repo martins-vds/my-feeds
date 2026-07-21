@@ -1,11 +1,11 @@
-import { Box, IconButton, LinearProgress, Typography, Tooltip, CircularProgress } from "@mui/material";
+import { Box, Button, IconButton, Typography, Tooltip, CircularProgress } from "@mui/material";
 import {
     PlayArrow as PlayIcon,
     Pause as PauseIcon,
-    VolumeUp as ListenIcon,
     Replay as RetryIcon,
 } from "@mui/icons-material";
 import { useAudioPlayer, type AudioStatus } from "../hooks/useAudioPlayer";
+import { Waveform } from "./Waveform";
 
 interface AudioPlayerProps {
     postId: string;
@@ -47,6 +47,7 @@ export function AudioPlayer({
         // error is available but not currently displayed
         generateAudio,
         toggle,
+        seek,
     } = useAudioPlayer(postId);
 
     // Use initial values if provided and no audio has been generated yet
@@ -66,19 +67,26 @@ export function AudioPlayer({
         generateAudio();
     };
 
+    const handleSeek = (fraction: number) => {
+        if (effectiveDuration) {
+            seek(fraction * effectiveDuration);
+        }
+    };
+
     // Idle state - show listen button
     if (effectiveStatus === "idle" || (!effectiveUrl && status === "idle")) {
         return (
-            <Tooltip title="Generate audio">
-                <IconButton
-                    onClick={handleListenClick}
-                    aria-label="Listen to post"
-                    color="primary"
-                    data-testid="listen-button"
-                >
-                    <ListenIcon />
-                </IconButton>
-            </Tooltip>
+            <Button
+                onClick={handleListenClick}
+                aria-label="Listen to article"
+                color="primary"
+                variant="outlined"
+                size="small"
+                startIcon={<PlayIcon />}
+                data-testid="listen-button"
+            >
+                Listen to article
+            </Button>
         );
     }
 
@@ -138,14 +146,10 @@ export function AudioPlayer({
             </IconButton>
 
             <Box sx={{ flexGrow: 1 }}>
-                <LinearProgress
-                    variant="determinate"
-                    value={progress}
-                    role="progressbar"
-                    aria-label="Audio progress"
-                    aria-valuenow={Math.round(progress)}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
+                <Waveform
+                    audioUrl={effectiveUrl}
+                    progress={progress}
+                    onSeek={handleSeek}
                 />
             </Box>
 
