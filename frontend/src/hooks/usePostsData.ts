@@ -38,6 +38,8 @@ interface UsePostsDataState {
     loading: boolean;
     loadingMore: boolean;
     error: string | null;
+    // Count of newly-ingested posts detected by background polling
+    newPostsCount: number;
     // Filters
     categoryId: string | null;
     feedId: string | null;
@@ -60,6 +62,10 @@ export type UsePostsDataReturn = UsePostsDataState & UsePostsDataActions;
 
 const DEFAULT_LIMIT = 50;
 
+// How often to poll for newly-ingested posts. Background ingestion means new
+// posts can appear after the page has already loaded.
+const POLL_INTERVAL_MS = 30000;
+
 /**
  * Hook for managing posts with filtering and pagination
  */
@@ -74,6 +80,7 @@ export function usePostsData(
         loading: true,
         loadingMore: false,
         error: null,
+        newPostsCount: 0,
         categoryId: initialCategoryId || null,
         feedId: initialFeedId || null,
         readState: "all",
@@ -118,7 +125,12 @@ export function usePostsData(
         if (fetchingRef.current) return;
         fetchingRef.current = true;
 
-        setState((prev) => ({ ...prev, loading: true, error: null }));
+        setState((prev) => ({
+            ...prev,
+            loading: true,
+            error: null,
+            newPostsCount: 0,
+        }));
         try {
             const response = await fetchPosts();
             setState((prev) => ({
@@ -172,6 +184,27 @@ export function usePostsData(
             fetchingRef.current = false;
         }
     }, [fetchPosts, state.hasMore, state.nextCursor]);
+
+    /**
+     * Poll the first page and count posts we don't already have.
+     */
+    const checkForNewPosts = useCallback(async () => {
+        if (fetchingRef.current) return;
+        try {
+            const response = await fetchPosts();
+            setState((prev) => {
+                // Don't interfere with an in-flight full load.
+                if (prev.loading) return prev;
+                const currentIds = new Set(prev.posts.map((p) => p.id));
+                const newCount = response.posts.filter(
+                    (p) => !currentIds.has(p.id)
+                ).length;
+                return { ...prev, newPostsCount: newCount };
+            });
+        } catch {
+            // Polling errors are non-fatal; ignore them.
+        }
+    }, [fetchPosts]);
 
     /**
      * Mark a post as read/unread
@@ -243,6 +276,37 @@ export function usePostsData(
         refresh();
     }, [state.categoryId, state.feedId, state.readState]);
 
+    // Poll for newly-ingested posts while the page is visible.
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            if (
+                typeof document === "undefined" ||
+                document.visibilityState === "visible"
+            ) {
+                checkForNewPosts();
+            }
+        }, POLL_INTERVAL_MS);
+        return () => clearInterval(intervalId);
+    }, [checkForNewPosts]);
+
+    // Re-check immediately when the tab regains focus / becomes visible.
+    useEffect(() => {
+        const check = () => {
+            if (
+                typeof document === "undefined" ||
+                document.visibilityState === "visible"
+            ) {
+                checkForNewPosts();
+            }
+        };
+        window.addEventListener("focus", check);
+        document.addEventListener("visibilitychange", check);
+        return () => {
+            window.removeEventListener("focus", check);
+            document.removeEventListener("visibilitychange", check);
+        };
+    }, [checkForNewPosts]);
+
     return {
         // State
         posts: state.posts,
@@ -251,6 +315,7 @@ export function usePostsData(
         loading: state.loading,
         loadingMore: state.loadingMore,
         error: state.error,
+        newPostsCount: state.newPostsCount,
         categoryId: state.categoryId,
         feedId: state.feedId,
         readState: state.readState,

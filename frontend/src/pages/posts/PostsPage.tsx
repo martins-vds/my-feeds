@@ -9,8 +9,12 @@ import {
     Typography,
     IconButton,
     Tooltip,
+    Button,
 } from "@mui/material";
-import { Refresh as RefreshIcon } from "@mui/icons-material";
+import {
+    Refresh as RefreshIcon,
+    ArrowUpward as ArrowUpwardIcon,
+} from "@mui/icons-material";
 import PostList from "../../components/PostList";
 import CategoryFilter from "../../components/CategoryFilter";
 import { usePostsData, type PostSummary } from "../../hooks/usePostsData";
@@ -30,6 +34,7 @@ export const PostsPage: React.FC = () => {
         categoryId,
         feedId,
         readState,
+        newPostsCount,
         setCategoryFilter,
         setFeedFilter,
         setReadStateFilter,
@@ -81,6 +86,12 @@ export const PostsPage: React.FC = () => {
         window.open(post.link, "_blank", "noopener,noreferrer");
     }, [markAsRead]);
 
+    // Load newly-ingested posts detected by background polling
+    const handleShowNewPosts = useCallback(() => {
+        refresh();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }, [refresh]);
+
     return (
         <Container maxWidth="md" sx={{ py: 3 }}>
             {/* Header */}
@@ -119,6 +130,20 @@ export const PostsPage: React.FC = () => {
                 onFeedChange={setFeedFilter}
                 onReadStateChange={setReadStateFilter}
             />
+
+            {/* New posts indicator */}
+            {newPostsCount > 0 && (
+                <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+                    <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<ArrowUpwardIcon />}
+                        onClick={handleShowNewPosts}
+                    >
+                        {newPostsCount} new post{newPostsCount === 1 ? "" : "s"}
+                    </Button>
+                </Box>
+            )}
 
             {/* Posts list */}
             <PostList
