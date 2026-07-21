@@ -201,11 +201,13 @@ async def get_feed(feed_id: UUID):
 
 
 @bp.route("/feeds/<uuid:feed_id>", methods=["PATCH"])
-async def update_feed_categories(feed_id: UUID):
-    """Replace the set of categories assigned to a feed.
+async def update_feed(feed_id: UUID):
+    """Update a feed's mutable fields.
 
     PATCH /api/feeds/{feedId}
-    Body: { "categoryIds": ["uuid", ...] }
+    Body (any subset):
+        { "categoryIds": ["uuid", ...] }   # replace category labels
+        { "isActive": true | false }        # resume / pause scheduled ingestion
 
     Returns:
         Updated feed
@@ -216,14 +218,19 @@ async def update_feed_categories(feed_id: UUID):
     if not data:
         raise ValidationError("Request body is required")
 
-    if "categoryIds" not in data:
-        raise ValidationError("categoryIds is required")
-
-    category_ids = _parse_category_ids(data.get("categoryIds"))
+    if "categoryIds" not in data and "isActive" not in data:
+        raise ValidationError("categoryIds or isActive is required")
 
     container = get_request_container()
     try:
-        feed = await container.feed_service.set_feed_categories(user_id, feed_id, category_ids)
+        feed = None
+        if "categoryIds" in data:
+            category_ids = _parse_category_ids(data.get("categoryIds"))
+            feed = await container.feed_service.set_feed_categories(user_id, feed_id, category_ids)
+        if "isActive" in data:
+            if not isinstance(data["isActive"], bool):
+                raise ValidationError("isActive must be a boolean")
+            feed = await container.feed_service.set_feed_active(user_id, feed_id, data["isActive"])
         return jsonify(feed.to_dict())
     except FeedNotFoundError:
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
@@ -262,7 +269,8 @@ async def refresh_feed(feed_id: UUID):
     POST /api/feeds/{feedId}/refresh
 
     New posts are fetched and stored asynchronously; the response returns
-    immediately with the current feed.
+    immediately with the current feed. Paused feeds cannot be refreshed
+    (resume the feed first) and return 409.
     """
     user_id = get_current_user_id()
     container = get_request_container()
@@ -270,6 +278,16 @@ async def refresh_feed(feed_id: UUID):
     try:
         # Verify ownership, then re-fetch posts in the background.
         feed = await container.feed_service.get_feed(user_id, feed_id)
+        if not feed.is_active:
+            return (
+                jsonify(
+                    {
+                        "error": "feed_paused",
+                        "message": "Feed is paused. Resume it to refresh.",
+                    }
+                ),
+                409,
+            )
         current_app.add_background_task(ingest_feed_posts, feed_id)
         return jsonify(feed.to_dict())
     except FeedNotFoundError:

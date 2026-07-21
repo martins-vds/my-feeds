@@ -307,6 +307,63 @@ class TestFeedServiceSetCategories:
             await service.set_feed_categories(uuid4(), feed.id, [])
 
 
+class TestFeedServiceSetActive:
+    """Tests for FeedService.set_feed_active()."""
+
+    @pytest.mark.asyncio
+    async def test_pause_feed(self):
+        """Setting active=False pauses the feed."""
+        user_id = uuid4()
+        feed = _make_feed(user_id=user_id)
+        assert feed.is_active is True
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+        feed_repo.save.side_effect = lambda f: f
+
+        service = _make_service(feed_repo=feed_repo)
+        result = await service.set_feed_active(user_id, feed.id, False)
+
+        assert result.is_active is False
+        feed_repo.save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_resume_feed(self):
+        """Setting active=True resumes a paused feed."""
+        user_id = uuid4()
+        feed = _make_feed(user_id=user_id)
+        feed.pause()
+        assert feed.is_active is False
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+        feed_repo.save.side_effect = lambda f: f
+
+        service = _make_service(feed_repo=feed_repo)
+        result = await service.set_feed_active(user_id, feed.id, True)
+
+        assert result.is_active is True
+
+    @pytest.mark.asyncio
+    async def test_set_active_feed_not_found(self):
+        """Non-existent feed should raise not found error."""
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = None
+
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedNotFoundError):
+            await service.set_feed_active(uuid4(), uuid4(), False)
+
+    @pytest.mark.asyncio
+    async def test_set_active_other_users_feed(self):
+        """Pausing another user's feed should raise permission error."""
+        feed = _make_feed(user_id=uuid4())
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+
+        service = _make_service(feed_repo=feed_repo)
+        with pytest.raises(FeedPermissionError):
+            await service.set_feed_active(uuid4(), feed.id, False)
+
+
 class TestFeedServiceGet:
     """Tests for FeedService.get_feed()."""
 

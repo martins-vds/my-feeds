@@ -38,6 +38,7 @@ export interface Feed {
     iconUrl: string | null;
     lastFetchedAt: string | null;
     fetchErrorCount: number;
+    isActive: boolean;
     createdAt: string;
     updatedAt: string;
 }

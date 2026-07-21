@@ -213,6 +213,33 @@ class FeedService:
         feed.set_categories(category_ids)
         return await self._feed_repository.save(feed)
 
+    async def set_feed_active(self, user_id: UUID, feed_id: UUID, is_active: bool) -> Feed:
+        """Pause or resume scheduled ingestion for a feed.
+
+        Pausing keeps the feed and its existing posts but excludes it from
+        scheduled ingestion. Resuming re-enables it. Ownership is enforced.
+
+        Args:
+            user_id: The requesting user's UUID
+            feed_id: The feed's UUID
+            is_active: ``True`` to resume, ``False`` to pause
+
+        Returns:
+            The updated feed
+
+        Raises:
+            FeedNotFoundError: If feed doesn't exist
+            FeedPermissionError: If feed belongs to a different user
+        """
+        feed = await self.get_feed(user_id, feed_id)
+
+        if is_active:
+            feed.resume()
+        else:
+            feed.pause()
+
+        return await self._feed_repository.save(feed)
+
     async def delete_feed(self, user_id: UUID, feed_id: UUID) -> bool:
         """Delete a feed subscription.
 

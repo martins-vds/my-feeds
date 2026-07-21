@@ -135,6 +135,37 @@ describe("useFeedsData hook", () => {
     });
   });
 
+  it("setFeedActive patches the feed's isActive flag and updates local state", async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "feed-1",
+          title: "TechCrunch",
+          url: "https://techcrunch.com/feed",
+          categoryIds: [],
+          isActive: true,
+        },
+      ]);
+    vi.mocked(api.patch).mockResolvedValue({
+      id: "feed-1",
+      categoryIds: [],
+      isActive: false,
+    });
+
+    const { result } = renderHook(() => useFeedsData());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.setFeedActive("feed-1", false);
+    });
+
+    expect(api.patch).toHaveBeenCalledWith("/feeds/feed-1", {
+      isActive: false,
+    });
+    expect(result.current.feeds[0].isActive).toBe(false);
+  });
+
   it("deleteCategory keeps feeds and only removes the category label", async () => {
     vi.mocked(api.get)
       .mockResolvedValueOnce([{ id: "cat-1", name: "Tech", feedCount: 1, position: 0 }])

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -83,6 +85,13 @@ class FeedModel(Base):
         nullable=False,
         default=0,
         comment="Consecutive fetch failures",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        default=True,
+        comment="Whether the feed is polled by scheduled ingestion",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

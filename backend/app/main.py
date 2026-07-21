@@ -96,8 +96,9 @@ def create_app() -> Quart:
         await init_db()
 
         # Background jobs (run separately from feed ingestion; skipped in
-        # tests): fill in TTS audio for posts that don't have it yet, and keep
-        # the audio cache within its retention/size limits.
+        # tests): poll active feeds for new posts on a schedule, fill in TTS
+        # audio for posts that don't have it yet, and keep the audio cache
+        # within its retention/size limits.
         if settings.environment != "testing":
             from app.infrastructure.jobs.audio_cleanup import (
                 run_audio_cleanup_loop,
@@ -105,7 +106,11 @@ def create_app() -> Quart:
             from app.infrastructure.jobs.audio_generation import (
                 run_audio_generation_loop,
             )
+            from app.infrastructure.jobs.feed_refresh import (
+                run_feed_refresh_loop,
+            )
 
+            app.add_background_task(run_feed_refresh_loop)
             app.add_background_task(run_audio_generation_loop)
             app.add_background_task(run_audio_cleanup_loop)
 

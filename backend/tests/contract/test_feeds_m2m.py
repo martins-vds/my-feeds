@@ -88,3 +88,67 @@ class TestSetFeedCategoriesAuthenticated:
             headers=auth_headers,
         )
         assert response.status_code == 404
+
+
+class TestSetFeedActiveAuthenticated:
+    """PATCH /api/feeds/{feedId} pauses/resumes scheduled ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_pause_then_resume_feed(self, client, auth_headers, feed_id):
+        # Pausing keeps the feed but flips isActive to false.
+        paused = await client.patch(
+            f"/api/feeds/{feed_id}",
+            json={"isActive": False},
+            headers=auth_headers,
+        )
+        assert paused.status_code == 200
+        assert (await paused.get_json())["isActive"] is False
+
+        # Restore to active so sibling tests see the seeded state.
+        resumed = await client.patch(
+            f"/api/feeds/{feed_id}",
+            json={"isActive": True},
+            headers=auth_headers,
+        )
+        assert resumed.status_code == 200
+        assert (await resumed.get_json())["isActive"] is True
+
+    @pytest.mark.asyncio
+    async def test_is_active_must_be_boolean(self, client, auth_headers, feed_id):
+        response = await client.patch(
+            f"/api/feeds/{feed_id}",
+            json={"isActive": "yes"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_refresh_blocked_while_paused(self, client, auth_headers, feed_id):
+        # Pausing a feed blocks manual refresh until it is resumed.
+        paused = await client.patch(
+            f"/api/feeds/{feed_id}",
+            json={"isActive": False},
+            headers=auth_headers,
+        )
+        assert paused.status_code == 200
+
+        refresh = await client.post(f"/api/feeds/{feed_id}/refresh", headers=auth_headers)
+        assert refresh.status_code == 409
+        assert (await refresh.get_json())["error"] == "feed_paused"
+
+        # Restore to active so sibling tests see the seeded state.
+        resumed = await client.patch(
+            f"/api/feeds/{feed_id}",
+            json={"isActive": True},
+            headers=auth_headers,
+        )
+        assert resumed.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_set_active_feed_not_found(self, client, auth_headers):
+        response = await client.patch(
+            f"/api/feeds/{uuid4()}",
+            json={"isActive": False},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404

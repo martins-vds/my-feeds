@@ -27,6 +27,7 @@ interface UseFeedsDataActions {
   // Feed operations
   addFeed: (categoryId: string | null, url: string) => Promise<Feed>;
   setFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
+  setFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
   deleteFeed: (feedId: string) => Promise<void>;
   refreshFeed: (feedId: string) => Promise<Feed>;
 
@@ -203,6 +204,22 @@ export function useFeedsData(): UseFeedsDataReturn {
   }, []);
 
   /**
+   * Pause or resume scheduled ingestion for a feed
+   */
+  const setFeedActive = useCallback(
+    async (feedId: string, isActive: boolean): Promise<Feed> => {
+      const updated = await api.patch<Feed>(`/feeds/${feedId}`, { isActive });
+      // Update local feed
+      setState((prev) => ({
+        ...prev,
+        feeds: prev.feeds.map((feed) => (feed.id === feedId ? updated : feed)),
+      }));
+      return updated;
+    },
+    []
+  );
+
+  /**
    * Select a category
    */
   const selectCategory = useCallback((categoryId: string | null) => {
@@ -226,6 +243,7 @@ export function useFeedsData(): UseFeedsDataReturn {
     deleteCategory,
     addFeed,
     setFeedCategories,
+    setFeedActive,
     deleteFeed,
     refreshFeed,
     selectCategory,

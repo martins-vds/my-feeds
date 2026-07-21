@@ -58,6 +58,7 @@ interface CategoryListProps {
     onDeleteFeed: (feedId: string) => Promise<void>;
     onRefreshFeed: (feedId: string) => Promise<Feed>;
     onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
+    onSetFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
 }
 
 export function CategoryList({
@@ -74,6 +75,7 @@ export function CategoryList({
     onDeleteFeed,
     onRefreshFeed,
     onSetFeedCategories,
+    onSetFeedActive,
 }: CategoryListProps) {
     // Local state
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -428,6 +430,7 @@ export function CategoryList({
                                     onDeleteFeed={onDeleteFeed}
                                     onRefreshFeed={onRefreshFeed}
                                     onSetFeedCategories={onSetFeedCategories}
+                                    onSetFeedActive={onSetFeedActive}
                                     onAddFeed={() => {
                                         setAddFeedCategoryId(category.id);
                                         setShowAddFeedDialog(true);
@@ -472,6 +475,7 @@ export function CategoryList({
                                 onDeleteFeed={onDeleteFeed}
                                 onRefreshFeed={onRefreshFeed}
                                 onSetFeedCategories={onSetFeedCategories}
+                                onSetFeedActive={onSetFeedActive}
                                 onAddFeed={() => {
                                     setAddFeedCategoryId(null);
                                     setShowAddFeedDialog(true);

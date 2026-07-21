@@ -25,6 +25,7 @@ class Feed:
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
     category_ids: list[UUID] = field(default_factory=list)
+    is_active: bool = True
 
     # Domain validation constants
     MAX_URL_LENGTH = 2048
@@ -128,6 +129,20 @@ class Feed:
         self.category_ids = unique
         self.updated_at = datetime.utcnow()
 
+    def pause(self) -> None:
+        """Pause the feed.
+
+        The feed and its posts are kept, but the feed is excluded from
+        scheduled ingestion (no new posts are fetched automatically).
+        """
+        self.is_active = False
+        self.updated_at = datetime.utcnow()
+
+    def resume(self) -> None:
+        """Resume scheduled ingestion for the feed."""
+        self.is_active = True
+        self.updated_at = datetime.utcnow()
+
     @classmethod
     def create(
         cls,
@@ -185,5 +200,6 @@ class Feed:
             if self.last_fetched_at
             else None,
             "hasError": self.has_error(),
+            "isActive": self.is_active,
             "createdAt": self.created_at.isoformat() + "Z",
         }

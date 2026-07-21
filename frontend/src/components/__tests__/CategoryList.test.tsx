@@ -31,6 +31,7 @@ function makeFeed(overrides: Partial<Feed> = {}): Feed {
     iconUrl: null,
     lastFetchedAt: null,
     fetchErrorCount: 0,
+    isActive: true,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -51,6 +52,7 @@ const defaultProps = {
   onDeleteFeed: vi.fn().mockResolvedValue(undefined),
   onRefreshFeed: vi.fn().mockResolvedValue(makeFeed()),
   onSetFeedCategories: vi.fn().mockResolvedValue(makeFeed()),
+  onSetFeedActive: vi.fn().mockResolvedValue(makeFeed()),
 };
 
 describe("CategoryList", () => {

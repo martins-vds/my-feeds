@@ -37,6 +37,8 @@ import {
     LocalOffer as CategoriesIcon,
     Add as AddIcon,
     Error as ErrorIcon,
+    Pause as PauseIcon,
+    PlayArrow as PlayArrowIcon,
 } from "@mui/icons-material";
 import type { Category, Feed } from "../types";
 import { ApiError } from "../services/api";
@@ -47,6 +49,7 @@ interface FeedListProps {
     onDeleteFeed: (feedId: string) => Promise<void>;
     onRefreshFeed: (feedId: string) => Promise<Feed>;
     onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
+    onSetFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
     onAddFeed: () => void;
 }
 
@@ -56,6 +59,7 @@ export function FeedList({
     onDeleteFeed,
     onRefreshFeed,
     onSetFeedCategories,
+    onSetFeedActive,
     onAddFeed,
 }: FeedListProps) {
     // Local state
@@ -109,6 +113,25 @@ export function FeedList({
             setRefreshingFeedId(null);
         }
     }, [selectedFeedId, handleMenuClose, onRefreshFeed]);
+
+    // Pause/resume handler
+    const handleToggleActive = useCallback(async () => {
+        if (!selectedFeedId) return;
+        const feed = feeds.find((f) => f.id === selectedFeedId);
+        if (!feed) return;
+        const feedId = selectedFeedId;
+        const nextActive = !feed.isActive;
+        handleMenuClose();
+        try {
+            await onSetFeedActive(feedId, nextActive);
+        } catch (err) {
+            const message =
+                err instanceof ApiError
+                    ? err.message
+                    : "Failed to update feed";
+            setActionError(message);
+        }
+    }, [selectedFeedId, feeds, handleMenuClose, onSetFeedActive]);
 
     // Delete handlers
     const handleDeleteClick = useCallback(() => {
@@ -217,10 +240,14 @@ export function FeedList({
                 {feeds.map((feed) => {
                     const isRefreshing = refreshingFeedId === feed.id;
                     const hasError = feed.fetchErrorCount > 0;
+                    const isPaused = !feed.isActive;
 
                     return (
                         <ListItem key={feed.id} disablePadding>
-                            <ListItemButton disabled={isRefreshing}>
+                            <ListItemButton
+                                disabled={isRefreshing}
+                                sx={{ opacity: isPaused ? 0.6 : 1 }}
+                            >
                                 <ListItemIcon sx={{ minWidth: 40 }}>
                                     {feed.iconUrl ? (
                                         <Avatar
@@ -265,6 +292,18 @@ export function FeedList({
                                                     />
                                                 </Tooltip>
                                             )}
+                                            {isPaused && (
+                                                <Tooltip title="Paused — not auto-refreshed">
+                                                    <Chip
+                                                        icon={
+                                                            <PauseIcon fontSize="small" />
+                                                        }
+                                                        label="Paused"
+                                                        size="small"
+                                                        variant="outlined"
+                                                    />
+                                                </Tooltip>
+                                            )}
                                         </Box>
                                     }
                                     secondary={
@@ -300,11 +339,26 @@ export function FeedList({
                 open={Boolean(menuAnchor)}
                 onClose={handleMenuClose}
             >
-                <MenuItem onClick={handleRefresh}>
+                <MenuItem
+                    onClick={handleRefresh}
+                    disabled={selectedFeed ? !selectedFeed.isActive : false}
+                >
                     <ListItemIcon>
                         <RefreshIcon fontSize="small" />
                     </ListItemIcon>
                     <ListItemText>Refresh</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handleToggleActive}>
+                    <ListItemIcon>
+                        {selectedFeed?.isActive ? (
+                            <PauseIcon fontSize="small" />
+                        ) : (
+                            <PlayArrowIcon fontSize="small" />
+                        )}
+                    </ListItemIcon>
+                    <ListItemText>
+                        {selectedFeed?.isActive ? "Pause" : "Resume"}
+                    </ListItemText>
                 </MenuItem>
                 <MenuItem onClick={handleEditCategoriesClick}>
                     <ListItemIcon>

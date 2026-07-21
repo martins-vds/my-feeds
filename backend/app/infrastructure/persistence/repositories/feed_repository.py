@@ -94,6 +94,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
             existing.last_fetched_at = feed.last_fetched_at
             existing.last_error = feed.last_error
             existing.fetch_error_count = feed.fetch_error_count
+            existing.is_active = feed.is_active
             existing.updated_at = feed.updated_at
         else:
             self._session.add(self._to_model(feed))
@@ -147,6 +148,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
             last_fetched_at=model.last_fetched_at,
             last_error=model.last_error,
             fetch_error_count=model.fetch_error_count,
+            is_active=model.is_active,
             created_at=model.created_at,
             updated_at=model.updated_at,
             category_ids=[category.id for category in model.categories],
@@ -166,6 +168,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
             last_fetched_at=entity.last_fetched_at,
             last_error=entity.last_error,
             fetch_error_count=entity.fetch_error_count,
+            is_active=entity.is_active,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
