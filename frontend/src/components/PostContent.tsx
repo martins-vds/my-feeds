@@ -4,43 +4,41 @@
 
 import React, { useMemo } from "react";
 import { Box, Typography } from "@mui/material";
+import DOMPurify from "dompurify";
 
 interface PostContentProps {
     content: string | null;
     summary: string | null;
 }
 
+// Feed content is untrusted third-party HTML. Open any links it contains in a
+// new tab without leaking the referrer or the window handle.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.tagName === "A") {
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noopener noreferrer");
+    }
+});
+
 /**
- * Sanitize HTML content to prevent XSS
- * In a production app, use DOMPurify or similar
+ * Sanitize untrusted feed HTML with DOMPurify to prevent XSS.
+ *
+ * DOMPurify already removes scripts, iframes, objects, embeds, event handlers
+ * and dangerous URLs. Feed articles don't need <style> or form controls, so
+ * those are dropped too.
  */
 function sanitizeHtml(html: string): string {
-    // Basic sanitization - in production, use a library like DOMPurify
-    // This is a simplified version for the demo
-    const div = document.createElement("div");
-    div.innerHTML = html;
-
-    // Remove potentially dangerous elements
-    const dangerousTags = ["script", "style", "iframe", "object", "embed", "form"];
-    dangerousTags.forEach((tag) => {
-        const elements = div.getElementsByTagName(tag);
-        while (elements.length > 0) {
-            elements[0].parentNode?.removeChild(elements[0]);
-        }
+    return DOMPurify.sanitize(html, {
+        FORBID_TAGS: [
+            "style",
+            "form",
+            "input",
+            "button",
+            "select",
+            "textarea",
+            "option",
+        ],
     });
-
-    // Remove event handlers from all elements
-    const allElements = div.getElementsByTagName("*");
-    for (const element of Array.from(allElements)) {
-        const attributes = Array.from(element.attributes);
-        for (const attr of attributes) {
-            if (attr.name.startsWith("on") || attr.value.startsWith("javascript:")) {
-                element.removeAttribute(attr.name);
-            }
-        }
-    }
-
-    return div.innerHTML;
 }
 
 /**

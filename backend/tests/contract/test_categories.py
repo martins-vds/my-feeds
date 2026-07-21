@@ -97,6 +97,10 @@ class TestCreateCategory:
         assert data["position"] >= 0
         assert data["feedCount"] == 0
 
+        # Clean up so created categories don't accumulate toward the per-user
+        # limit across runs against the shared dev database.
+        await client.delete(f"/api/categories/{data['id']}", headers=auth_headers)
+
     @pytest.mark.asyncio
     async def test_create_category_requires_authentication(self, client):
         """Unauthenticated request should return 401."""

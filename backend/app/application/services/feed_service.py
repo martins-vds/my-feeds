@@ -12,6 +12,7 @@ from app.domain.feed_management.services.feed_validator import (
     FeedValidator,
 )
 from app.infrastructure.feed_fetcher.feed_fetcher import FeedFetcher
+from app.infrastructure.sanitization.html_sanitizer import sanitize_html
 
 
 class FeedLimitError(Exception):
@@ -292,8 +293,8 @@ class FeedService:
                         title=entry.title,
                         link=entry.link,
                         published_at=entry.published_at,
-                        content=entry.content,
-                        summary=entry.summary,
+                        content=sanitize_html(entry.content),
+                        summary=sanitize_html(entry.summary),
                         author=entry.author,
                     )
                 )

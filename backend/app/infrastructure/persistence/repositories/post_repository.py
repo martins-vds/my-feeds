@@ -15,6 +15,7 @@ from app.infrastructure.persistence.models.feed import FeedModel
 from app.infrastructure.persistence.models.feed_category import feed_categories
 from app.infrastructure.persistence.models.post import PostModel
 from app.infrastructure.persistence.models.user_post import UserPostModel
+from app.infrastructure.sanitization.html_sanitizer import sanitize_html
 
 
 class SQLAlchemyPostRepository(PostRepository):
@@ -216,7 +217,11 @@ class SQLAlchemyPostRepository(PostRepository):
         return (False, None)  # Posts are unread by default
 
     def _to_entity(self, model: PostModel) -> Post:
-        """Convert SQLAlchemy model to domain entity."""
+        """Convert SQLAlchemy model to domain entity.
+
+        Content is sanitized on read (defense in depth) so even rows that were
+        stored before ingestion-time sanitization are safe when served.
+        """
         post = Post(
             id=model.id,
             feed_id=model.feed_id,
@@ -224,8 +229,8 @@ class SQLAlchemyPostRepository(PostRepository):
             title=model.title,
             link=model.link,
             published_at=model.published_at,
-            content=model.content,
-            summary=model.summary,
+            content=sanitize_html(model.content),
+            summary=sanitize_html(model.summary),
             author=model.author,
             fetched_at=model.fetched_at,
             is_read=False,  # Populated by caller

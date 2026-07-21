@@ -21,6 +21,7 @@ dependencies = [
     "pywebpush>=1.14.0",
     "azure-cognitiveservices-speech>=1.35.0",
     "edge-tts>=7.2.8",
+    "nh3>=0.3.6",
 ]
 
 [project.optional-dependencies]
