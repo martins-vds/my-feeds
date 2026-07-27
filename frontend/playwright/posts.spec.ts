@@ -1,176 +1,148 @@
 /**
- * E2E tests for the Posts browsing page (/posts).
+ * E2E tests for the unified reader (/posts): post list + sidebar navigation.
  */
 
-import { test, expect, mockApi, makePost, makeCategory, makeFeed } from "./fixtures";
+import {
+    test,
+    expect,
+    setupReaderApi,
+    makePost,
+    makeCategory,
+    makeFeed,
+} from "./fixtures";
 
 // ── Seed data ──────────────────────────────────────────────────────────
 
-const category = makeCategory({ id: "cat-1", name: "Tech", feedCount: 1 });
-const feed = makeFeed("cat-1", { id: "feed-1", title: "Tech Blog" });
+const catTech = makeCategory({ id: "cat-tech", name: "Technology", feedCount: 1 });
+const catNews = makeCategory({ id: "cat-news", name: "News", feedCount: 1 });
+const techFeed = makeFeed(["cat-tech"], { id: "feed-tech", title: "Tech Blog" });
+const newsFeed = makeFeed(["cat-news"], { id: "feed-news", title: "News Daily" });
+const blogFeed = makeFeed([], { id: "feed-blog", title: "Personal Blog" });
 
 function makePosts(count: number) {
-  return Array.from({ length: count }, (_, i) =>
-    makePost("feed-1", {
-      id: `post-${i + 1}`,
-      title: `Post Title ${i + 1}`,
-      feedTitle: "Tech Blog",
-      publishedAt: new Date(2026, 0, 15 - i, 12, 0, 0).toISOString(),
-      isRead: i >= 3, // first 3 unread, rest read
-      hasAudio: i === 0,
-    })
-  );
+    return Array.from({ length: count }, (_, i) =>
+        makePost("feed-tech", {
+            id: `post-${i + 1}`,
+            title: `Post Title ${i + 1}`,
+            feedTitle: "Tech Blog",
+            publishedAt: new Date(2026, 0, 15 - i, 12, 0, 0).toISOString(),
+            isRead: i >= 3,
+            hasAudio: i === 0,
+        })
+    );
 }
 
 const posts = makePosts(5);
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
-async function setupPostsPage(page: import("@playwright/test").Page) {
-  await mockApi(page, "**/api/categories", { categories: [category] });
-  await page.route("**/api/categories/cat-1/feeds", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ feeds: [feed] }),
-    })
-  );
-  await mockApi(page, "**/api/posts*", {
+const READER = {
+    categories: [catTech, catNews],
+    feeds: [techFeed, newsFeed, blogFeed],
     posts,
-    hasMore: false,
-    nextCursor: null,
-  });
-}
+    unread: { byFeed: { "feed-tech": 3, "feed-news": 5, "feed-blog": 2 }, total: 10 },
+};
 
-// ── Tests ──────────────────────────────────────────────────────────────
+// ── Post list ──────────────────────────────────────────────────────────
 
-test.describe("Posts Page", () => {
-  test("displays posts list", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-    await page.goto("/posts");
+test.describe("Reader — post list", () => {
+    test("displays the post list under the All items scope", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
 
-    // Should show posts heading
-    await expect(page.getByRole("heading", { name: "Posts" })).toBeVisible();
-
-    // Should show post cards
-    for (const post of posts.slice(0, 3)) {
-      await expect(page.getByText(post.title as string)).toBeVisible();
-    }
-  });
-
-  test("displays feed title on each post card", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-    await page.goto("/posts");
-
-    // Each post shows its feed title
-    const feedLabels = page.getByText("Tech Blog");
-    await expect(feedLabels.first()).toBeVisible();
-  });
-
-  test("shows audio chip for posts with audio", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-    await page.goto("/posts");
-
-    // Post 1 has hasAudio=true, the PostCard shows an Audio chip
-    await expect(page.getByText("Audio").first()).toBeVisible();
-  });
-
-  test("shows empty state when no posts", async ({ authedPage: page }) => {
-    await mockApi(page, "**/api/categories", { categories: [] });
-    await mockApi(page, "**/api/posts*", {
-      posts: [],
-      hasMore: false,
-      nextCursor: null,
+        await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
+        for (const p of posts.slice(0, 3)) {
+            await expect(page.getByText(p.title as string)).toBeVisible();
+        }
     });
 
-    await page.goto("/posts");
+    test("shows the feed title on post cards", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
 
-    await expect(page.getByText(/no posts/i)).toBeVisible();
-  });
-
-  test("shows Load More button when hasMore is true", async ({ authedPage: page }) => {
-    await mockApi(page, "**/api/categories", { categories: [category] });
-    await page.route("**/api/categories/cat-1/feeds", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ feeds: [feed] }),
-      })
-    );
-    await mockApi(page, "**/api/posts*", {
-      posts: posts.slice(0, 3),
-      hasMore: true,
-      nextCursor: "cursor-abc",
+        await expect(page.getByText("Tech Blog").first()).toBeVisible();
     });
 
-    await page.goto("/posts");
-    await expect(page.getByRole("button", { name: /load more/i })).toBeVisible();
-  });
+    test("shows an audio chip for posts with audio", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
 
-  test("hides Load More button when hasMore is false", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-    await page.goto("/posts");
+        await expect(page.getByText("Audio").first()).toBeVisible();
+    });
 
-    await expect(page.getByRole("button", { name: /load more/i })).not.toBeVisible();
-  });
-});
+    test("shows an empty state when there are no posts", async ({ authedPage: page }) => {
+        await setupReaderApi(page, { ...READER, posts: [] });
+        await page.goto("/posts");
 
-test.describe("Posts Page - Filter controls", () => {
-  test("shows read-state filter buttons", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-    await page.goto("/posts");
+        await expect(page.getByText(/no posts/i)).toBeVisible();
+    });
 
-    // ToggleButtons have aria-labels: "All posts", "Unread posts", "Read posts"
-    await expect(page.getByRole("button", { name: "All posts" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Unread posts" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Read posts", exact: true })).toBeVisible();
-  });
-
-  test("filters by unread when clicking Unread button", async ({ authedPage: page }) => {
-    await setupPostsPage(page);
-
-    // Override posts mock to handle readState param
-    await page.route("**/api/posts*", (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get("readState") === "unread") {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            posts: posts.filter((p) => !p.isRead),
-            hasMore: false,
-            nextCursor: null,
-          }),
+    test("shows Load More when there are more posts", async ({ authedPage: page }) => {
+        await setupReaderApi(page, {
+            ...READER,
+            posts: posts.slice(0, 3),
+            hasMore: true,
+            nextCursor: "cursor-1",
         });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ posts, hasMore: false, nextCursor: null }),
-      });
+        await page.goto("/posts");
+
+        await expect(page.getByRole("button", { name: /load more/i })).toBeVisible();
     });
-
-    await page.goto("/posts");
-    await page.getByRole("button", { name: /unread posts/i }).click();
-
-    // The Unread button should now be selected (pressed)
-    await expect(page.getByRole("button", { name: /unread posts/i })).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
-  });
 });
 
-test.describe("Posts Page - Authentication", () => {
-  test("redirects to signin when not authenticated", async ({ page }) => {
-    await mockApi(
-      page,
-      "**/api/auth/me",
-      { error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
-      { status: 401 }
-    );
+// ── Sidebar navigation ─────────────────────────────────────────────────
 
-    await page.goto("/posts");
-    await expect(page).toHaveURL(/\/signin/);
-  });
+test.describe("Reader — sidebar navigation", () => {
+    test("shows categories, uncategorized, and unread badges", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
+
+        const sidebar = page.getByTestId("feed-sidebar");
+        await expect(sidebar.getByRole("button", { name: /All items/ })).toBeVisible();
+        await expect(sidebar.getByRole("button", { name: /Technology/ })).toBeVisible();
+        await expect(sidebar.getByRole("button", { name: /News/ })).toBeVisible();
+        await expect(sidebar.getByRole("button", { name: /Uncategorized/ })).toBeVisible();
+        // Total unread badge (3 + 5 + 2).
+        await expect(sidebar.getByText("10")).toBeVisible();
+    });
+
+    test("filters by category and reflects it in the URL", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
+
+        await page.getByTestId("feed-sidebar").getByRole("button", { name: /Technology/ }).click();
+
+        await expect(page).toHaveURL(/category=cat-tech/);
+        await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible();
+    });
+
+    test("filters by an individual feed", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
+
+        const sidebar = page.getByTestId("feed-sidebar");
+        // Selecting the category also expands it, revealing its feeds.
+        await sidebar.getByRole("button", { name: /Technology/ }).click();
+        await sidebar.getByRole("button", { name: /Tech Blog/ }).click();
+
+        await expect(page).toHaveURL(/feed=feed-tech/);
+        await expect(page.getByRole("heading", { name: "Tech Blog" })).toBeVisible();
+    });
+
+    test("filters by uncategorized", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
+
+        await page.getByTestId("feed-sidebar").getByRole("button", { name: /Uncategorized/ }).click();
+
+        await expect(page).toHaveURL(/category=none/);
+        await expect(page.getByRole("heading", { name: "Uncategorized" })).toBeVisible();
+    });
+
+    test("read-state toggle updates the URL", async ({ authedPage: page }) => {
+        await setupReaderApi(page, READER);
+        await page.goto("/posts");
+
+        await page.getByRole("button", { name: "Unread", exact: true }).click();
+
+        await expect(page).toHaveURL(/read=unread/);
+    });
 });

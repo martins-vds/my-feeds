@@ -51,6 +51,9 @@ interface FeedListProps {
     onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
     onSetFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
     onAddFeed: () => void;
+    activeFeedId?: string | null;
+    unreadByFeed?: Record<string, number>;
+    onSelectFeed?: (feedId: string) => void;
 }
 
 export function FeedList({
@@ -61,6 +64,9 @@ export function FeedList({
     onSetFeedCategories,
     onSetFeedActive,
     onAddFeed,
+    activeFeedId = null,
+    unreadByFeed,
+    onSelectFeed,
 }: FeedListProps) {
     // Local state
     const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -241,11 +247,18 @@ export function FeedList({
                     const isRefreshing = refreshingFeedId === feed.id;
                     const hasError = feed.fetchErrorCount > 0;
                     const isPaused = !feed.isActive;
+                    const unreadCount = unreadByFeed?.[feed.id] ?? 0;
 
                     return (
                         <ListItem key={feed.id} disablePadding>
                             <ListItemButton
                                 disabled={isRefreshing}
+                                selected={activeFeedId === feed.id}
+                                onClick={
+                                    onSelectFeed
+                                        ? () => onSelectFeed(feed.id)
+                                        : undefined
+                                }
                                 sx={{ opacity: isPaused ? 0.6 : 1 }}
                             >
                                 <ListItemIcon sx={{ minWidth: 40 }}>
@@ -303,6 +316,14 @@ export function FeedList({
                                                         variant="outlined"
                                                     />
                                                 </Tooltip>
+                                            )}
+                                            {unreadCount > 0 && (
+                                                <Chip
+                                                    label={unreadCount}
+                                                    size="small"
+                                                    color="primary"
+                                                    sx={{ height: 20 }}
+                                                />
                                             )}
                                         </Box>
                                     }

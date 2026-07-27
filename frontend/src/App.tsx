@@ -7,8 +7,7 @@ import { OfflineIndicator } from "./components/OfflineIndicator";
 import { SignInPage } from "./pages/auth/SignInPage";
 import { SignUpPage } from "./pages/auth/SignUpPage";
 import { AuthCallback } from "./pages/auth/AuthCallback";
-import { FeedsPage } from "./pages/feeds";
-import { PostsPage, PostDetailPage } from "./pages/posts";
+import { ReaderPage, PostDetailPage } from "./pages/posts";
 import { Box } from "@mui/material";
 
 // Placeholder components - will be implemented in user story phases
@@ -53,7 +52,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <PostsPage />
+                    <ReaderPage />
                   </AppLayout>
                 </ProtectedRoute>
               }
@@ -68,16 +67,9 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/feeds"
-              element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <FeedsPage />
-                  </AppLayout>
-                </ProtectedRoute>
-              }
-            />
+            {/* Feeds management is merged into the reader sidebar. Redirect
+                any old /feeds links to the unified reader. */}
+            <Route path="/feeds" element={<Navigate to="/posts" replace />} />
             <Route
               path="/settings"
               element={

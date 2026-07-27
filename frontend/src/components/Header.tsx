@@ -3,12 +3,11 @@
  */
 
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   AppBar,
   Avatar,
   Box,
-  Button,
   IconButton,
   Menu,
   MenuItem,
@@ -21,14 +20,12 @@ import {
   Logout as LogoutIcon,
   Settings as SettingsIcon,
   RssFeed as RssFeedIcon,
-  Article as ArticleIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 
 export function Header() {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -75,30 +72,6 @@ export function Header() {
           <Typography variant="h6" component="span" fontWeight={600}>
             my-feeds
           </Typography>
-        </Box>
-
-        {/* Navigation Links */}
-        <Box sx={{ display: "flex", gap: 0.5, mr: 2 }}>
-          <Button
-            startIcon={<ArticleIcon />}
-            onClick={() => navigate("/posts")}
-            color={location.pathname.startsWith("/posts") ? "primary" : "inherit"}
-            variant={location.pathname.startsWith("/posts") ? "contained" : "text"}
-            size="small"
-            data-testid="nav-posts"
-          >
-            Posts
-          </Button>
-          <Button
-            startIcon={<RssFeedIcon />}
-            onClick={() => navigate("/feeds")}
-            color={location.pathname.startsWith("/feeds") ? "primary" : "inherit"}
-            variant={location.pathname.startsWith("/feeds") ? "contained" : "text"}
-            size="small"
-            data-testid="nav-feeds"
-          >
-            Feeds
-          </Button>
         </Box>
 
         {/* User Menu */}

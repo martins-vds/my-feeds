@@ -5,7 +5,7 @@
  * guards, the OAuth callback page, and the post-OAuth sign-up flow.
  */
 
-import { test, expect, mockApi, TEST_USER } from "./fixtures";
+import { test, expect, mockApi, setupReaderApi, TEST_USER } from "./fixtures";
 
 // ── Pending sign-up mock data ──────────────────────────────────────────
 
@@ -209,39 +209,28 @@ test.describe("Sign Up Flow", () => {
   });
 
   test("successful sign-up redirects to /posts", async ({ page }) => {
-    // First call: pending state
-    let callCount = 0;
-    await page.route("**/api/auth/me", (route) => {
-      callCount++;
-      if (callCount <= 1) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(PENDING_PROFILE),
-        });
-      }
-      // After sign-up: authenticated
-      return route.fulfill({
+    // /auth/me stays pending until the sign-up POST succeeds, then returns the
+    // authenticated user (deterministic — no dependence on call ordering).
+    let signedUp = false;
+    await page.route("**/api/auth/me", (route) =>
+      route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(TEST_USER),
+        body: JSON.stringify(signedUp ? TEST_USER : PENDING_PROFILE),
+      })
+    );
+    await page.route("**/api/auth/complete-signup", (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      signedUp = true;
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ authenticated: true, user: TEST_USER }),
       });
     });
 
-    // Mock complete-signup endpoint
-    await mockApi(
-      page,
-      "**/api/auth/complete-signup",
-      {
-        authenticated: true,
-        user: TEST_USER,
-      },
-      { method: "POST", status: 201 }
-    );
-
-    // Mock posts for landing page
-    await mockApi(page, "**/api/posts*", { posts: [], hasMore: false, nextCursor: null });
-    await mockApi(page, "**/api/categories", { categories: [] });
+    // Landing page (reader) data.
+    await setupReaderApi(page, { categories: [], feeds: [], posts: [] });
 
     await page.goto("/signup");
     await expect(page.getByRole("heading", { name: /complete your profile/i })).toBeVisible();

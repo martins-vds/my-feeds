@@ -51,6 +51,11 @@ interface UsePostsDataActions {
     setCategoryFilter: (categoryId: string | null) => void;
     setFeedFilter: (feedId: string | null) => void;
     setReadStateFilter: (readState: ReadState) => void;
+    setFilters: (filters: {
+        categoryId: string | null;
+        feedId: string | null;
+        readState: ReadState;
+    }) => void;
 
     // Data actions
     refresh: () => Promise<void>;
@@ -271,6 +276,40 @@ export function usePostsData(
         }));
     }, []);
 
+    /**
+     * Set category, feed, and read-state filters in a single update.
+     *
+     * Used by URL-driven filtering so the three params apply together and
+     * trigger exactly one refetch instead of cascading updates.
+     */
+    const setFilters = useCallback(
+        (filters: {
+            categoryId: string | null;
+            feedId: string | null;
+            readState: ReadState;
+        }) => {
+            setState((prev) => {
+                if (
+                    prev.categoryId === filters.categoryId &&
+                    prev.feedId === filters.feedId &&
+                    prev.readState === filters.readState
+                ) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    categoryId: filters.categoryId,
+                    feedId: filters.feedId,
+                    readState: filters.readState,
+                    posts: [],
+                    hasMore: false,
+                    nextCursor: null,
+                };
+            });
+        },
+        []
+    );
+
     // Load posts on mount and when filters change
     useEffect(() => {
         refresh();
@@ -324,6 +363,7 @@ export function usePostsData(
         setCategoryFilter,
         setFeedFilter,
         setReadStateFilter,
+        setFilters,
         refresh,
         loadMore,
         markAsRead,

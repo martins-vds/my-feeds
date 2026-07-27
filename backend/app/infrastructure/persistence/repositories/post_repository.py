@@ -50,6 +50,7 @@ class SQLAlchemyPostRepository(PostRepository):
         read_state: ReadState = "all",
         before: Optional[datetime] = None,
         limit: int = 50,
+        uncategorized: bool = False,
     ) -> List[Post]:
         """Get posts for a user with optional filters."""
         # Base query joining posts -> feeds (owned by the user)
@@ -65,6 +66,9 @@ class SQLAlchemyPostRepository(PostRepository):
             query = query.join(feed_categories, FeedModel.id == feed_categories.c.feed_id).where(
                 feed_categories.c.category_id == category_id
             )
+
+        if uncategorized:
+            query = query.where(~exists().where(feed_categories.c.feed_id == FeedModel.id))
 
         if feed_id is not None:
             query = query.where(PostModel.feed_id == feed_id)
@@ -215,6 +219,28 @@ class SQLAlchemyPostRepository(PostRepository):
         if user_post:
             return (user_post.is_read, user_post.read_at)
         return (False, None)  # Posts are unread by default
+
+    async def get_unread_counts_by_feed(self, user_id: UUID) -> dict[UUID, int]:
+        """Get unread post counts grouped by feed for a user.
+
+        Single aggregate query: a post counts as unread when the user has no
+        ``user_posts`` row for it, or that row's ``is_read`` is False.
+        """
+        stmt = (
+            select(PostModel.feed_id, func.count(PostModel.id))
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .outerjoin(
+                UserPostModel,
+                (UserPostModel.post_id == PostModel.id) & (UserPostModel.user_id == user_id),
+            )
+            .where(
+                FeedModel.user_id == user_id,
+                (UserPostModel.id.is_(None)) | (UserPostModel.is_read.is_(False)),
+            )
+            .group_by(PostModel.feed_id)
+        )
+        result = await self._session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
 
     def _to_entity(self, model: PostModel) -> Post:
         """Convert SQLAlchemy model to domain entity.

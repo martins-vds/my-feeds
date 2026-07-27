@@ -70,6 +70,14 @@ export interface PostDetail extends Post {
 }
 
 /**
+ * Unread post counts per feed plus the overall total.
+ */
+export interface UnreadCounts {
+    byFeed: Record<string, number>;
+    total: number;
+}
+
+/**
  * Audio info for a post (ready state)
  */
 export interface AudioInfo {

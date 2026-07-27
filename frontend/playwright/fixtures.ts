@@ -40,11 +40,11 @@ export function makeCategory(overrides: Record<string, unknown> = {}) {
   };
 }
 
-export function makeFeed(categoryId: string, overrides: Record<string, unknown> = {}) {
+export function makeFeed(categoryIds: string[] = [], overrides: Record<string, unknown> = {}) {
   const n = seq();
   return {
     id: `feed-${n}`,
-    categoryId,
+    categoryIds,
     url: `https://example.com/feed-${n}.xml`,
     title: `Feed ${n}`,
     description: `Description for feed ${n}`,
@@ -52,6 +52,7 @@ export function makeFeed(categoryId: string, overrides: Record<string, unknown> 
     iconUrl: null,
     lastFetchedAt: "2026-01-01T00:00:00Z",
     fetchErrorCount: 0,
+    isActive: true,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -107,6 +108,39 @@ export async function mockApi(
       body: JSON.stringify(body),
     });
   });
+}
+
+/**
+ * Mock the endpoints the unified reader loads on mount:
+ * GET /categories (raw array), GET /feeds (raw array), GET /posts (list),
+ * and GET /posts/unread-counts. Per-test POST/PATCH/DELETE handlers can be
+ * layered on top (they fall through the GET-only mocks).
+ */
+export async function setupReaderApi(
+  page: Page,
+  opts: {
+    categories?: unknown[];
+    feeds?: unknown[];
+    posts?: unknown[];
+    hasMore?: boolean;
+    nextCursor?: string | null;
+    unread?: { byFeed: Record<string, number>; total: number };
+  } = {}
+) {
+  const {
+    categories = [],
+    feeds = [],
+    posts = [],
+    hasMore = false,
+    nextCursor = null,
+    unread = { byFeed: {}, total: 0 },
+  } = opts;
+  // Don't let the Google Fonts <link> delay page load in tests.
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+  await mockApi(page, "**/api/categories", categories, { method: "GET" });
+  await mockApi(page, "**/api/feeds", feeds, { method: "GET" });
+  await mockApi(page, "**/api/posts**", { posts, hasMore, nextCursor }, { method: "GET" });
+  await mockApi(page, "**/api/posts/unread-counts", unread, { method: "GET" });
 }
 
 // ── Custom fixtures ────────────────────────────────────────────────────

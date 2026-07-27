@@ -40,6 +40,7 @@ class PostRepository(ABC):
         read_state: ReadState = "all",
         before: Optional[datetime] = None,
         limit: int = 50,
+        uncategorized: bool = False,
     ) -> List[Post]:
         """Get posts for a user with optional filters.
 
@@ -50,6 +51,7 @@ class PostRepository(ABC):
             read_state: Filter by read state ("all", "unread", "read")
             before: Cursor for pagination (posts older than this)
             limit: Maximum posts to return
+            uncategorized: If True, only posts from feeds with no categories
 
         Returns:
             List of Post entities with is_read and has_audio populated
@@ -138,9 +140,7 @@ class PostRepository(ABC):
         pass
 
     @abstractmethod
-    async def mark_as_read(
-        self, user_id: UUID, post_id: UUID, is_read: bool = True
-    ) -> None:
+    async def mark_as_read(self, user_id: UUID, post_id: UUID, is_read: bool = True) -> None:
         """Mark a post as read/unread for a user.
 
         Creates UserPost record if it doesn't exist.
@@ -153,9 +153,7 @@ class PostRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_read_state(
-        self, user_id: UUID, post_id: UUID
-    ) -> tuple[bool, Optional[datetime]]:
+    async def get_read_state(self, user_id: UUID, post_id: UUID) -> tuple[bool, Optional[datetime]]:
         """Get read state for a specific post and user.
 
         Args:
@@ -164,5 +162,20 @@ class PostRepository(ABC):
 
         Returns:
             Tuple of (is_read, read_at timestamp)
+        """
+        pass
+
+    @abstractmethod
+    async def get_unread_counts_by_feed(self, user_id: UUID) -> dict[UUID, int]:
+        """Get the number of unread posts per feed for a user.
+
+        A post is unread if the user has no UserPost row for it, or the row's
+        ``is_read`` is False. Feeds with zero unread posts are omitted.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Mapping of feed UUID to unread post count.
         """
         pass

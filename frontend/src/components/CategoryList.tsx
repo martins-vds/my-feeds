@@ -23,6 +23,7 @@ import {
     DialogContent,
     DialogActions,
     Button,
+    Chip,
 } from "@mui/material";
 import {
     Folder as FolderIcon,
@@ -59,6 +60,11 @@ interface CategoryListProps {
     onRefreshFeed: (feedId: string) => Promise<Feed>;
     onSetFeedCategories: (feedId: string, categoryIds: string[]) => Promise<Feed>;
     onSetFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
+    activeFeedId?: string | null;
+    unreadByFeed?: Record<string, number>;
+    onSelectFeed?: (feedId: string) => void;
+    uncategorizedActive?: boolean;
+    onSelectUncategorized?: () => void;
 }
 
 export function CategoryList({
@@ -76,6 +82,11 @@ export function CategoryList({
     onRefreshFeed,
     onSetFeedCategories,
     onSetFeedActive,
+    activeFeedId = null,
+    unreadByFeed,
+    onSelectFeed,
+    uncategorizedActive = false,
+    onSelectUncategorized,
 }: CategoryListProps) {
     // Local state
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -277,6 +288,10 @@ export function CategoryList({
     const uncategorizedFeeds = feeds.filter(
         (feed) => feed.categoryIds.length === 0
     );
+    const uncategorizedUnread = uncategorizedFeeds.reduce(
+        (n, f) => n + (unreadByFeed?.[f.id] ?? 0),
+        0
+    );
 
     // Get the category being deleted
     const deletingCategory = deletingCategoryId
@@ -374,6 +389,10 @@ export function CategoryList({
                     const isExpanded = expandedCategories.has(category.id);
                     const isSelected = selectedCategoryId === category.id;
                     const categoryFeeds = getFeedsForCategory(category.id);
+                    const categoryUnread = categoryFeeds.reduce(
+                        (n, f) => n + (unreadByFeed?.[f.id] ?? 0),
+                        0
+                    );
 
                     return (
                         <Box key={category.id}>
@@ -415,6 +434,14 @@ export function CategoryList({
                                         primary={category.name}
                                         secondary={`${category.feedCount} feed${category.feedCount !== 1 ? "s" : ""}`}
                                     />
+                                    {categoryUnread > 0 && (
+                                        <Chip
+                                            label={categoryUnread}
+                                            size="small"
+                                            color="primary"
+                                            sx={{ mr: 1, height: 20 }}
+                                        />
+                                    )}
                                 </ListItemButton>
                             </ListItem>
 
@@ -431,6 +458,9 @@ export function CategoryList({
                                     onRefreshFeed={onRefreshFeed}
                                     onSetFeedCategories={onSetFeedCategories}
                                     onSetFeedActive={onSetFeedActive}
+                                    activeFeedId={activeFeedId}
+                                    unreadByFeed={unreadByFeed}
+                                    onSelectFeed={onSelectFeed}
                                     onAddFeed={() => {
                                         setAddFeedCategoryId(category.id);
                                         setShowAddFeedDialog(true);
@@ -446,7 +476,11 @@ export function CategoryList({
                     <Box>
                         <ListItem disablePadding>
                             <ListItemButton
-                                onClick={() => toggleExpand(UNCATEGORIZED_KEY)}
+                                selected={uncategorizedActive}
+                                onClick={() => {
+                                    onSelectUncategorized?.();
+                                    toggleExpand(UNCATEGORIZED_KEY);
+                                }}
                             >
                                 <ListItemIcon sx={{ minWidth: 36 }}>
                                     {expandedCategories.has(UNCATEGORIZED_KEY) ? (
@@ -462,6 +496,14 @@ export function CategoryList({
                                     primary="Uncategorized"
                                     secondary={`${uncategorizedFeeds.length} feed${uncategorizedFeeds.length !== 1 ? "s" : ""}`}
                                 />
+                                {uncategorizedUnread > 0 && (
+                                    <Chip
+                                        label={uncategorizedUnread}
+                                        size="small"
+                                        color="primary"
+                                        sx={{ mr: 1, height: 20 }}
+                                    />
+                                )}
                             </ListItemButton>
                         </ListItem>
                         <Collapse
@@ -476,6 +518,9 @@ export function CategoryList({
                                 onRefreshFeed={onRefreshFeed}
                                 onSetFeedCategories={onSetFeedCategories}
                                 onSetFeedActive={onSetFeedActive}
+                                activeFeedId={activeFeedId}
+                                unreadByFeed={unreadByFeed}
+                                onSelectFeed={onSelectFeed}
                                 onAddFeed={() => {
                                     setAddFeedCategoryId(null);
                                     setShowAddFeedDialog(true);

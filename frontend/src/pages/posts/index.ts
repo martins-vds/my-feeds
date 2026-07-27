@@ -2,5 +2,5 @@
  * Posts pages module exports
  */
 
-export { PostsPage } from "./PostsPage";
+export { ReaderPage } from "./ReaderPage";
 export { PostDetailPage } from "./PostDetailPage";

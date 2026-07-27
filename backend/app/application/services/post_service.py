@@ -69,6 +69,7 @@ class PostService:
         read_state: ReadState = "all",
         before: Optional[datetime] = None,
         limit: int = DEFAULT_LIMIT,
+        uncategorized: bool = False,
     ) -> PostListResult:
         """List posts for a user with optional filters.
 
@@ -79,6 +80,7 @@ class PostService:
             read_state: Filter by read state
             before: Cursor for pagination (posts older than this)
             limit: Maximum posts to return (capped at MAX_LIMIT)
+            uncategorized: If True, only posts from feeds with no categories
 
         Returns:
             PostListResult with posts and pagination info
@@ -95,6 +97,7 @@ class PostService:
             read_state=read_state,
             before=before,
             limit=limit,
+            uncategorized=uncategorized,
         )
 
         # Determine if there are more posts
@@ -182,3 +185,16 @@ class PostService:
         is_read, _ = await self._post_repository.get_read_state(user_id, post_id)
         if not is_read:
             await self._post_repository.mark_as_read(user_id, post_id, True)
+
+    async def get_unread_counts(self, user_id: UUID) -> tuple[dict[UUID, int], int]:
+        """Get unread post counts per feed and the total for a user.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Tuple of (mapping feed_id -> unread count, total unread count).
+        """
+        by_feed = await self._post_repository.get_unread_counts_by_feed(user_id)
+        total = sum(by_feed.values())
+        return by_feed, total

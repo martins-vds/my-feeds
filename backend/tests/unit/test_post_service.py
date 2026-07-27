@@ -402,3 +402,46 @@ class TestPostServiceReadState:
 
         # Should call mark_as_read
         mock_post_repository.mark_as_read.assert_called_once_with(user_id, post_id, True)
+
+
+class TestPostServiceUnreadCounts:
+    """Tests for PostService.get_unread_counts."""
+
+    @pytest.mark.asyncio
+    async def test_get_unread_counts_sums_total(self):
+        """Should return the per-feed map and the summed total."""
+        from app.application.services.post_service import PostService
+
+        f1, f2 = uuid4(), uuid4()
+        post_repo = AsyncMock()
+        post_repo.get_unread_counts_by_feed.return_value = {f1: 2, f2: 3}
+
+        service = PostService(
+            post_repository=post_repo,
+            category_repository=AsyncMock(),
+            feed_repository=AsyncMock(),
+        )
+
+        by_feed, total = await service.get_unread_counts(uuid4())
+
+        assert by_feed == {f1: 2, f2: 3}
+        assert total == 5
+
+    @pytest.mark.asyncio
+    async def test_get_unread_counts_empty(self):
+        """With no unread posts the total is zero."""
+        from app.application.services.post_service import PostService
+
+        post_repo = AsyncMock()
+        post_repo.get_unread_counts_by_feed.return_value = {}
+
+        service = PostService(
+            post_repository=post_repo,
+            category_repository=AsyncMock(),
+            feed_repository=AsyncMock(),
+        )
+
+        by_feed, total = await service.get_unread_counts(uuid4())
+
+        assert by_feed == {}
+        assert total == 0

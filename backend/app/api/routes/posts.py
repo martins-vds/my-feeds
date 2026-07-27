@@ -59,7 +59,11 @@ async def list_posts():
 
     # Validate and convert parameters
     category_id = None
-    if category_id_str:
+    uncategorized = False
+    if category_id_str == "none":
+        # Sentinel: posts from feeds that have no categories.
+        uncategorized = True
+    elif category_id_str:
         try:
             category_id = UUID(category_id_str)
         except ValueError:
@@ -99,6 +103,7 @@ async def list_posts():
         read_state=read_state,  # type: ignore
         before=before,
         limit=limit,
+        uncategorized=uncategorized,
     )
 
     return jsonify(
@@ -106,6 +111,28 @@ async def list_posts():
             "posts": [post.to_summary_dict() for post in result.posts],
             "hasMore": result.has_more,
             "nextCursor": result.next_cursor,
+        }
+    )
+
+
+@bp.route("/unread-counts", methods=["GET"])
+async def unread_counts():
+    """Return unread post counts per feed and the total for the user.
+
+    GET /api/posts/unread-counts
+
+    Returns:
+        JSON: { "byFeed": { "<feedId>": <count> }, "total": <count> }
+    """
+    user_id = get_current_user_id()
+    container = get_request_container()
+
+    by_feed, total = await container.post_service.get_unread_counts(user_id)
+
+    return jsonify(
+        {
+            "byFeed": {str(feed_id): count for feed_id, count in by_feed.items()},
+            "total": total,
         }
     )
 

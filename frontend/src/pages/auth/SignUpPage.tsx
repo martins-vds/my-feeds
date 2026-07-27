@@ -82,7 +82,8 @@ const TIMEZONES = getTimezones();
 
 export function SignUpPage() {
   const navigate = useNavigate();
-  const { isPendingSignup, pendingProfile, refreshUser } = useAuth();
+  const { isPendingSignup, pendingProfile, refreshUser, isLoading, isAuthenticated } =
+    useAuth();
 
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(detectTimezone());
@@ -90,12 +91,18 @@ export function SignUpPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
 
-  // Guard: redirect if no pending sign-up
+  // Guard: only the pending-sign-up state should stay on this page. Wait for
+  // auth to resolve first (a direct visit to /signup otherwise redirects
+  // before /auth/me returns), then route authenticated users to the reader
+  // and everyone else to sign-in.
   useEffect(() => {
-    if (!isPendingSignup) {
+    if (isLoading) return;
+    if (isAuthenticated) {
+      navigate("/posts", { replace: true });
+    } else if (!isPendingSignup) {
       navigate("/signin", { replace: true });
     }
-  }, [isPendingSignup, navigate]);
+  }, [isLoading, isAuthenticated, isPendingSignup, navigate]);
 
   // Pre-fill name from OAuth profile (US3)
   useEffect(() => {
