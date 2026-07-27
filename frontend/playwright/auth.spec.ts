@@ -34,7 +34,7 @@ test.describe("Sign In Page", () => {
   test("displays heading and OAuth provider buttons", async ({ page }) => {
     await page.goto("/signin");
 
-    await expect(page.getByRole("heading", { name: /my-feeds/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /almanac/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /github/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /google/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible();

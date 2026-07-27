@@ -1,5 +1,5 @@
 /**
- * Service Worker for my-feeds PWA
+ * Service Worker for Almanac PWA
  *
  * Implements caching strategies:
  * - Network-first for API calls (with offline fallback)

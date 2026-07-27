@@ -70,7 +70,7 @@ export function Header() {
         >
           <RssFeedIcon color="primary" sx={{ mr: 1 }} />
           <Typography variant="h6" component="span" fontWeight={600}>
-            my-feeds
+            Almanac
           </Typography>
         </Box>
 

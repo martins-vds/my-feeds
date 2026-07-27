@@ -3,7 +3,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ReactNode } from "react";
 
 /**
- * my-feeds Material UI theme.
+ * Almanac Material UI theme.
  *
  * Content-first "reading" aesthetic: an accessible, highly legible typeface
  * (Atkinson Hyperlegible), a warm paper background, and a calm amber accent.

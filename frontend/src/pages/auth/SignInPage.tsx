@@ -51,7 +51,7 @@ export function SignInPage() {
                         {/* Header */}
                         <Box textAlign="center" mb={4}>
                             <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
-                                my-feeds
+                                Almanac
                             </Typography>
                             <Typography variant="body1" color="text.secondary">
                                 Sign in to access your personalized RSS feeds

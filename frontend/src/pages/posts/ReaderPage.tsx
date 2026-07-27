@@ -19,14 +19,10 @@ import {
 import {
     Menu as MenuIcon,
     Refresh as RefreshIcon,
-    RssFeed as RssFeedIcon,
-    Add as AddIcon,
     ArrowUpward as ArrowUpwardIcon,
 } from "@mui/icons-material";
 import PostList from "../../components/PostList";
 import { FeedSidebar } from "../../components/FeedSidebar";
-import { AddFeedDialog } from "../../components/AddFeedDialog";
-import { CategoryForm } from "../../components/CategoryForm";
 import {
     usePostsData,
     type PostSummary,
@@ -34,7 +30,6 @@ import {
 } from "../../hooks/usePostsData";
 import { useFeedsData } from "../../hooks/useFeedsData";
 import { useUnreadCounts } from "../../hooks/useUnreadCounts";
-import { ApiError } from "../../services/api";
 
 const DRAWER_WIDTH = 300;
 const HEADER_OFFSET = 64; // Sticky AppBar (Toolbar) height on desktop
@@ -236,53 +231,6 @@ export const ReaderPage: React.FC = () => {
         return "All items";
     }, [feedId, categoryId, isUncategorized, feeds, categories]);
 
-    // --- Add feed / category dialogs (main toolbar) ---
-    const [showAddFeed, setShowAddFeed] = useState(false);
-    const [showAddCategory, setShowAddCategory] = useState(false);
-    const [dialogError, setDialogError] = useState<string | null>(null);
-    const [dialogLoading, setDialogLoading] = useState(false);
-
-    const handleAddFeedSubmit = useCallback(
-        async (url: string) => {
-            setDialogLoading(true);
-            setDialogError(null);
-            try {
-                await addFeed(categoryId, url);
-                setShowAddFeed(false);
-                refetchUnread();
-            } catch (err) {
-                setDialogError(
-                    err instanceof ApiError ? err.message : "Failed to add feed"
-                );
-                throw err;
-            } finally {
-                setDialogLoading(false);
-            }
-        },
-        [addFeed, categoryId, refetchUnread]
-    );
-
-    const handleAddCategorySubmit = useCallback(
-        async (name: string) => {
-            setDialogLoading(true);
-            setDialogError(null);
-            try {
-                await createCategory(name);
-                setShowAddCategory(false);
-            } catch (err) {
-                setDialogError(
-                    err instanceof ApiError
-                        ? err.message
-                        : "Failed to create category"
-                );
-                throw err;
-            } finally {
-                setDialogLoading(false);
-            }
-        },
-        [createCategory]
-    );
-
     const sidebarContent = (
         <FeedSidebar
             categories={categories}
@@ -374,26 +322,6 @@ export const ReaderPage: React.FC = () => {
                     >
                         {scopeTitle}
                     </Typography>
-                    <Button
-                        startIcon={<RssFeedIcon />}
-                        size="small"
-                        onClick={() => {
-                            setDialogError(null);
-                            setShowAddFeed(true);
-                        }}
-                    >
-                        Add feed
-                    </Button>
-                    <Button
-                        startIcon={<AddIcon />}
-                        size="small"
-                        onClick={() => {
-                            setDialogError(null);
-                            setShowAddCategory(true);
-                        }}
-                    >
-                        Add category
-                    </Button>
                     <Tooltip title="Refresh">
                         <span>
                             <IconButton
@@ -432,24 +360,6 @@ export const ReaderPage: React.FC = () => {
                     onPostClick={handlePostClick}
                 />
             </Box>
-
-            {/* Dialogs (main toolbar add actions) */}
-            <AddFeedDialog
-                open={showAddFeed}
-                categoryId={categoryId}
-                onSubmit={handleAddFeedSubmit}
-                onCancel={() => setShowAddFeed(false)}
-                error={dialogError}
-                loading={dialogLoading}
-            />
-            <CategoryForm
-                open={showAddCategory}
-                category={null}
-                onSubmit={handleAddCategorySubmit}
-                onCancel={() => setShowAddCategory(false)}
-                error={dialogError}
-                loading={dialogLoading}
-            />
         </Box>
     );
 };

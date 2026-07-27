@@ -362,7 +362,7 @@ export function CategoryList({
                     borderColor: "divider",
                 }}
             >
-                <Typography variant="h6">Feeds &amp; Categories</Typography>
+                <Typography variant="h6">Feeds</Typography>
                 <Box sx={{ display: "flex", gap: 0.5 }}>
                     <Tooltip title="Add feed">
                         <IconButton
