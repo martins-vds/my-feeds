@@ -198,3 +198,28 @@ class PostService:
         by_feed = await self._post_repository.get_unread_counts_by_feed(user_id)
         total = sum(by_feed.values())
         return by_feed, total
+
+    async def mark_all_read(
+        self,
+        user_id: UUID,
+        is_read: bool,
+        *,
+        category_id: Optional[UUID] = None,
+        feed_id: Optional[UUID] = None,
+        uncategorized: bool = False,
+    ) -> int:
+        """Mark all posts in a scope (category / feed / uncategorized) read/unread.
+
+        The scope is always limited to the user's own feeds, so it silently
+        affects nothing for feeds or categories the user doesn't own.
+
+        Returns:
+            The number of posts in the scope.
+        """
+        return await self._post_repository.mark_all_read(
+            user_id,
+            is_read,
+            category_id=category_id,
+            feed_id=feed_id,
+            uncategorized=uncategorized,
+        )

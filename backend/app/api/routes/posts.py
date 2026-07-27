@@ -137,6 +137,62 @@ async def unread_counts():
     )
 
 
+@bp.route("/read-state", methods=["PUT"])
+async def bulk_update_read_state():
+    """Mark all posts in a scope read/unread.
+
+    PUT /api/posts/read-state
+    Body: {
+        "isRead": bool,
+        "categoryId"?: uuid | "none",
+        "feedId"?: uuid,
+        "uncategorized"?: bool
+    }
+
+    The scope is limited to the user's own feeds. Returns the number of posts
+    affected.
+    """
+    user_id = get_current_user_id()
+    container = get_request_container()
+
+    data = await request.get_json()
+    if not data:
+        raise ValidationError("Request body is required")
+
+    is_read = data.get("isRead")
+    if not isinstance(is_read, bool):
+        raise ValidationError("isRead must be a boolean")
+
+    category_id = None
+    uncategorized = bool(data.get("uncategorized", False))
+    category_id_str = data.get("categoryId")
+    if category_id_str == "none":
+        uncategorized = True
+    elif category_id_str is not None:
+        try:
+            category_id = UUID(category_id_str)
+        except (ValueError, TypeError):
+            raise ValidationError("Invalid categoryId format")
+
+    feed_id = None
+    feed_id_str = data.get("feedId")
+    if feed_id_str is not None:
+        try:
+            feed_id = UUID(feed_id_str)
+        except (ValueError, TypeError):
+            raise ValidationError("Invalid feedId format")
+
+    updated = await container.post_service.mark_all_read(
+        user_id,
+        is_read,
+        category_id=category_id,
+        feed_id=feed_id,
+        uncategorized=uncategorized,
+    )
+
+    return jsonify({"updated": updated})
+
+
 @bp.route("/<uuid:post_id>", methods=["GET"])
 async def get_post(post_id: UUID):
     """Get full post content.

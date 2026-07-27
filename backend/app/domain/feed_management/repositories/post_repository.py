@@ -179,3 +179,31 @@ class PostRepository(ABC):
             Mapping of feed UUID to unread post count.
         """
         pass
+
+    @abstractmethod
+    async def mark_all_read(
+        self,
+        user_id: UUID,
+        is_read: bool,
+        *,
+        category_id: Optional[UUID] = None,
+        feed_id: Optional[UUID] = None,
+        uncategorized: bool = False,
+    ) -> int:
+        """Mark every post in a scope read/unread for a user.
+
+        The scope is limited to the user's own feeds and narrowed by exactly
+        one of ``category_id``, ``feed_id``, or ``uncategorized`` (or none, for
+        all posts).
+
+        Args:
+            user_id: User UUID
+            is_read: Read state to set
+            category_id: Restrict to a category
+            feed_id: Restrict to a single feed
+            uncategorized: Restrict to feeds with no categories
+
+        Returns:
+            Number of posts in the scope.
+        """
+        pass

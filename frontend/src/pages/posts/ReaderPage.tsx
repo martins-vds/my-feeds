@@ -79,6 +79,7 @@ export const ReaderPage: React.FC = () => {
         refresh,
         loadMore,
         markAsRead,
+        markAllRead,
     } = usePostsData(categoryId ?? undefined, feedId ?? undefined);
 
     // Feeds & categories
@@ -200,6 +201,21 @@ export const ReaderPage: React.FC = () => {
         [markAsRead, refetchUnread]
     );
 
+    const handleMarkAllRead = useCallback(
+        async (
+            scope: {
+                categoryId?: string | null;
+                feedId?: string | null;
+                uncategorized?: boolean;
+            },
+            isRead: boolean
+        ) => {
+            await markAllRead(scope, isRead);
+            refetchUnread();
+        },
+        [markAllRead, refetchUnread]
+    );
+
     const handlePostClick = useCallback(
         (post: PostSummary) => {
             navigate(`/posts/${post.id}`);
@@ -284,6 +300,9 @@ export const ReaderPage: React.FC = () => {
             onSelectFeed={handleSelectFeed}
             onSelectUncategorized={handleSelectUncategorized}
             onReadStateChange={handleReadStateChange}
+            onMarkCategoryRead={(id, isRead) => handleMarkAllRead({ categoryId: id }, isRead)}
+            onMarkUncategorizedRead={(isRead) => handleMarkAllRead({ uncategorized: true }, isRead)}
+            onMarkFeedRead={(id, isRead) => handleMarkAllRead({ feedId: id }, isRead)}
             onCreateCategory={createCategory}
             onUpdateCategory={updateCategory}
             onDeleteCategory={deleteCategory}

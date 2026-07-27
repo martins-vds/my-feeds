@@ -242,6 +242,67 @@ class SQLAlchemyPostRepository(PostRepository):
         result = await self._session.execute(stmt)
         return {row[0]: row[1] for row in result.all()}
 
+    async def mark_all_read(
+        self,
+        user_id: UUID,
+        is_read: bool,
+        *,
+        category_id: Optional[UUID] = None,
+        feed_id: Optional[UUID] = None,
+        uncategorized: bool = False,
+    ) -> int:
+        """Mark every post in a scope read/unread for a user."""
+        # Scoped set of post ids (only the user's own feeds).
+        id_query = (
+            select(PostModel.id)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .where(FeedModel.user_id == user_id)
+        )
+        if category_id is not None:
+            id_query = id_query.join(
+                feed_categories, FeedModel.id == feed_categories.c.feed_id
+            ).where(feed_categories.c.category_id == category_id)
+        if uncategorized:
+            id_query = id_query.where(~exists().where(feed_categories.c.feed_id == FeedModel.id))
+        if feed_id is not None:
+            id_query = id_query.where(PostModel.feed_id == feed_id)
+
+        result = await self._session.execute(id_query)
+        post_ids = [row[0] for row in result.all()]
+        if not post_ids:
+            return 0
+
+        now = datetime.now(timezone.utc)
+
+        # Update existing read-state rows in the scope.
+        existing_result = await self._session.execute(
+            select(UserPostModel).where(
+                UserPostModel.user_id == user_id,
+                UserPostModel.post_id.in_(post_ids),
+            )
+        )
+        existing_ids: set[UUID] = set()
+        for user_post in existing_result.scalars().all():
+            user_post.is_read = is_read
+            user_post.read_at = now if is_read else None
+            existing_ids.add(user_post.post_id)
+
+        # Posts with no row are already unread; only "mark read" needs inserts.
+        if is_read:
+            for post_id_ in post_ids:
+                if post_id_ not in existing_ids:
+                    self._session.add(
+                        UserPostModel(
+                            user_id=user_id,
+                            post_id=post_id_,
+                            is_read=True,
+                            read_at=now,
+                        )
+                    )
+
+        await self._session.flush()
+        return len(post_ids)
+
     def _to_entity(self, model: PostModel) -> Post:
         """Convert SQLAlchemy model to domain entity.
 

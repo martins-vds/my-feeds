@@ -24,6 +24,7 @@ import {
     DialogActions,
     Button,
     Chip,
+    Divider,
 } from "@mui/material";
 import {
     Folder as FolderIcon,
@@ -35,6 +36,8 @@ import {
     ExpandMore as ExpandMoreIcon,
     ChevronRight as ChevronRightIcon,
     RssFeed as RssFeedIcon,
+    DoneAll as MarkReadIcon,
+    RemoveDone as MarkUnreadIcon,
 } from "@mui/icons-material";
 import type { Category, Feed } from "../types";
 import { CategoryForm } from "./CategoryForm";
@@ -65,6 +68,9 @@ interface CategoryListProps {
     onSelectFeed?: (feedId: string) => void;
     uncategorizedActive?: boolean;
     onSelectUncategorized?: () => void;
+    onMarkCategoryRead?: (categoryId: string, isRead: boolean) => void;
+    onMarkUncategorizedRead?: (isRead: boolean) => void;
+    onMarkFeedRead?: (feedId: string, isRead: boolean) => void;
 }
 
 export function CategoryList({
@@ -87,6 +93,9 @@ export function CategoryList({
     onSelectFeed,
     uncategorizedActive = false,
     onSelectUncategorized,
+    onMarkCategoryRead,
+    onMarkUncategorizedRead,
+    onMarkFeedRead,
 }: CategoryListProps) {
     // Local state
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -145,6 +154,21 @@ export function CategoryList({
         setMenuAnchor(null);
         setMenuCategoryId(null);
     }, []);
+
+    // Mark every post in the menu's category (or the uncategorized group)
+    // read/unread.
+    const handleMarkRead = useCallback(
+        (isRead: boolean) => {
+            const id = menuCategoryId;
+            handleMenuClose();
+            if (id === UNCATEGORIZED_KEY) {
+                onMarkUncategorizedRead?.(isRead);
+            } else if (id) {
+                onMarkCategoryRead?.(id, isRead);
+            }
+        },
+        [menuCategoryId, handleMenuClose, onMarkCategoryRead, onMarkUncategorizedRead]
+    );
 
     // Category form handlers
     const handleAddCategory = useCallback(() => {
@@ -461,6 +485,7 @@ export function CategoryList({
                                     activeFeedId={activeFeedId}
                                     unreadByFeed={unreadByFeed}
                                     onSelectFeed={onSelectFeed}
+                                    onMarkFeedRead={onMarkFeedRead}
                                     onAddFeed={() => {
                                         setAddFeedCategoryId(category.id);
                                         setShowAddFeedDialog(true);
@@ -474,7 +499,20 @@ export function CategoryList({
                 {/* Uncategorized group */}
                 {uncategorizedFeeds.length > 0 && (
                     <Box>
-                        <ListItem disablePadding>
+                        <ListItem
+                            disablePadding
+                            secondaryAction={
+                                <IconButton
+                                    edge="end"
+                                    aria-label="uncategorized options"
+                                    onClick={(e) =>
+                                        handleMenuOpen(e, UNCATEGORIZED_KEY)
+                                    }
+                                >
+                                    <MoreVertIcon />
+                                </IconButton>
+                            }
+                        >
                             <ListItemButton
                                 selected={uncategorizedActive}
                                 onClick={() => {
@@ -521,6 +559,7 @@ export function CategoryList({
                                 activeFeedId={activeFeedId}
                                 unreadByFeed={unreadByFeed}
                                 onSelectFeed={onSelectFeed}
+                                onMarkFeedRead={onMarkFeedRead}
                                 onAddFeed={() => {
                                     setAddFeedCategoryId(null);
                                     setShowAddFeedDialog(true);
@@ -537,26 +576,45 @@ export function CategoryList({
                 open={Boolean(menuAnchor)}
                 onClose={handleMenuClose}
             >
-                <MenuItem onClick={handleAddFeedClick}>
+                <MenuItem onClick={() => handleMarkRead(true)}>
                     <ListItemIcon>
-                        <AddIcon fontSize="small" />
+                        <MarkReadIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Add Feed</ListItemText>
+                    <ListItemText>Mark all as read</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={handleEditCategory}>
+                <MenuItem onClick={() => handleMarkRead(false)}>
                     <ListItemIcon>
-                        <EditIcon fontSize="small" />
+                        <MarkUnreadIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Edit Category</ListItemText>
+                    <ListItemText>Mark all as unread</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={handleDeleteClick}>
-                    <ListItemIcon>
-                        <DeleteIcon fontSize="small" color="error" />
-                    </ListItemIcon>
-                    <ListItemText sx={{ color: "error.main" }}>
-                        Delete Category
-                    </ListItemText>
-                </MenuItem>
+                {menuCategoryId !== UNCATEGORIZED_KEY && <Divider />}
+                {menuCategoryId !== UNCATEGORIZED_KEY && (
+                    <MenuItem onClick={handleAddFeedClick}>
+                        <ListItemIcon>
+                            <AddIcon fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText>Add Feed</ListItemText>
+                    </MenuItem>
+                )}
+                {menuCategoryId !== UNCATEGORIZED_KEY && (
+                    <MenuItem onClick={handleEditCategory}>
+                        <ListItemIcon>
+                            <EditIcon fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText>Edit Category</ListItemText>
+                    </MenuItem>
+                )}
+                {menuCategoryId !== UNCATEGORIZED_KEY && (
+                    <MenuItem onClick={handleDeleteClick}>
+                        <ListItemIcon>
+                            <DeleteIcon fontSize="small" color="error" />
+                        </ListItemIcon>
+                        <ListItemText sx={{ color: "error.main" }}>
+                            Delete Category
+                        </ListItemText>
+                    </MenuItem>
+                )}
             </Menu>
 
             {/* Category form dialog */}

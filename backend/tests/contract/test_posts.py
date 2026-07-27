@@ -317,3 +317,46 @@ class TestUnreadCounts:
         """Should return 401 when not authenticated."""
         response = await client.get("/api/posts/unread-counts")
         assert response.status_code == 401
+
+
+class TestBulkReadState:
+    """Tests for PUT /api/posts/read-state (bulk mark read/unread)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_updated_count(self, client, auth_headers):
+        """A scope with no matching posts returns updated: 0 (no mutation)."""
+        response = await client.put(
+            "/api/posts/read-state",
+            headers=auth_headers,
+            json={"isRead": True, "categoryId": str(uuid4())},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["updated"] == 0
+
+    @pytest.mark.asyncio
+    async def test_requires_boolean_is_read(self, client, auth_headers):
+        """Should reject a non-boolean isRead."""
+        response = await client.put(
+            "/api/posts/read-state",
+            headers=auth_headers,
+            json={"isRead": "yes"},
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_feed_id(self, client, auth_headers):
+        """Should reject a malformed feedId."""
+        response = await client.put(
+            "/api/posts/read-state",
+            headers=auth_headers,
+            json={"isRead": True, "feedId": "not-a-uuid"},
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_requires_authentication(self, client):
+        """Should return 401 when not authenticated."""
+        response = await client.put("/api/posts/read-state", json={"isRead": True})
+        assert response.status_code == 401

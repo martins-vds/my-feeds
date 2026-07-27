@@ -28,6 +28,7 @@ import {
     CircularProgress,
     Tooltip,
     Chip,
+    Divider,
 } from "@mui/material";
 import {
     RssFeed as RssFeedIcon,
@@ -39,6 +40,8 @@ import {
     Error as ErrorIcon,
     Pause as PauseIcon,
     PlayArrow as PlayArrowIcon,
+    DoneAll as MarkReadIcon,
+    RemoveDone as MarkUnreadIcon,
 } from "@mui/icons-material";
 import type { Category, Feed } from "../types";
 import { ApiError } from "../services/api";
@@ -54,6 +57,7 @@ interface FeedListProps {
     activeFeedId?: string | null;
     unreadByFeed?: Record<string, number>;
     onSelectFeed?: (feedId: string) => void;
+    onMarkFeedRead?: (feedId: string, isRead: boolean) => void;
 }
 
 export function FeedList({
@@ -67,6 +71,7 @@ export function FeedList({
     activeFeedId = null,
     unreadByFeed,
     onSelectFeed,
+    onMarkFeedRead,
 }: FeedListProps) {
     // Local state
     const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -138,6 +143,17 @@ export function FeedList({
             setActionError(message);
         }
     }, [selectedFeedId, feeds, handleMenuClose, onSetFeedActive]);
+
+    // Mark every post in the feed read/unread
+    const handleMarkRead = useCallback(
+        (isRead: boolean) => {
+            if (!selectedFeedId) return;
+            const feedId = selectedFeedId;
+            handleMenuClose();
+            onMarkFeedRead?.(feedId, isRead);
+        },
+        [selectedFeedId, handleMenuClose, onMarkFeedRead]
+    );
 
     // Delete handlers
     const handleDeleteClick = useCallback(() => {
@@ -360,6 +376,19 @@ export function FeedList({
                 open={Boolean(menuAnchor)}
                 onClose={handleMenuClose}
             >
+                <MenuItem onClick={() => handleMarkRead(true)}>
+                    <ListItemIcon>
+                        <MarkReadIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Mark all as read</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => handleMarkRead(false)}>
+                    <ListItemIcon>
+                        <MarkUnreadIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Mark all as unread</ListItemText>
+                </MenuItem>
+                <Divider />
                 <MenuItem
                     onClick={handleRefresh}
                     disabled={selectedFeed ? !selectedFeed.isActive : false}

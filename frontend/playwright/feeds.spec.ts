@@ -165,3 +165,78 @@ test.describe("Sidebar — feeds", () => {
         await expect(sidebar.getByText("Paused")).toBeVisible();
     });
 });
+
+// ── Mark all read/unread ───────────────────────────────────────────────
+
+const looseFeed = makeFeed([], { id: "feed-loose", title: "Loose Feed" });
+
+function markReader() {
+    return {
+        categories: [catTech],
+        feeds: [techFeed, looseFeed],
+        posts: [],
+        unread: { byFeed: { "feed-tech": 3, "feed-loose": 2 }, total: 5 },
+    };
+}
+
+async function stubBulkReadState(page: import("@playwright/test").Page) {
+    await page.route("**/api/posts/read-state", (route) => {
+        if (route.request().method() === "PUT") {
+            return route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ updated: 3 }),
+            });
+        }
+        return route.fallback();
+    });
+}
+
+test.describe("Sidebar — mark all read", () => {
+    test("marks a whole category read", async ({ authedPage: page }) => {
+        await setupReaderApi(page, markReader());
+        await stubBulkReadState(page);
+        await page.goto("/posts");
+
+        await page.getByTestId("feed-sidebar").getByLabel("category options").first().click();
+        const [request] = await Promise.all([
+            page.waitForRequest(
+                (r) => r.url().includes("/api/posts/read-state") && r.method() === "PUT"
+            ),
+            page.getByRole("menuitem", { name: "Mark all as read" }).click(),
+        ]);
+        expect(request.postDataJSON()).toMatchObject({ isRead: true, categoryId: "cat-tech" });
+    });
+
+    test("marks a single feed unread", async ({ authedPage: page }) => {
+        await setupReaderApi(page, markReader());
+        await stubBulkReadState(page);
+        await page.goto("/posts");
+
+        const sidebar = page.getByTestId("feed-sidebar");
+        await sidebar.getByRole("button", { name: /Technology/ }).click();
+        await sidebar.getByLabel("feed options").first().click();
+        const [request] = await Promise.all([
+            page.waitForRequest(
+                (r) => r.url().includes("/api/posts/read-state") && r.method() === "PUT"
+            ),
+            page.getByRole("menuitem", { name: "Mark all as unread" }).click(),
+        ]);
+        expect(request.postDataJSON()).toMatchObject({ isRead: false, feedId: "feed-tech" });
+    });
+
+    test("marks the uncategorized group read", async ({ authedPage: page }) => {
+        await setupReaderApi(page, markReader());
+        await stubBulkReadState(page);
+        await page.goto("/posts");
+
+        await page.getByTestId("feed-sidebar").getByLabel("uncategorized options").click();
+        const [request] = await Promise.all([
+            page.waitForRequest(
+                (r) => r.url().includes("/api/posts/read-state") && r.method() === "PUT"
+            ),
+            page.getByRole("menuitem", { name: "Mark all as read" }).click(),
+        ]);
+        expect(request.postDataJSON()).toMatchObject({ isRead: true, uncategorized: true });
+    });
+});

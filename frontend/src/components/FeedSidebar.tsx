@@ -43,6 +43,9 @@ interface FeedSidebarProps {
     onSelectFeed: (feedId: string) => void;
     onSelectUncategorized: () => void;
     onReadStateChange: (readState: ReadState) => void;
+    onMarkCategoryRead: (categoryId: string, isRead: boolean) => void;
+    onMarkUncategorizedRead: (isRead: boolean) => void;
+    onMarkFeedRead: (feedId: string, isRead: boolean) => void;
 
     // Management passthrough (to CategoryList / FeedList)
     onCreateCategory: (name: string) => Promise<Category>;
@@ -71,6 +74,9 @@ export function FeedSidebar({
     onSelectFeed,
     onSelectUncategorized,
     onReadStateChange,
+    onMarkCategoryRead,
+    onMarkUncategorizedRead,
+    onMarkFeedRead,
     onCreateCategory,
     onUpdateCategory,
     onDeleteCategory,
@@ -139,6 +145,9 @@ export function FeedSidebar({
                     onSelectFeed={onSelectFeed}
                     uncategorizedActive={uncategorizedActive}
                     onSelectUncategorized={onSelectUncategorized}
+                    onMarkCategoryRead={onMarkCategoryRead}
+                    onMarkUncategorizedRead={onMarkUncategorizedRead}
+                    onMarkFeedRead={onMarkFeedRead}
                     onCreateCategory={onCreateCategory}
                     onUpdateCategory={onUpdateCategory}
                     onDeleteCategory={onDeleteCategory}

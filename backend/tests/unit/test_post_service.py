@@ -445,3 +445,49 @@ class TestPostServiceUnreadCounts:
 
         assert by_feed == {}
         assert total == 0
+
+
+class TestPostServiceMarkAllRead:
+    """Tests for PostService.mark_all_read."""
+
+    @pytest.mark.asyncio
+    async def test_delegates_category_scope_to_repository(self):
+        """Should forward a category scope and return the affected count."""
+        from app.application.services.post_service import PostService
+
+        post_repo = AsyncMock()
+        post_repo.mark_all_read.return_value = 7
+        service = PostService(
+            post_repository=post_repo,
+            category_repository=AsyncMock(),
+            feed_repository=AsyncMock(),
+        )
+
+        user_id = uuid4()
+        category_id = uuid4()
+        count = await service.mark_all_read(user_id, True, category_id=category_id)
+
+        assert count == 7
+        post_repo.mark_all_read.assert_awaited_once_with(
+            user_id, True, category_id=category_id, feed_id=None, uncategorized=False
+        )
+
+    @pytest.mark.asyncio
+    async def test_delegates_uncategorized_scope(self):
+        """Should forward an uncategorized scope."""
+        from app.application.services.post_service import PostService
+
+        post_repo = AsyncMock()
+        post_repo.mark_all_read.return_value = 0
+        service = PostService(
+            post_repository=post_repo,
+            category_repository=AsyncMock(),
+            feed_repository=AsyncMock(),
+        )
+
+        user_id = uuid4()
+        await service.mark_all_read(user_id, False, uncategorized=True)
+
+        post_repo.mark_all_read.assert_awaited_once_with(
+            user_id, False, category_id=None, feed_id=None, uncategorized=True
+        )

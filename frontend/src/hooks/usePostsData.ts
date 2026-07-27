@@ -61,6 +61,14 @@ interface UsePostsDataActions {
     refresh: () => Promise<void>;
     loadMore: () => Promise<void>;
     markAsRead: (postId: string, isRead: boolean) => Promise<void>;
+    markAllRead: (
+        scope: {
+            categoryId?: string | null;
+            feedId?: string | null;
+            uncategorized?: boolean;
+        },
+        isRead: boolean
+    ) => Promise<void>;
 }
 
 export type UsePostsDataReturn = UsePostsDataState & UsePostsDataActions;
@@ -237,6 +245,32 @@ export function usePostsData(
     );
 
     /**
+     * Mark every post in a scope (category / feed / uncategorized) read/unread.
+     */
+    const markAllRead = useCallback(
+        async (
+            scope: {
+                categoryId?: string | null;
+                feedId?: string | null;
+                uncategorized?: boolean;
+            },
+            isRead: boolean
+        ): Promise<void> => {
+            try {
+                await api.put("/posts/read-state", { isRead, ...scope });
+                await refresh();
+            } catch (err) {
+                const message =
+                    err instanceof ApiError
+                        ? err.message
+                        : "Failed to update read state";
+                setState((prev) => ({ ...prev, error: message }));
+            }
+        },
+        [refresh]
+    );
+
+    /**
      * Set category filter
      */
     const setCategoryFilter = useCallback((categoryId: string | null) => {
@@ -367,6 +401,7 @@ export function usePostsData(
         refresh,
         loadMore,
         markAsRead,
+        markAllRead,
     };
 }
 
