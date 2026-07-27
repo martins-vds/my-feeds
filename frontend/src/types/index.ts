@@ -58,6 +58,7 @@ export interface Post {
     publishedAt: string;
     isRead: boolean;
     hasAudio: boolean;
+    hasContent: boolean;
 }
 
 /**

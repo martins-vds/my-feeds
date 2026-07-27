@@ -1,4 +1,14 @@
-import { Box, Button, IconButton, Typography, Tooltip, CircularProgress } from "@mui/material";
+import { useState } from "react";
+import {
+    Box,
+    Button,
+    IconButton,
+    Typography,
+    Tooltip,
+    CircularProgress,
+    Menu,
+    MenuItem,
+} from "@mui/material";
 import {
     PlayArrow as PlayIcon,
     Pause as PauseIcon,
@@ -22,6 +32,9 @@ function formatTime(seconds: number): string {
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
+
+// Available playback speeds for the audio player.
+const PLAYBACK_SPEEDS = [0.5, 1, 1.2, 1.5, 2, 2.5, 3];
 
 /**
  * Audio player component for TTS playback.
@@ -48,7 +61,11 @@ export function AudioPlayer({
         generateAudio,
         toggle,
         seek,
+        playbackRate,
+        setPlaybackRate,
     } = useAudioPlayer(postId);
+
+    const [speedAnchor, setSpeedAnchor] = useState<null | HTMLElement>(null);
 
     // Use initial values if provided and no audio has been generated yet
     const effectiveUrl = audioUrl || initialAudioUrl;
@@ -133,7 +150,6 @@ export function AudioPlayer({
                 alignItems: "center",
                 gap: 1,
                 width: "100%",
-                maxWidth: 400,
             }}
         >
             <IconButton
@@ -158,6 +174,36 @@ export function AudioPlayer({
                     ? `${formatTime(currentTime)} / ${formatTime(effectiveDuration)}`
                     : formatTime(currentTime)}
             </Typography>
+
+            <Tooltip title="Playback speed">
+                <Button
+                    size="small"
+                    onClick={(e) => setSpeedAnchor(e.currentTarget)}
+                    aria-label="Playback speed"
+                    data-testid="speed-button"
+                    sx={{ minWidth: 44, color: "text.secondary" }}
+                >
+                    {playbackRate}x
+                </Button>
+            </Tooltip>
+            <Menu
+                anchorEl={speedAnchor}
+                open={Boolean(speedAnchor)}
+                onClose={() => setSpeedAnchor(null)}
+            >
+                {PLAYBACK_SPEEDS.map((speed) => (
+                    <MenuItem
+                        key={speed}
+                        selected={speed === playbackRate}
+                        onClick={() => {
+                            setPlaybackRate(speed);
+                            setSpeedAnchor(null);
+                        }}
+                    >
+                        {speed}x
+                    </MenuItem>
+                ))}
+            </Menu>
         </Box>
     );
 }

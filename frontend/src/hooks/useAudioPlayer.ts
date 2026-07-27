@@ -16,6 +16,8 @@ export interface UseAudioPlayerResult {
     pause: () => void;
     toggle: () => void;
     seek: (time: number) => void;
+    playbackRate: number;
+    setPlaybackRate: (rate: number) => void;
 }
 
 /**
@@ -30,8 +32,10 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
     const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [error, setError] = useState<string | null>(null);
+    const [playbackRate, setPlaybackRateState] = useState(1);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const playbackRateRef = useRef(1);
 
     // Clean up audio element on unmount
     useEffect(() => {
@@ -63,6 +67,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
                 // Create audio element
                 const audio = new Audio(audioInfo.url);
                 audio.preload = "metadata";
+                audio.playbackRate = playbackRateRef.current;
 
                 audio.addEventListener("loadedmetadata", () => {
                     if (audio.duration && isFinite(audio.duration)) {
@@ -102,6 +107,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
                             setStatus("ready");
 
                             const audio = new Audio(audioInfo.url);
+                            audio.playbackRate = playbackRateRef.current;
                             audioRef.current = audio;
 
                             audio.addEventListener("timeupdate", () => {
@@ -162,6 +168,14 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         }
     }, []);
 
+    const setPlaybackRate = useCallback((rate: number) => {
+        playbackRateRef.current = rate;
+        setPlaybackRateState(rate);
+        if (audioRef.current) {
+            audioRef.current.playbackRate = rate;
+        }
+    }, []);
+
     const progress = durationSeconds && durationSeconds > 0
         ? (currentTime / durationSeconds) * 100
         : 0;
@@ -178,5 +192,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         pause,
         toggle,
         seek,
+        playbackRate,
+        setPlaybackRate,
     };
 }

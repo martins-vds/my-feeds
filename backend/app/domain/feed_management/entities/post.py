@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
+from app.domain.shared.readable_content import has_readable_content
+
 
 @dataclass
 class Post:
@@ -157,6 +159,7 @@ class Post:
             "publishedAt": self.published_at.isoformat(),
             "isRead": self.is_read,
             "hasAudio": self.has_audio,
+            "hasContent": has_readable_content(self.content) or has_readable_content(self.summary),
         }
 
     def to_detail_dict(self) -> dict:

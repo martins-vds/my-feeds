@@ -5,6 +5,7 @@
 import React, { useMemo } from "react";
 import { Box, Typography } from "@mui/material";
 import DOMPurify from "dompurify";
+import { hasReadableContent } from "../utils/readableContent";
 
 interface PostContentProps {
     content: string | null;
@@ -48,17 +49,21 @@ export const PostContent: React.FC<PostContentProps> = ({ content, summary }) =>
     // Use content if available, fall back to summary
     const displayContent = content || summary;
 
+    // Posts with no real content (empty, or just a discussion/comments link
+    // like Hacker News) are only available on the original site.
+    const readable = useMemo(() => hasReadableContent(displayContent), [displayContent]);
+
     // Sanitize the HTML content
     const sanitizedContent = useMemo(() => {
-        if (!displayContent) return null;
+        if (!readable || !displayContent) return null;
         return sanitizeHtml(displayContent);
-    }, [displayContent]);
+    }, [readable, displayContent]);
 
     if (!sanitizedContent) {
         return (
             <Box sx={{ py: 4 }} data-testid="post-content">
                 <Typography color="text.secondary" textAlign="center">
-                    No content available
+                    This article is only available on the original site.
                 </Typography>
             </Box>
         );

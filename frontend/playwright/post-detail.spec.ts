@@ -140,3 +140,33 @@ test.describe("Post Detail - Authentication", () => {
     await expect(page).toHaveURL(/\/signin/);
   });
 });
+
+test.describe("Post Detail - no readable content", () => {
+  const commentsOnly = makePostDetail("feed-1", {
+    id: "post-comments-only",
+    title: "AI companies are shredding rare books",
+    content: '<a href="https://news.ycombinator.com/item?id=1">Comments</a>',
+    summary: '<a href="https://news.ycombinator.com/item?id=1">Comments</a>',
+    feedTitle: "Hacker News",
+    link: "https://example.com/article",
+    hasAudio: false,
+  });
+
+  test("shows an 'only on original site' placeholder and hides audio", async ({
+    authedPage: page,
+  }) => {
+    await mockApi(page, `**/api/posts/${commentsOnly.id}`, commentsOnly);
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.goto(`/posts/${commentsOnly.id}`);
+
+    await expect(page.getByTestId("post-content")).toContainText(
+      "This article is only available on the original site"
+    );
+    // No audio affordances for a post with no readable content.
+    await expect(page.getByTestId("listen-button")).toHaveCount(0);
+    await expect(page.getByTestId("play-pause-button")).toHaveCount(0);
+    // But the original article is still reachable.
+    await expect(page.getByRole("link", { name: /read original/i })).toBeVisible();
+  });
+});

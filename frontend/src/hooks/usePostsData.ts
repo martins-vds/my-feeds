@@ -17,6 +17,7 @@ export interface PostSummary {
     publishedAt: string;
     isRead: boolean;
     hasAudio: boolean;
+    hasContent: boolean;
 }
 
 export interface PostDetail extends PostSummary {

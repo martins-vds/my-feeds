@@ -18,6 +18,18 @@ describe("PostContent sanitization", () => {
         expect(screen.getByText("world").tagName).toBe("STRONG");
     });
 
+    it("shows a placeholder for comments-only content", () => {
+        render(
+            <PostContent
+                content='<a href="https://news.ycombinator.com/item?id=1">Comments</a>'
+                summary={null}
+            />
+        );
+        expect(
+            screen.getByText("This article is only available on the original site.")
+        ).toBeInTheDocument();
+    });
+
     it("strips <script> tags", () => {
         const { container } = render(
             <PostContent
@@ -43,7 +55,7 @@ describe("PostContent sanitization", () => {
     it("removes javascript: URLs from links", () => {
         const { container } = render(
             <PostContent
-                content={'<a href="javascript:window.__xss=1">click</a>'}
+                content={'<p>Please <a href="javascript:window.__xss=1">click</a></p>'}
                 summary={null}
             />
         );
@@ -54,7 +66,7 @@ describe("PostContent sanitization", () => {
     it("opens links in a new tab with noopener noreferrer", () => {
         const { container } = render(
             <PostContent
-                content={'<a href="https://example.com">x</a>'}
+                content={'<p>Visit <a href="https://example.com">x</a></p>'}
                 summary={null}
             />
         );

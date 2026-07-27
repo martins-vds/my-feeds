@@ -21,6 +21,8 @@ const mockUseAudioPlayer: UseAudioPlayerResult = {
   pause: vi.fn(),
   toggle: vi.fn(),
   seek: vi.fn(),
+  playbackRate: 1,
+  setPlaybackRate: vi.fn(),
 };
 
 vi.mock("../../hooks/useAudioPlayer", () => ({
@@ -44,6 +46,8 @@ function resetMockState() {
     pause: vi.fn(),
     toggle: vi.fn(),
     seek: vi.fn(),
+    playbackRate: 1,
+    setPlaybackRate: vi.fn(),
   });
 }
 
@@ -262,6 +266,28 @@ describe("AudioPlayer", () => {
 
       render(<AudioPlayer postId="post-1" />);
       expect(screen.getByText("0:30")).toBeInTheDocument();
+    });
+  });
+
+  describe("playback speed", () => {
+    it("shows the current rate and lets the user change it", async () => {
+      const setPlaybackRate = vi.fn();
+      setMockState({
+        status: "ready",
+        audioUrl: "/audio/post-1.mp3",
+        durationSeconds: 60,
+        setPlaybackRate,
+      });
+
+      render(<AudioPlayer postId="post-1" />);
+
+      const speedButton = screen.getByTestId("speed-button");
+      expect(speedButton).toHaveTextContent("1x");
+
+      await userEvent.click(speedButton);
+      await userEvent.click(screen.getByRole("menuitem", { name: "1.5x" }));
+
+      expect(setPlaybackRate).toHaveBeenCalledWith(1.5);
     });
   });
 });

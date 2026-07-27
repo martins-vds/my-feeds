@@ -21,6 +21,7 @@ function makePost(overrides: Partial<PostSummary> = {}): PostSummary {
     publishedAt: "2026-02-13T12:00:00Z",
     isRead: false,
     hasAudio: false,
+    hasContent: true,
     ...overrides,
   };
 }

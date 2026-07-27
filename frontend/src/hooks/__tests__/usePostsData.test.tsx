@@ -42,6 +42,7 @@ function makePost(id: string): PostSummary {
         publishedAt: "2026-01-01T00:00:00Z",
         isRead: false,
         hasAudio: false,
+        hasContent: true,
     };
 }
 

@@ -527,3 +527,34 @@ class TestFeedServiceIngest:
 
         assert count == 0
         feed_repo.save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ingest_feed_nulls_comments_only_content(self):
+        """A post whose body is just a comments link is stored with no content."""
+        feed = _make_feed()
+        feed_repo = AsyncMock()
+        feed_repo.get_by_id.return_value = feed
+        feed_repo.save.side_effect = lambda f: f
+
+        comments_only = FeedPost(
+            guid="hn1",
+            title="AI companies are shredding rare books",
+            content='<a href="https://news.ycombinator.com/item?id=1">Comments</a>',
+            summary='<a href="https://news.ycombinator.com/item?id=1">Comments</a>',
+            author=None,
+            link="https://example.com/article",
+            published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        fetcher = AsyncMock()
+        fetcher.fetch_posts.return_value = [comments_only]
+
+        saved: list = []
+        post_repo = AsyncMock()
+        post_repo.save_many.side_effect = lambda posts: saved.extend(posts) or posts
+
+        service = _make_service(feed_repo, fetcher=fetcher, post_repo=post_repo)
+        await service.ingest_feed(feed.id)
+
+        assert len(saved) == 1
+        assert saved[0].content is None
+        assert saved[0].summary is None

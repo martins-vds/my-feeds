@@ -8,9 +8,11 @@ import { PostContent } from "../PostContent";
 
 describe("PostContent", () => {
   describe("rendering", () => {
-    it("should display 'No content available' when both content and summary are null", () => {
+    it("shows an 'only on original site' placeholder when content and summary are null", () => {
       render(<PostContent content={null} summary={null} />);
-      expect(screen.getByText("No content available")).toBeInTheDocument();
+      expect(
+        screen.getByText("This article is only available on the original site.")
+      ).toBeInTheDocument();
     });
 
     it("should render content when provided", () => {
@@ -93,7 +95,7 @@ describe("PostContent", () => {
     });
 
     it("should strip javascript: protocol from href attributes", () => {
-      render(<PostContent content='<a href="javascript:alert(1)">Bad link</a>' summary={null} />);
+      render(<PostContent content='<p>See <a href="javascript:alert(1)">Bad link</a> now</p>' summary={null} />);
       const link = screen.getByText("Bad link");
       expect(link).not.toHaveAttribute("href", "javascript:alert(1)");
     });

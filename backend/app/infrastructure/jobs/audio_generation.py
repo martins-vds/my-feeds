@@ -41,7 +41,11 @@ async def generate_pending_audio(batch_size: int = DEFAULT_BATCH_SIZE) -> int:
         stmt = (
             select(PostModel.id)
             .outerjoin(AudioModel, AudioModel.post_id == PostModel.id)
-            .where(AudioModel.id.is_(None))
+            .where(
+                AudioModel.id.is_(None),
+                PostModel.content.isnot(None),
+                PostModel.content != "",
+            )
             .order_by(PostModel.published_at.desc())
             .limit(batch_size)
         )

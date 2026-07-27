@@ -12,6 +12,7 @@ from app.domain.feed_management.services.feed_validator import (
     FeedValidator,
 )
 from app.infrastructure.feed_fetcher.feed_fetcher import FeedFetcher
+from app.domain.shared.readable_content import has_readable_content
 from app.infrastructure.sanitization.html_sanitizer import sanitize_html
 
 
@@ -313,6 +314,16 @@ class FeedService:
         posts: list[Post] = []
         for entry in fetched:
             try:
+                clean_content = sanitize_html(entry.content)
+                clean_summary = sanitize_html(entry.summary)
+                # A body that is empty or just a discussion/comments link
+                # (e.g. Hacker News items) carries no readable content — store
+                # nothing rather than a useless "Comments" link.
+                if not has_readable_content(clean_content) and not has_readable_content(
+                    clean_summary
+                ):
+                    clean_content = None
+                    clean_summary = None
                 posts.append(
                     Post.create(
                         feed_id=feed.id,
@@ -320,8 +331,8 @@ class FeedService:
                         title=entry.title,
                         link=entry.link,
                         published_at=entry.published_at,
-                        content=sanitize_html(entry.content),
-                        summary=sanitize_html(entry.summary),
+                        content=clean_content,
+                        summary=clean_summary,
                         author=entry.author,
                     )
                 )

@@ -68,6 +68,27 @@ test.describe("Reader — post list", () => {
         await expect(page.getByText("Audio").first()).toBeVisible();
     });
 
+    test("hides the summary and audio chip for posts with no readable content", async ({
+        authedPage: page,
+    }) => {
+        const commentsOnly = makePost("feed-tech", {
+            id: "post-comments",
+            title: "AI companies are shredding rare books",
+            summary: "Comments",
+            hasAudio: true,
+            hasContent: false,
+        });
+        await setupReaderApi(page, { ...READER, posts: [commentsOnly] });
+        await page.goto("/posts");
+
+        await expect(
+            page.getByText("AI companies are shredding rare books")
+        ).toBeVisible();
+        // The "Comments" excerpt and the Audio chip are both hidden.
+        await expect(page.getByText("Comments", { exact: true })).toHaveCount(0);
+        await expect(page.getByText("Audio")).toHaveCount(0);
+    });
+
     test("shows an empty state when there are no posts", async ({ authedPage: page }) => {
         await setupReaderApi(page, { ...READER, posts: [] });
         await page.goto("/posts");

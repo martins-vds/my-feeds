@@ -174,7 +174,7 @@ class AudioService:
     async def _generate_audio(
         self,
         post_id: UUID,
-        content: str,
+        content: str | None,
         title: str,
     ) -> Audio:
         """Generate audio for content.
@@ -188,7 +188,7 @@ class AudioService:
             Created Audio entity
         """
         # Prepare text for synthesis
-        text_to_synthesize = f"{title}. {content}"
+        text_to_synthesize = f"{title}. {content or ''}".strip()
 
         # Generate cache key
         cache_key = self._cache.generate_cache_key(

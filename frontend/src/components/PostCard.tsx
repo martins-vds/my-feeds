@@ -162,7 +162,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                     </Typography>
 
                     {/* Summary */}
-                    {post.summary && (
+                    {post.hasContent && post.summary && (
                         <Typography
                             variant="body2"
                             color="text.secondary"
@@ -188,7 +188,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                         }}
                     >
                         <Box sx={{ display: "flex", gap: 0.5 }}>
-                            {post.hasAudio && (
+                            {post.hasContent && post.hasAudio && (
                                 <Chip
                                     icon={<AudioIcon fontSize="small" />}
                                     label="Audio"

@@ -31,6 +31,7 @@ import api, { ApiError } from "../../services/api";
 import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";
 import { AudioPlayer } from "../../components/AudioPlayer";
+import { hasReadableContent } from "../../utils/readableContent";
 
 interface PostDetailResponse {
     id: string;
@@ -150,6 +151,10 @@ export const PostDetailPage: React.FC = () => {
     if (!post) {
         return null;
     }
+
+    // Posts with no readable body (empty, or just a comments link) can't be
+    // read here or synthesized to audio.
+    const readable = hasReadableContent(post.content || post.summary);
 
     return (
         <Container maxWidth="md" sx={{ py: 3 }}>
@@ -283,9 +288,11 @@ export const PostDetailPage: React.FC = () => {
                 </Box>
 
                 {/* Audio player */}
-                <Box sx={{ my: 2 }}>
-                    <AudioPlayer postId={post.id} />
-                </Box>
+                {readable && (
+                    <Box sx={{ my: 2 }}>
+                        <AudioPlayer postId={post.id} />
+                    </Box>
+                )}
 
                 <Divider sx={{ mb: 3 }} />
 

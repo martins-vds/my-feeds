@@ -26,6 +26,17 @@ class TestListPosts:
         assert isinstance(data["posts"], list)
 
     @pytest.mark.asyncio
+    async def test_list_posts_expose_has_content_flag(self, client, auth_headers):
+        """Each post summary exposes a boolean hasContent flag."""
+        response = await client.get("/api/posts", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        for post in data["posts"]:
+            assert isinstance(post["hasContent"], bool)
+            assert isinstance(post["hasAudio"], bool)
+
+    @pytest.mark.asyncio
     async def test_list_posts_sorted_by_date_descending(self, client, auth_headers):
         """Should return posts sorted by published_at descending (newest first)."""
         response = await client.get("/api/posts", headers=auth_headers)

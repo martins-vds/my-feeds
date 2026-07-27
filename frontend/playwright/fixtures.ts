@@ -73,6 +73,7 @@ export function makePost(feedId: string, overrides: Record<string, unknown> = {}
     publishedAt: new Date(2026, 0, 15, 12, 0, 0).toISOString(),
     isRead: false,
     hasAudio: false,
+    hasContent: true,
     ...overrides,
   };
 }
