@@ -117,22 +117,29 @@ async def list_posts():
 
 @bp.route("/unread-counts", methods=["GET"])
 async def unread_counts():
-    """Return unread post counts per feed and the total for the user.
+    """Return unread post counts per feed, per category, uncategorized, and total.
 
     GET /api/posts/unread-counts
 
     Returns:
-        JSON: { "byFeed": { "<feedId>": <count> }, "total": <count> }
+        JSON: {
+            "byFeed": { "<feedId>": <count> },
+            "byCategory": { "<categoryId>": <count> },
+            "uncategorized": <count>,
+            "total": <count>
+        }
     """
     user_id = get_current_user_id()
     container = get_request_container()
 
-    by_feed, total = await container.post_service.get_unread_counts(user_id)
+    counts = await container.post_service.get_unread_counts(user_id)
 
     return jsonify(
         {
-            "byFeed": {str(feed_id): count for feed_id, count in by_feed.items()},
-            "total": total,
+            "byFeed": {str(fid): c for fid, c in counts.by_feed.items()},
+            "byCategory": {str(cid): c for cid, c in counts.by_category.items()},
+            "uncategorized": counts.uncategorized,
+            "total": counts.total,
         }
     )
 

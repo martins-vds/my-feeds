@@ -34,6 +34,16 @@ class PostListResult:
     next_cursor: Optional[str] = None
 
 
+@dataclass
+class UnreadCounts:
+    """Unread post counts for a user, grouped for the sidebar."""
+
+    by_feed: dict[UUID, int]
+    by_category: dict[UUID, int]
+    uncategorized: int
+    total: int
+
+
 class PostService:
     """Application service for post-related operations.
 
@@ -186,18 +196,27 @@ class PostService:
         if not is_read:
             await self._post_repository.mark_as_read(user_id, post_id, True)
 
-    async def get_unread_counts(self, user_id: UUID) -> tuple[dict[UUID, int], int]:
-        """Get unread post counts per feed and the total for a user.
+    async def get_unread_counts(self, user_id: UUID) -> UnreadCounts:
+        """Get unread post counts (per feed, per category, uncategorized, total).
 
         Args:
             user_id: User UUID
 
         Returns:
-            Tuple of (mapping feed_id -> unread count, total unread count).
+            UnreadCounts with by_feed / by_category maps, an uncategorized count,
+            and the overall total (the sum of the per-feed counts).
         """
         by_feed = await self._post_repository.get_unread_counts_by_feed(user_id)
+        by_category, uncategorized = await self._post_repository.get_unread_counts_by_category(
+            user_id
+        )
         total = sum(by_feed.values())
-        return by_feed, total
+        return UnreadCounts(
+            by_feed=by_feed,
+            by_category=by_category,
+            uncategorized=uncategorized,
+            total=total,
+        )
 
     async def mark_all_read(
         self,

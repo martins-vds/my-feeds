@@ -409,12 +409,13 @@ class TestPostServiceUnreadCounts:
 
     @pytest.mark.asyncio
     async def test_get_unread_counts_sums_total(self):
-        """Should return the per-feed map and the summed total."""
+        """Returns per-feed / per-category maps, uncategorized, and summed total."""
         from app.application.services.post_service import PostService
 
-        f1, f2 = uuid4(), uuid4()
+        f1, f2, c1 = uuid4(), uuid4(), uuid4()
         post_repo = AsyncMock()
         post_repo.get_unread_counts_by_feed.return_value = {f1: 2, f2: 3}
+        post_repo.get_unread_counts_by_category.return_value = ({c1: 4}, 1)
 
         service = PostService(
             post_repository=post_repo,
@@ -422,18 +423,21 @@ class TestPostServiceUnreadCounts:
             feed_repository=AsyncMock(),
         )
 
-        by_feed, total = await service.get_unread_counts(uuid4())
+        counts = await service.get_unread_counts(uuid4())
 
-        assert by_feed == {f1: 2, f2: 3}
-        assert total == 5
+        assert counts.by_feed == {f1: 2, f2: 3}
+        assert counts.by_category == {c1: 4}
+        assert counts.uncategorized == 1
+        assert counts.total == 5
 
     @pytest.mark.asyncio
     async def test_get_unread_counts_empty(self):
-        """With no unread posts the total is zero."""
+        """With no unread posts every field is empty/zero."""
         from app.application.services.post_service import PostService
 
         post_repo = AsyncMock()
         post_repo.get_unread_counts_by_feed.return_value = {}
+        post_repo.get_unread_counts_by_category.return_value = ({}, 0)
 
         service = PostService(
             post_repository=post_repo,
@@ -441,10 +445,12 @@ class TestPostServiceUnreadCounts:
             feed_repository=AsyncMock(),
         )
 
-        by_feed, total = await service.get_unread_counts(uuid4())
+        counts = await service.get_unread_counts(uuid4())
 
-        assert by_feed == {}
-        assert total == 0
+        assert counts.by_feed == {}
+        assert counts.by_category == {}
+        assert counts.uncategorized == 0
+        assert counts.total == 0
 
 
 class TestPostServiceMarkAllRead:

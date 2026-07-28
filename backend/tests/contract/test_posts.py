@@ -314,12 +314,14 @@ class TestUnreadCounts:
 
     @pytest.mark.asyncio
     async def test_unread_counts_shape(self, client, auth_headers):
-        """Should return a byFeed map and a total equal to its sum."""
+        """Returns byFeed/byCategory maps, an uncategorized int, and a summed total."""
         response = await client.get("/api/posts/unread-counts", headers=auth_headers)
 
         assert response.status_code == 200
         data = await response.get_json()
         assert isinstance(data["byFeed"], dict)
+        assert isinstance(data["byCategory"], dict)
+        assert isinstance(data["uncategorized"], int)
         assert isinstance(data["total"], int)
         assert data["total"] == sum(data["byFeed"].values())
 
