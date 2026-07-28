@@ -63,7 +63,8 @@ describe("CategoryList", () => {
   describe("rendering", () => {
     it("should display loading state initially", () => {
       render(<CategoryList {...defaultProps} loading={true} />);
-      expect(screen.getByRole("progressbar")).toBeInTheDocument();
+      // CircularProgress replaced by SidebarSkeleton in the loading branch
+      expect(screen.queryByTestId("sidebar-skeleton")).not.toBeNull();
     });
 
     it("should display empty state when no categories or feeds exist", () => {
@@ -294,5 +295,10 @@ describe("CategoryList", () => {
         expect(onAddFeed).toHaveBeenCalledWith(null, "https://news.example/rss");
       });
     });
+  });
+
+  it("shows the sidebar skeleton while categories load", () => {
+    render(<CategoryList {...defaultProps} loading={true} />);
+    expect(screen.queryByTestId("sidebar-skeleton")).not.toBeNull();
   });
 });

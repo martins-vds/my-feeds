@@ -43,6 +43,7 @@ import type { Category, Feed } from "../types";
 import { CategoryForm } from "./CategoryForm";
 import { FeedList } from "./FeedList";
 import { AddFeedDialog } from "./AddFeedDialog";
+import { SidebarSkeleton } from "./skeletons/SidebarSkeleton";
 import { ApiError } from "../services/api";
 
 // Sentinel key for the pseudo-group that holds feeds with no categories.
@@ -324,18 +325,7 @@ export function CategoryList({
 
     // Loading state
     if (loading) {
-        return (
-            <Box
-                sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    p: 4,
-                }}
-            >
-                <CircularProgress />
-            </Box>
-        );
+        return <SidebarSkeleton />;
     }
 
     // Error state
