@@ -80,6 +80,54 @@ async def _ensure_test_users(app):
 
 
 # ---------------------------------------------------------------------------
+# Teardown — keep API-created rows from persisting (autouse)
+# ---------------------------------------------------------------------------
+# Deterministic seed rows that must survive between tests (they are re-seeded
+# idempotently). Everything else the tests create via the API is cleaned up.
+_SEED_CATEGORY_IDS = (TEST_CATEGORY_ID, TEST_OTHER_CAT_ID)
+_SEED_FEED_IDS = (TEST_FEED_ID, TEST_OTHER_FEED_ID)
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_created_rows(app):
+    """Contract tests run against a persistent database with no transactional
+    rollback, so rows created through the API (categories, feeds) would
+    otherwise accumulate for the fixed test users across runs — eventually
+    tripping the per-user category limit and breaking ``POST /categories``.
+
+    After each test, delete any categories/feeds owned by the test users that
+    aren't part of the deterministic seed. Dependent rows (``feed_categories``
+    links and a feed's ``posts``) cascade on delete, and the seed re-creates the
+    fixed rows on demand, so this keeps the shared DB from growing unbounded.
+    """
+    yield
+
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(
+            text("DELETE FROM categories WHERE user_id IN (:u1, :u2) AND id NOT IN (:c1, :c2)"),
+            {
+                "u1": TEST_USER_ID,
+                "u2": TEST_OTHER_USER_ID,
+                "c1": TEST_CATEGORY_ID,
+                "c2": TEST_OTHER_CAT_ID,
+            },
+        )
+        await session.execute(
+            text("DELETE FROM feeds WHERE user_id IN (:u1, :u2) AND id NOT IN (:f1, :f2)"),
+            {
+                "u1": TEST_USER_ID,
+                "u2": TEST_OTHER_USER_ID,
+                "f1": TEST_FEED_ID,
+                "f2": TEST_OTHER_FEED_ID,
+            },
+        )
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 — full data (on-demand)
 # ---------------------------------------------------------------------------
 _data_seeded = False
