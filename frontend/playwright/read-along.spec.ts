@@ -350,3 +350,79 @@ test.describe("Read-along fallback", () => {
         expect(errors).toEqual([]);
     });
 });
+
+// ── Floating audio controls ─────────────────────────────────────────────
+const floatingBody =
+    "<p>one two three four five</p>" +
+    Array.from(
+        { length: 40 },
+        (_, i) =>
+            `<p>Filler paragraph ${i} with enough text to push the inline audio player well above the viewport so the floating controls take over.</p>`
+    ).join("");
+
+const floatingPost = makePostDetail("feed-1", {
+    id: "floating-post",
+    title: "Floating Controls Test",
+    content: floatingBody,
+    feedTitle: "Read Along Feed",
+    isRead: true,
+    hasAudio: false,
+});
+
+async function setupFloating(page: Page) {
+    await mockApi(page, `**/api/posts/${floatingPost.id}`, floatingPost);
+    await mockApi(page, "**/api/categories", { categories: [] });
+    await page.route(`**/api/posts/${floatingPost.id}/audio`, (route) =>
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                postId: floatingPost.id,
+                status: "ready",
+                url: "/api/audio/floating-key",
+                durationSeconds: 2.2,
+                format: "mp3",
+                wordTimings: WORD_TIMINGS,
+            }),
+        })
+    );
+    const wav = makeWav(2.2);
+    await page.route("**/api/audio/**", (route) =>
+        route.fulfill({ status: 200, contentType: "audio/wav", body: wav })
+    );
+}
+
+test.describe("Floating audio controls", () => {
+    test("appear off-screen and drive play/pause + speed", async ({
+        authedPage: page,
+    }) => {
+        await setupFloating(page);
+        await page.goto(`/posts/${floatingPost.id}`);
+        await page.getByTestId("listen-button").click();
+        await page.getByTestId("play-pause-button").click();
+
+        // Hidden while the inline player is on-screen.
+        await expect(page.getByTestId("floating-audio-controls")).toBeHidden();
+
+        // Scroll the inline player out of view (but not down to the footer).
+        await page.evaluate(() => window.scrollTo(0, 1200));
+        await expect(page.getByTestId("floating-audio-controls")).toBeVisible();
+
+        // Pause from the floating control → the button flips to Play.
+        await page.getByTestId("floating-play-button").click();
+        await expect(page.getByTestId("floating-play-button")).toHaveAttribute(
+            "aria-label",
+            "Play"
+        );
+
+        // Change speed to 2x from the floating control.
+        await page.getByTestId("floating-speed-button").click();
+        await expect(page.getByTestId("floating-speed-options")).toBeVisible();
+        await page.getByRole("button", { name: "Set speed 2x" }).click();
+        await expect(page.getByTestId("floating-speed-button")).toHaveText("2x");
+
+        // Scroll back to the top → controls hide.
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect(page.getByTestId("floating-audio-controls")).toBeHidden();
+    });
+});

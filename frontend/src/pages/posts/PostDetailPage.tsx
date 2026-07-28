@@ -31,6 +31,7 @@ import api, { ApiError } from "../../services/api";
 import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";
 import { AudioPlayer } from "../../components/AudioPlayer";
+import { FloatingAudioControls } from "../../components/FloatingAudioControls";
 import { ReadAlongToggles } from "../../components/ReadAlongToggles";
 import { useAudioPlayer } from "../../hooks/useAudioPlayer";
 import { useReadAlong } from "../../hooks/useReadAlong";
@@ -82,6 +83,8 @@ export const PostDetailPage: React.FC = () => {
     const player = useAudioPlayer(postId ?? "");
     const titleRef = useRef<HTMLHeadingElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<HTMLDivElement>(null);
+    const footerRef = useRef<HTMLDivElement>(null);
     const readAlongPrefs = useReadAlongPreferences();
 
     useReadAlong({
@@ -311,7 +314,7 @@ export const PostDetailPage: React.FC = () => {
 
                 {/* Audio player */}
                 {readable && (
-                    <Box sx={{ my: 2 }}>
+                    <Box sx={{ my: 2 }} ref={playerRef}>
                         <AudioPlayer player={player} />
                         <ReadAlongToggles
                             highlight={readAlongPrefs.highlight}
@@ -331,6 +334,7 @@ export const PostDetailPage: React.FC = () => {
 
                 {/* Footer actions */}
                 <Box
+                    ref={footerRef}
                     sx={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -356,6 +360,13 @@ export const PostDetailPage: React.FC = () => {
                     </Button>
                 </Box>
             </Paper>
+            {readable && (
+                <FloatingAudioControls
+                    player={player}
+                    anchorRef={playerRef}
+                    footerRef={footerRef}
+                />
+            )}
         </Container>
     );
 };
