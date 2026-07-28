@@ -8,6 +8,7 @@ describe("PostDetailSkeleton", () => {
         const region = screen.getByTestId("post-detail-skeleton");
         expect(region.getAttribute("role")).toBe("status");
         expect(region.getAttribute("aria-busy")).toBe("true");
+        expect(region.getAttribute("aria-label")).toBe("Loading article");
         // Title + metadata + body lines → several skeletons.
         expect(
             region.querySelectorAll(".MuiSkeleton-root").length

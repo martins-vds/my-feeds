@@ -8,6 +8,7 @@ describe("PostListSkeleton", () => {
         const region = screen.getByTestId("posts-skeleton");
         expect(region.getAttribute("role")).toBe("status");
         expect(region.getAttribute("aria-busy")).toBe("true");
+        expect(region.getAttribute("aria-label")).toBe("Loading posts");
         expect(region.querySelectorAll(".MuiCard-root")).toHaveLength(4);
     });
 

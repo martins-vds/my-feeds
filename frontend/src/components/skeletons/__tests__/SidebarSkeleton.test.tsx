@@ -8,6 +8,7 @@ describe("SidebarSkeleton", () => {
         const region = screen.getByTestId("sidebar-skeleton");
         expect(region.getAttribute("role")).toBe("status");
         expect(region.getAttribute("aria-busy")).toBe("true");
+        expect(region.getAttribute("aria-label")).toBe("Loading feeds");
         expect(region.querySelectorAll(".MuiListItem-root")).toHaveLength(3);
     });
 

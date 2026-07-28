@@ -23,5 +23,6 @@ describe("PostDetailPage loading", () => {
         );
         expect(api.get).toHaveBeenCalled();
         expect(screen.queryByTestId("post-detail-skeleton")).not.toBeNull();
+        expect(screen.queryByTestId("back-button")).not.toBeNull();
     });
 });

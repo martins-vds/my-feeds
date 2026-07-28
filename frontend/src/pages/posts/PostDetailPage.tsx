@@ -143,6 +143,25 @@ export const PostDetailPage: React.FC = () => {
     if (loading) {
         return (
             <Container maxWidth="md" sx={{ py: 3 }}>
+                <Box
+                    sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        mb: 2,
+                    }}
+                >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <IconButton onClick={handleBack} data-testid="back-button" aria-label="Go back">
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Breadcrumbs aria-label="breadcrumb">
+                            <Link component={RouterLink} to="/posts" underline="hover" color="inherit">
+                                Posts
+                            </Link>
+                        </Breadcrumbs>
+                    </Box>
+                </Box>
                 <Paper elevation={0} sx={{ p: { xs: 2, md: 4 } }}>
                     <PostDetailSkeleton />
                 </Paper>
