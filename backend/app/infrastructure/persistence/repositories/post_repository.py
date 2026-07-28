@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import delete, exists, func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -242,6 +242,48 @@ class SQLAlchemyPostRepository(PostRepository):
         result = await self._session.execute(stmt)
         return {row[0]: row[1] for row in result.all()}
 
+    async def get_unread_counts_by_category(
+        self, user_id: UUID
+    ) -> tuple[dict[UUID, int], int]:
+        """Get unread post counts grouped by category, plus an uncategorized total."""
+        # Per-category: posts -> feeds -> feed_categories, count unread per category.
+        by_cat_stmt = (
+            select(feed_categories.c.category_id, func.count(PostModel.id))
+            .select_from(PostModel)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .join(feed_categories, feed_categories.c.feed_id == FeedModel.id)
+            .outerjoin(
+                UserPostModel,
+                (UserPostModel.post_id == PostModel.id) & (UserPostModel.user_id == user_id),
+            )
+            .where(
+                FeedModel.user_id == user_id,
+                (UserPostModel.id.is_(None)) | (UserPostModel.is_read.is_(False)),
+            )
+            .group_by(feed_categories.c.category_id)
+        )
+        by_cat_result = await self._session.execute(by_cat_stmt)
+        by_category = {row[0]: row[1] for row in by_cat_result.all()}
+
+        # Uncategorized: unread posts from feeds with no category rows.
+        uncat_stmt = (
+            select(func.count(PostModel.id))
+            .select_from(PostModel)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .outerjoin(
+                UserPostModel,
+                (UserPostModel.post_id == PostModel.id) & (UserPostModel.user_id == user_id),
+            )
+            .where(
+                FeedModel.user_id == user_id,
+                ~exists().where(feed_categories.c.feed_id == FeedModel.id),
+                (UserPostModel.id.is_(None)) | (UserPostModel.is_read.is_(False)),
+            )
+        )
+        uncat_result = await self._session.execute(uncat_stmt)
+        uncategorized = uncat_result.scalar_one() or 0
+        return by_category, uncategorized
+
     async def mark_all_read(
         self,
         user_id: UUID,
@@ -309,6 +351,12 @@ class SQLAlchemyPostRepository(PostRepository):
         Content is sanitized on read (defense in depth) so even rows that were
         stored before ingestion-time sanitization are safe when served.
         """
+        # Safely check if relationships are loaded without triggering lazy load
+        mapper = inspect(model)
+        has_audio = False
+        if 'audio' in mapper.dict:
+            has_audio = mapper.dict['audio'] is not None
+        
         post = Post(
             id=model.id,
             feed_id=model.feed_id,
@@ -321,12 +369,12 @@ class SQLAlchemyPostRepository(PostRepository):
             author=model.author,
             fetched_at=model.fetched_at,
             is_read=False,  # Populated by caller
-            has_audio=model.audio is not None,
+            has_audio=has_audio,
         )
         # Populate feed metadata if loaded
-        if model.feed:
-            post.feed_title = model.feed.title
-            post.feed_icon_url = model.feed.icon_url
+        if 'feed' in mapper.dict and mapper.dict['feed']:
+            post.feed_title = mapper.dict['feed'].title
+            post.feed_icon_url = mapper.dict['feed'].icon_url
         return post
 
     @staticmethod
