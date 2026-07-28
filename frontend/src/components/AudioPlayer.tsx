@@ -16,6 +16,7 @@ import {
 } from "@mui/icons-material";
 import type { AudioStatus, UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { Waveform } from "./Waveform";
+import { PLAYBACK_SPEEDS } from "../constants/audio";
 
 interface AudioPlayerProps {
     /** Player state/handlers, owned by the parent (PostDetailPage) so read-along
@@ -36,8 +37,7 @@ function formatTime(seconds: number): string {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-// Available playback speeds for the audio player.
-const PLAYBACK_SPEEDS = [0.5, 1, 1.2, 1.5, 2, 2.5, 3];
+
 
 /**
  * Audio player component for TTS playback.
