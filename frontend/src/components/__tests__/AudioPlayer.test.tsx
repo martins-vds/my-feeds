@@ -1,5 +1,8 @@
 /**
- * Vitest unit tests for AudioPlayer component
+ * Vitest unit tests for AudioPlayer component (controlled/presentational).
+ *
+ * AudioPlayer now receives player state via the `player` prop (the parent owns
+ * useAudioPlayer), so these tests pass a mutable mock player object directly.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -8,8 +11,8 @@ import userEvent from "@testing-library/user-event";
 import { AudioPlayer } from "../AudioPlayer";
 import type { UseAudioPlayerResult, AudioStatus } from "../../hooks/useAudioPlayer";
 
-// Mock the useAudioPlayer hook
-const mockUseAudioPlayer: UseAudioPlayerResult = {
+// A mutable mock player passed to <AudioPlayer player={...} />.
+const mockPlayer: UseAudioPlayerResult = {
   status: "idle" as AudioStatus,
   audioUrl: null,
   durationSeconds: null,
@@ -23,18 +26,17 @@ const mockUseAudioPlayer: UseAudioPlayerResult = {
   seek: vi.fn(),
   playbackRate: 1,
   setPlaybackRate: vi.fn(),
+  wordTimings: null,
+  getMediaElement: () => null,
+  isPlaying: false,
 };
 
-vi.mock("../../hooks/useAudioPlayer", () => ({
-  useAudioPlayer: () => mockUseAudioPlayer,
-}));
-
 function setMockState(overrides: Partial<UseAudioPlayerResult>) {
-  Object.assign(mockUseAudioPlayer, overrides);
+  Object.assign(mockPlayer, overrides);
 }
 
 function resetMockState() {
-  Object.assign(mockUseAudioPlayer, {
+  Object.assign(mockPlayer, {
     status: "idle" as AudioStatus,
     audioUrl: null,
     durationSeconds: null,
@@ -48,6 +50,9 @@ function resetMockState() {
     seek: vi.fn(),
     playbackRate: 1,
     setPlaybackRate: vi.fn(),
+    wordTimings: null,
+    getMediaElement: () => null,
+    isPlaying: false,
   });
 }
 
@@ -58,12 +63,12 @@ describe("AudioPlayer", () => {
 
   describe("idle state", () => {
     it("should display listen button in idle state", () => {
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByTestId("listen-button")).toBeInTheDocument();
     });
 
     it("should display listen button with accessible label", () => {
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByLabelText("Listen to article")).toBeInTheDocument();
     });
 
@@ -71,17 +76,9 @@ describe("AudioPlayer", () => {
       const generateAudio = vi.fn();
       setMockState({ generateAudio });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       await userEvent.click(screen.getByTestId("listen-button"));
       expect(generateAudio).toHaveBeenCalled();
-    });
-
-    it("should call onGenerateAudio callback if provided", async () => {
-      const onGenerateAudio = vi.fn().mockResolvedValue({ status: "ready", url: "/audio.mp3" });
-
-      render(<AudioPlayer postId="post-1" onGenerateAudio={onGenerateAudio} />);
-      await userEvent.click(screen.getByTestId("listen-button"));
-      expect(onGenerateAudio).toHaveBeenCalledWith("post-1");
     });
   });
 
@@ -89,21 +86,21 @@ describe("AudioPlayer", () => {
     it("should display spinner when generating audio", () => {
       setMockState({ status: "loading" });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByRole("progressbar")).toBeInTheDocument();
     });
 
     it("should display 'Generating audio...' text", () => {
       setMockState({ status: "loading" });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByText("Generating audio...")).toBeInTheDocument();
     });
 
     it("should not display listen or play buttons while loading", () => {
       setMockState({ status: "loading" });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();
       expect(screen.queryByTestId("play-pause-button")).not.toBeInTheDocument();
     });
@@ -113,14 +110,14 @@ describe("AudioPlayer", () => {
     it("should display 'Audio failed' message on error", () => {
       setMockState({ status: "error", error: "Something went wrong" });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByText("Audio failed")).toBeInTheDocument();
     });
 
     it("should display retry button on error", () => {
       setMockState({ status: "error", error: "Network error" });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByLabelText("Retry audio generation")).toBeInTheDocument();
     });
 
@@ -128,7 +125,7 @@ describe("AudioPlayer", () => {
       const generateAudio = vi.fn();
       setMockState({ status: "error", error: "Failed", generateAudio });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       await userEvent.click(screen.getByLabelText("Retry audio generation"));
       expect(generateAudio).toHaveBeenCalled();
     });
@@ -142,7 +139,7 @@ describe("AudioPlayer", () => {
         durationSeconds: 120,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByTestId("play-pause-button")).toBeInTheDocument();
     });
 
@@ -153,7 +150,7 @@ describe("AudioPlayer", () => {
         durationSeconds: 120,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByLabelText("Audio progress")).toBeInTheDocument();
     });
 
@@ -161,7 +158,7 @@ describe("AudioPlayer", () => {
       // When initialAudioUrl is provided and status is idle, effectiveStatus becomes "ready"
       setMockState({ status: "idle", audioUrl: null });
 
-      render(<AudioPlayer postId="post-1" audioUrl="/audio/post-1.mp3" />);
+      render(<AudioPlayer player={mockPlayer} audioUrl="/audio/post-1.mp3" />);
       expect(screen.getByTestId("play-pause-button")).toBeInTheDocument();
     });
   });
@@ -176,7 +173,7 @@ describe("AudioPlayer", () => {
         progress: 25,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByLabelText("Pause")).toBeInTheDocument();
     });
 
@@ -191,7 +188,7 @@ describe("AudioPlayer", () => {
         toggle,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       await userEvent.click(screen.getByTestId("play-pause-button"));
       expect(toggle).toHaveBeenCalled();
     });
@@ -205,7 +202,7 @@ describe("AudioPlayer", () => {
         progress: 54,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       // 65 seconds = 1:05, 120 seconds = 2:00
       expect(screen.getByText("1:05 / 2:00")).toBeInTheDocument();
     });
@@ -221,7 +218,7 @@ describe("AudioPlayer", () => {
         progress: 25,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByLabelText("Play")).toBeInTheDocument();
     });
 
@@ -234,7 +231,7 @@ describe("AudioPlayer", () => {
         progress: 75,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       // 45 seconds = 0:45, 60 seconds = 1:00
       expect(screen.getByText("0:45 / 1:00")).toBeInTheDocument();
     });
@@ -250,7 +247,7 @@ describe("AudioPlayer", () => {
         progress: 0,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       // 0 seconds = 0:00, 300 seconds = 5:00
       expect(screen.getByText("0:00 / 5:00")).toBeInTheDocument();
     });
@@ -264,7 +261,7 @@ describe("AudioPlayer", () => {
         progress: 0,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByText("0:30")).toBeInTheDocument();
     });
   });
@@ -279,7 +276,7 @@ describe("AudioPlayer", () => {
         setPlaybackRate,
       });
 
-      render(<AudioPlayer postId="post-1" />);
+      render(<AudioPlayer player={mockPlayer} />);
 
       const speedButton = screen.getByTestId("speed-button");
       expect(speedButton).toHaveTextContent("1x");

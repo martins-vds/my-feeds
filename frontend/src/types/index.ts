@@ -79,6 +79,17 @@ export interface UnreadCounts {
 }
 
 /**
+ * A single spoken word's timing within a clip, in integer milliseconds.
+ * Delivered inline on the audio READY response and used to drive read-along
+ * highlighting. `text` is the engine source token (verbatim, not normalized).
+ */
+export interface WordTiming {
+    text: string;
+    startMs: number;
+    durationMs: number;
+}
+
+/**
  * Audio info for a post (ready state)
  */
 export interface AudioInfo {
@@ -87,6 +98,11 @@ export interface AudioInfo {
     url: string;
     durationSeconds?: number;
     format?: string;
+    /**
+     * Ordered per-word timings (title words then body words). Present only
+     * when a valid timing sidecar exists for the clip; omitted otherwise.
+     */
+    wordTimings?: WordTiming[];
 }
 
 /**

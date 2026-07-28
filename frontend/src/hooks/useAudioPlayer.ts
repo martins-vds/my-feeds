@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import api from "../services/api";
-import type { AudioInfo, AudioPending, AudioResponse } from "../types";
+import type { AudioInfo, AudioPending, AudioResponse, WordTiming } from "../types";
 
 export type AudioStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "error";
 
@@ -18,6 +18,12 @@ export interface UseAudioPlayerResult {
     seek: (time: number) => void;
     playbackRate: number;
     setPlaybackRate: (rate: number) => void;
+    /** Ordered word timings from the READY response; null when omitted/absent. */
+    wordTimings: WordTiming[] | null;
+    /** Stable accessor for the live <audio> element (no re-render on read). */
+    getMediaElement: () => HTMLAudioElement | null;
+    /** Convenience flag derived from status. */
+    isPlaying: boolean;
 }
 
 /**
@@ -33,6 +39,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
     const [currentTime, setCurrentTime] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [playbackRate, setPlaybackRateState] = useState(1);
+    const [wordTimings, setWordTimings] = useState<WordTiming[] | null>(null);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const playbackRateRef = useRef(1);
@@ -62,6 +69,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
                 const audioInfo = response as AudioInfo;
                 setAudioUrl(audioInfo.url);
                 setDurationSeconds(audioInfo.durationSeconds ?? null);
+                setWordTimings(audioInfo.wordTimings ?? null);
                 setStatus("ready");
 
                 // Create audio element
@@ -104,6 +112,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
                             const audioInfo = pollResponse as AudioInfo;
                             setAudioUrl(audioInfo.url);
                             setDurationSeconds(audioInfo.durationSeconds ?? null);
+                            setWordTimings(audioInfo.wordTimings ?? null);
                             setStatus("ready");
 
                             const audio = new Audio(audioInfo.url);
@@ -180,6 +189,8 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         ? (currentTime / durationSeconds) * 100
         : 0;
 
+    const getMediaElement = useCallback(() => audioRef.current, []);
+
     return {
         status,
         audioUrl,
@@ -194,5 +205,8 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         seek,
         playbackRate,
         setPlaybackRate,
+        wordTimings,
+        getMediaElement,
+        isPlaying: status === "playing",
     };
 }

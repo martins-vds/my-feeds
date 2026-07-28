@@ -8,6 +8,7 @@ Tests verify the API contract defined in openapi.yaml for:
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text as sqltext
 
 
 class TestGetPostAudio:
@@ -126,3 +127,114 @@ class TestStreamAudio:
         content_length = int(response.headers["Content-Length"])
         data = await response.get_data()
         assert content_length == len(data)
+
+
+# ── Word-timings delivery (feature 003-read-along-highlight) ────────────────
+
+
+async def _seed_audio_row(post_id, cache_key):
+    """Insert (replacing any existing) an audio row for ``post_id``."""
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(sqltext("DELETE FROM audio WHERE post_id = :pid"), {"pid": post_id})
+        await session.execute(
+            sqltext(
+                "INSERT INTO audio (id, post_id, cache_key, file_path) VALUES (:id, :pid, :ck, :fp)"
+            ),
+            {
+                "id": uuid4(),
+                "pid": post_id,
+                "ck": cache_key,
+                "fp": f"{cache_key[:2]}/{cache_key}.mp3",
+            },
+        )
+        await session.commit()
+
+
+async def _delete_audio_row(post_id):
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(sqltext("DELETE FROM audio WHERE post_id = :pid"), {"pid": post_id})
+        await session.commit()
+
+
+class TestPostAudioWordTimings:
+    """READY response delivers ordered wordTimings when a valid sidecar exists."""
+
+    @pytest.mark.asyncio
+    async def test_includes_word_timings_when_sidecar_present(self, client, auth_headers, post_id):
+        """A valid sidecar → ordered wordTimings inline on the READY response."""
+        from app.config.container import create_cache_manager
+
+        cache = create_cache_manager()
+        cache_key = "1a" * 32
+        words = [
+            {"text": "Test", "startMs": 0, "durationMs": 300},
+            {"text": "Post", "startMs": 350, "durationMs": 300},
+        ]
+
+        mp3 = cache.get_file_path(cache_key)
+        mp3.parent.mkdir(parents=True, exist_ok=True)
+        mp3.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 512)
+        cache.save_timings(
+            cache_key,
+            {"schemaVersion": 1, "voiceId": "en-US-AriaNeural", "words": words},
+        )
+        await _seed_audio_row(post_id, cache_key)
+
+        try:
+            response = await client.get(f"/api/posts/{post_id}/audio", headers=auth_headers)
+
+            assert response.status_code == 200
+            data = await response.get_json()
+            # Existing metadata still present and correct.
+            assert data["status"] == "ready"
+            assert data["postId"] == str(post_id)
+            assert data["url"].endswith(cache_key)
+            assert "durationSeconds" in data
+            assert data.get("format") == "mp3"
+            # Ordered wordTimings, exact shape.
+            assert "wordTimings" in data
+            assert data["wordTimings"] == words
+        finally:
+            await _delete_audio_row(post_id)
+            await cache.delete(cache_key)
+            cache.delete_timings(cache_key)
+
+    @pytest.mark.asyncio
+    async def test_omits_word_timings_when_sidecar_corrupt(
+        self, client, auth_headers, read_post_id
+    ):
+        """A corrupt sidecar is treated as no timings → wordTimings omitted.
+
+        The sidecar file exists (so the timings-aware short-circuit still serves
+        the cached clip without regenerating), but its contents are invalid, so
+        the route emits no ``wordTimings``.
+        """
+        from app.config.container import create_cache_manager
+
+        cache = create_cache_manager()
+        cache_key = "2b" * 32
+
+        mp3 = cache.get_file_path(cache_key)
+        mp3.parent.mkdir(parents=True, exist_ok=True)
+        mp3.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 512)
+        sidecar = cache.get_timings_path(cache_key)
+        sidecar.write_text("{ this is not valid json")
+        await _seed_audio_row(read_post_id, cache_key)
+
+        try:
+            response = await client.get(f"/api/posts/{read_post_id}/audio", headers=auth_headers)
+
+            assert response.status_code == 200
+            data = await response.get_json()
+            assert data["status"] == "ready"
+            assert "wordTimings" not in data
+        finally:
+            await _delete_audio_row(read_post_id)
+            await cache.delete(cache_key)
+            sidecar.unlink(missing_ok=True)

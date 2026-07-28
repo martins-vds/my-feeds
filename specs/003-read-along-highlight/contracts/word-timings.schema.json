@@ -1,0 +1,76 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://my-feeds/specs/003-read-along-highlight/word-timings.schema.json",
+    "title": "Word Timings Sidecar",
+    "description": "Ordered per-word timing data for one cached TTS clip. Persisted as audio_cache/<cache_key[:2]>/<cache_key>.json and delivered inline as the `wordTimings` array on the audio READY response.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "schemaVersion",
+        "words"
+    ],
+    "properties": {
+        "schemaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Forward-compatibility marker. Current value: 1."
+        },
+        "voiceId": {
+            "type": "string",
+            "description": "Voice identifier used for synthesis (traceability; optional to consume)."
+        },
+        "words": {
+            "type": "array",
+            "description": "Word timings in spoken order (title words then body words). MAY be empty; an empty list is treated by consumers as 'no timings'.",
+            "items": {
+                "$ref": "#/definitions/wordTiming"
+            }
+        }
+    },
+    "definitions": {
+        "wordTiming": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "text",
+                "startMs",
+                "durationMs"
+            ],
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Engine source-text token, verbatim (e.g. '2024', \"don't\", 'Hello'). Not normalized server-side."
+                },
+                "startMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Start offset from the beginning of the audio, in milliseconds."
+                },
+                "durationMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Duration of the spoken word in milliseconds. end = startMs + durationMs."
+                }
+            }
+        }
+    },
+    "examples": [
+        {
+            "schemaVersion": 1,
+            "voiceId": "en-US-AriaNeural",
+            "words": [
+                {
+                    "text": "Hello",
+                    "startMs": 120,
+                    "durationMs": 300
+                },
+                {
+                    "text": "world",
+                    "startMs": 430,
+                    "durationMs": 280
+                }
+            ]
+        }
+    ]
+}

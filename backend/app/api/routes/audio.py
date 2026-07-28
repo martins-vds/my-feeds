@@ -49,25 +49,34 @@ async def get_post_audio(post_id: UUID):
         result = await audio_service.get_or_generate_audio(post_id, user_id)
 
         if result.status == AudioStatus.READY:
-            return jsonify({
+            body = {
                 "postId": str(post_id),
                 "status": "ready",
                 "url": result.url,
                 "durationSeconds": result.duration_seconds,
                 "format": "mp3",
-            }), 200
+            }
+            # Include ordered word timings only when a valid sidecar exists;
+            # omit the field entirely otherwise (never null/[]).
+            if result.word_timings:
+                body["wordTimings"] = result.word_timings
+            return jsonify(body), 200
 
         elif result.status == AudioStatus.GENERATING:
-            return jsonify({
-                "postId": str(post_id),
-                "status": "generating",
-                "estimatedSeconds": result.estimated_seconds or 5,
-            }), 202
+            return jsonify(
+                {
+                    "postId": str(post_id),
+                    "status": "generating",
+                    "estimatedSeconds": result.estimated_seconds or 5,
+                }
+            ), 202
 
         else:  # ERROR
-            return jsonify({
-                "error": result.error or "Audio generation failed",
-            }), 500
+            return jsonify(
+                {
+                    "error": result.error or "Audio generation failed",
+                }
+            ), 500
 
     except ValueError:
         return jsonify({"error": "Post not found"}), 404

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +70,13 @@ class AudioModel(Base):
         comment="Last time audio was accessed (for LRU cache)",
     )
 
+    has_timings: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        comment="Whether a valid word-timing sidecar exists for this clip",
+    )
+
     # Relationships
     post: Mapped["PostModel"] = relationship(
         "PostModel",
@@ -79,6 +86,4 @@ class AudioModel(Base):
     __table_args__ = ({"comment": "Cached TTS audio files"},)
 
     def __repr__(self) -> str:
-        return (
-            f"<Audio(id={self.id}, post_id={self.post_id}, cache_key={self.cache_key})>"
-        )
+        return f"<Audio(id={self.id}, post_id={self.post_id}, cache_key={self.cache_key})>"

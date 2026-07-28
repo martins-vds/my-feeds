@@ -14,14 +14,17 @@ import {
     Pause as PauseIcon,
     Replay as RetryIcon,
 } from "@mui/icons-material";
-import { useAudioPlayer, type AudioStatus } from "../hooks/useAudioPlayer";
+import type { AudioStatus, UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { Waveform } from "./Waveform";
 
 interface AudioPlayerProps {
-    postId: string;
+    /** Player state/handlers, owned by the parent (PostDetailPage) so read-along
+     * and the player share one media element. */
+    player: UseAudioPlayerResult;
+    /** Optional initial URL (renders the player immediately for already-generated audio). */
     audioUrl?: string | null;
+    /** Optional initial duration. */
     durationSeconds?: number;
-    onGenerateAudio?: (postId: string) => Promise<{ status: string; url?: string }>;
 }
 
 /**
@@ -39,17 +42,17 @@ const PLAYBACK_SPEEDS = [0.5, 1, 1.2, 1.5, 2, 2.5, 3];
 /**
  * Audio player component for TTS playback.
  *
- * Supports:
+ * Controlled/presentational: all player state and handlers come from the
+ * `player` prop (the parent owns `useAudioPlayer`). Supports:
  * - Lazy audio generation on first listen
  * - Play/pause toggle
  * - Progress bar with current time
  * - Error handling with retry
  */
 export function AudioPlayer({
-    postId,
+    player,
     audioUrl: initialAudioUrl,
     durationSeconds: initialDuration,
-    onGenerateAudio,
 }: AudioPlayerProps) {
     const {
         status,
@@ -63,7 +66,7 @@ export function AudioPlayer({
         seek,
         playbackRate,
         setPlaybackRate,
-    } = useAudioPlayer(postId);
+    } = player;
 
     const [speedAnchor, setSpeedAnchor] = useState<null | HTMLElement>(null);
 
@@ -72,12 +75,8 @@ export function AudioPlayer({
     const effectiveDuration = durationSeconds ?? initialDuration;
     const effectiveStatus: AudioStatus = effectiveUrl && status === "idle" ? "ready" : status;
 
-    const handleListenClick = async () => {
-        if (onGenerateAudio) {
-            await onGenerateAudio(postId);
-        } else {
-            await generateAudio();
-        }
+    const handleListenClick = () => {
+        generateAudio();
     };
 
     const handleRetryClick = () => {

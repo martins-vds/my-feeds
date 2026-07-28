@@ -252,6 +252,7 @@ def create_cache_manager():
     return AudioCacheManager(
         cache_dir=cache_dir,
         max_size_mb=settings.audio_max_cache_size_mb,
+        cache_version=settings.audio_cache_version,
     )
 
 

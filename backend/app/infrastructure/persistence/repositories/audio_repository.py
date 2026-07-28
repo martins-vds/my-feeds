@@ -17,7 +17,7 @@ class SQLAlchemyAudioRepository(AudioRepository):
 
     def __init__(self, session: AsyncSession):
         """Initialize repository with database session.
-        
+
         Args:
             session: SQLAlchemy async session
         """
@@ -25,10 +25,10 @@ class SQLAlchemyAudioRepository(AudioRepository):
 
     def _to_entity(self, model: AudioModel) -> Audio:
         """Convert SQLAlchemy model to domain entity.
-        
+
         Args:
             model: AudioModel instance
-            
+
         Returns:
             Audio domain entity
         """
@@ -44,14 +44,15 @@ class SQLAlchemyAudioRepository(AudioRepository):
             created_at=model.created_at,
             last_accessed_at=model.last_accessed_at,
             access_count=0,  # Not tracked in model currently
+            has_timings=model.has_timings,
         )
 
     def _to_model(self, entity: Audio) -> AudioModel:
         """Convert domain entity to SQLAlchemy model.
-        
+
         Args:
             entity: Audio domain entity
-            
+
         Returns:
             AudioModel instance
         """
@@ -64,6 +65,7 @@ class SQLAlchemyAudioRepository(AudioRepository):
             file_size_bytes=entity.file_size_bytes,
             created_at=entity.created_at,
             last_accessed_at=entity.last_accessed_at,
+            has_timings=entity.has_timings,
         )
 
     async def get_by_id(self, audio_id: UUID) -> Optional[Audio]:
@@ -100,16 +102,17 @@ class SQLAlchemyAudioRepository(AudioRepository):
         stmt = select(AudioModel).where(AudioModel.id == audio.id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
-        
+
         if not model:
             raise ValueError(f"Audio {audio.id} not found")
-        
+
         model.cache_key = audio.cache_key
         model.file_path = audio.file_path
         model.duration_seconds = int(audio.duration_seconds) if audio.duration_seconds else None
         model.file_size_bytes = audio.file_size_bytes
         model.last_accessed_at = audio.last_accessed_at
-        
+        model.has_timings = audio.has_timings
+
         await self._session.flush()
         await self._session.refresh(model)
         return self._to_entity(model)
@@ -119,10 +122,10 @@ class SQLAlchemyAudioRepository(AudioRepository):
         stmt = select(AudioModel).where(AudioModel.id == audio_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
-        
+
         if not model:
             return False
-        
+
         await self._session.delete(model)
         await self._session.flush()
         return True
@@ -132,10 +135,10 @@ class SQLAlchemyAudioRepository(AudioRepository):
         stmt = select(AudioModel).where(AudioModel.post_id == post_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
-        
+
         if not model:
             return False
-        
+
         await self._session.delete(model)
         await self._session.flush()
         return True
@@ -145,7 +148,7 @@ class SQLAlchemyAudioRepository(AudioRepository):
         stmt = select(AudioModel).where(AudioModel.id == audio_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
-        
+
         if model:
             model.last_accessed_at = datetime.utcnow()
             await self._session.flush()

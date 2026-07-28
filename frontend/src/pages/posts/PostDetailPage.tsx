@@ -2,7 +2,7 @@
  * PostDetailPage - displays full post content with read state management
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
     Container,
@@ -31,6 +31,10 @@ import api, { ApiError } from "../../services/api";
 import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";
 import { AudioPlayer } from "../../components/AudioPlayer";
+import { ReadAlongToggles } from "../../components/ReadAlongToggles";
+import { useAudioPlayer } from "../../hooks/useAudioPlayer";
+import { useReadAlong } from "../../hooks/useReadAlong";
+import { useReadAlongPreferences } from "../../hooks/useReadAlongPreferences";
 import { hasReadableContent } from "../../utils/readableContent";
 
 interface PostDetailResponse {
@@ -72,6 +76,23 @@ export const PostDetailPage: React.FC = () => {
     const [post, setPost] = useState<PostDetailResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Own the audio player here so read-along and the player share one media
+    // element. The title and body refs give the highlighter its wrap targets.
+    const player = useAudioPlayer(postId ?? "");
+    const titleRef = useRef<HTMLHeadingElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const readAlongPrefs = useReadAlongPreferences();
+
+    useReadAlong({
+        timings: player.wordTimings,
+        getMediaElement: player.getMediaElement,
+        isPlaying: player.isPlaying,
+        titleRef,
+        contentRef,
+        highlightEnabled: readAlongPrefs.highlight,
+        autoScrollEnabled: readAlongPrefs.autoScroll,
+    });
 
     // Fetch post detail
     useEffect(() => {
@@ -218,6 +239,7 @@ export const PostDetailPage: React.FC = () => {
                     component="h1"
                     gutterBottom
                     data-testid="post-title"
+                    ref={titleRef}
                 >
                     {post.title}
                 </Typography>
@@ -290,14 +312,20 @@ export const PostDetailPage: React.FC = () => {
                 {/* Audio player */}
                 {readable && (
                     <Box sx={{ my: 2 }}>
-                        <AudioPlayer postId={post.id} />
+                        <AudioPlayer player={player} />
+                        <ReadAlongToggles
+                            highlight={readAlongPrefs.highlight}
+                            onHighlightChange={readAlongPrefs.setHighlight}
+                            autoScroll={readAlongPrefs.autoScroll}
+                            onAutoScrollChange={readAlongPrefs.setAutoScroll}
+                        />
                     </Box>
                 )}
 
                 <Divider sx={{ mb: 3 }} />
 
                 {/* Content */}
-                <PostContent content={post.content} summary={post.summary} />
+                <PostContent content={post.content} summary={post.summary} ref={contentRef} />
 
                 <Divider sx={{ my: 3 }} />
 

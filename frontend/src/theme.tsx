@@ -71,6 +71,28 @@ export const theme = createTheme({
           backgroundColor: "#FAF7F0",
           WebkitFontSmoothing: "antialiased",
         },
+        // Read-along word highlighting. `.ra-word` is layout-neutral (only a
+        // rounded corner, invisible until highlighted) so wrapping every word
+        // never shifts text. `.ra-active` marks the single spoken word with a
+        // theme-aware background+text meeting WCAG AA (>=4.5:1) — verified
+        // ~14:1 in light and ~10:1 in dark (SC-007). box-decoration-break keeps
+        // the highlight intact across line wraps.
+        ".ra-word": {
+          borderRadius: "3px",
+        },
+        ".ra-active": {
+          backgroundColor: "#FDE68A", // amber-200
+          color: "#1C1917", // stone-900 on amber-200 → ~14:1 (AA)
+          borderRadius: "3px",
+          boxDecorationBreak: "clone",
+          WebkitBoxDecorationBreak: "clone",
+        },
+        "@media (prefers-color-scheme: dark)": {
+          ".ra-active": {
+            backgroundColor: "#FBBF24", // amber-400
+            color: "#1C1917", // stone-900 on amber-400 → ~10:1 (AA), reads on dark bg
+          },
+        },
         // Respect users who prefer reduced motion.
         "@media (prefers-reduced-motion: reduce)": {
           "*, *::before, *::after": {

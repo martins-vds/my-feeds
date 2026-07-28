@@ -8,7 +8,7 @@ separate so a slow/failing TTS provider never affects post ingestion.
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.application.services.audio_service import AudioStatus
 from app.config.container import create_audio_service, create_session
@@ -42,7 +42,9 @@ async def generate_pending_audio(batch_size: int = DEFAULT_BATCH_SIZE) -> int:
             select(PostModel.id)
             .outerjoin(AudioModel, AudioModel.post_id == PostModel.id)
             .where(
-                AudioModel.id.is_(None),
+                # Posts with no audio yet, OR clips lacking word timings
+                # (pre-feature backfill). Idempotent: has_timings=true is skipped.
+                or_(AudioModel.id.is_(None), AudioModel.has_timings.is_(False)),
                 PostModel.content.isnot(None),
                 PostModel.content != "",
             )

@@ -67,6 +67,34 @@ async def test_generate_pending_audio_no_missing_posts_is_noop():
 
 
 @pytest.mark.asyncio
+async def test_selection_includes_timingless_posts_and_preserves_filters():
+    """The SELECT targets audio-less OR has_timings=false posts, keeping the
+    content filter, published_at DESC ordering, and batch limit."""
+    session = _session_returning([])
+
+    with (
+        patch(
+            "app.infrastructure.jobs.audio_generation.create_session",
+            return_value=session,
+        ),
+        patch("app.infrastructure.jobs.audio_generation.create_audio_service"),
+    ):
+        await generate_pending_audio(batch_size=7)
+
+    stmt = session.execute.call_args[0][0]
+    sql = str(stmt).lower()
+
+    # Timings-aware selection.
+    assert "has_timings" in sql
+    assert "is null" in sql  # audio.id IS NULL
+    # Preserved constraints.
+    assert "content" in sql
+    assert "published_at" in sql
+    assert "desc" in sql
+    assert "limit" in sql
+
+
+@pytest.mark.asyncio
 async def test_generate_pending_audio_continues_after_a_failure():
     p1, p2 = uuid4(), uuid4()
     session = _session_returning([p1, p2])

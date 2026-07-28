@@ -22,6 +22,7 @@ class Audio:
         created_at: Generation timestamp
         last_accessed_at: Last playback request
         access_count: Number of playback requests
+        has_timings: Whether a valid word-timing sidecar exists for this clip
     """
 
     post_id: UUID
@@ -35,6 +36,7 @@ class Audio:
     created_at: Optional[datetime] = None
     last_accessed_at: Optional[datetime] = None
     access_count: int = 0
+    has_timings: bool = False
 
     def __post_init__(self) -> None:
         """Initialize defaults after dataclass init."""
@@ -54,8 +56,5 @@ class Audio:
     def is_valid(self) -> bool:
         """Check if audio has required fields."""
         return bool(
-            self.post_id
-            and self.cache_key
-            and self.file_path
-            and len(self.cache_key) == 64
+            self.post_id and self.cache_key and self.file_path and len(self.cache_key) == 64
         )

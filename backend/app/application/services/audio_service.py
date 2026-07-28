@@ -42,6 +42,7 @@ class AudioResult:
     duration_seconds: Optional[float] = None
     estimated_seconds: Optional[int] = None
     error: Optional[str] = None
+    word_timings: Optional[list[dict]] = None
 
 
 class AudioService:
@@ -95,9 +96,15 @@ class AudioService:
         if not post:
             raise ValueError(f"Post {post_id} not found")
 
-        # Check if audio already exists
+        # Check if audio already exists. Only short-circuit when BOTH the MP3
+        # and a timings sidecar are present; otherwise fall through and
+        # regenerate so pre-feature (timing-less) clips are backfilled.
         existing_audio = await self._audio_repo.get_by_post_id(post_id)
-        if existing_audio and self._cache.exists(existing_audio.cache_key):
+        if (
+            existing_audio
+            and self._cache.exists(existing_audio.cache_key)
+            and self._cache.exists_timings(existing_audio.cache_key)
+        ):
             # Record access for LRU tracking
             await self._audio_repo.record_access(existing_audio.id)
 
@@ -107,6 +114,7 @@ class AudioService:
                 url=f"/api/audio/{existing_audio.cache_key}",
                 cache_key=existing_audio.cache_key,
                 duration_seconds=existing_audio.duration_seconds,
+                word_timings=self._load_word_timings(existing_audio.cache_key),
             )
 
         # Generate new audio
@@ -118,6 +126,7 @@ class AudioService:
                 url=f"/api/audio/{audio.cache_key}",
                 cache_key=audio.cache_key,
                 duration_seconds=audio.duration_seconds,
+                word_timings=self._load_word_timings(audio.cache_key),
             )
         except TTSError as e:
             return AudioResult(
@@ -146,13 +155,18 @@ class AudioService:
             raise ValueError(f"Post {post_id} not found")
 
         existing_audio = await self._audio_repo.get_by_post_id(post_id)
-        if existing_audio and self._cache.exists(existing_audio.cache_key):
+        if (
+            existing_audio
+            and self._cache.exists(existing_audio.cache_key)
+            and self._cache.exists_timings(existing_audio.cache_key)
+        ):
             return AudioResult(
                 status=AudioStatus.READY,
                 post_id=post_id,
                 url=f"/api/audio/{existing_audio.cache_key}",
                 cache_key=existing_audio.cache_key,
                 duration_seconds=existing_audio.duration_seconds,
+                word_timings=self._load_word_timings(existing_audio.cache_key),
             )
 
         try:
@@ -163,6 +177,7 @@ class AudioService:
                 url=f"/api/audio/{audio.cache_key}",
                 cache_key=audio.cache_key,
                 duration_seconds=audio.duration_seconds,
+                word_timings=self._load_word_timings(audio.cache_key),
             )
         except TTSError as e:
             return AudioResult(
@@ -199,8 +214,24 @@ class AudioService:
         # Get output path
         output_path = self._cache.get_file_path(cache_key)
 
-        # Synthesize audio
-        await self._tts.synthesize(text_to_synthesize, output_path)
+        # Synthesize audio and capture per-word timings
+        timings = await self._tts.synthesize_with_timings(text_to_synthesize, output_path)
+
+        # Persist timings as a sidecar when the engine produced any, and record
+        # the queryable marker on the row. Missing/empty timings -> no sidecar.
+        words = [
+            {"text": t.text, "startMs": t.start_ms, "durationMs": t.duration_ms} for t in timings
+        ]
+        has_timings = bool(words)
+        if has_timings:
+            self._cache.save_timings(
+                cache_key,
+                {
+                    "schemaVersion": 1,
+                    "voiceId": self._tts.voice_id,
+                    "words": words,
+                },
+            )
 
         # Get file size
         file_size = self._cache.get_file_size(cache_key)
@@ -216,6 +247,7 @@ class AudioService:
             voice_id=self._tts.voice_id,
             duration_seconds=duration_seconds,
             file_size_bytes=file_size,
+            has_timings=has_timings,
         )
 
         # Remove existing audio for this post if any
@@ -223,6 +255,27 @@ class AudioService:
 
         # Save new audio record
         return await self._audio_repo.create(audio)
+
+    def _load_word_timings(self, cache_key: str) -> Optional[list[dict]]:
+        """Load ordered word timings for a clip, or None when unusable.
+
+        Returns the ordered ``words`` array from the sidecar when a valid,
+        non-empty timing set exists; returns ``None`` for missing, empty,
+        corrupt, or non-conforming sidecars so the API omits the field.
+
+        Args:
+            cache_key: Audio cache key
+
+        Returns:
+            Ordered ``[{text, startMs, durationMs}]`` or None
+        """
+        payload = self._cache.load_timings(cache_key)
+        if not payload:
+            return None
+        words = payload.get("words")
+        if not isinstance(words, list) or not words:
+            return None
+        return words
 
     async def get_audio_stream_path(self, cache_key: str) -> Optional[Path]:
         """Get file path for streaming audio.

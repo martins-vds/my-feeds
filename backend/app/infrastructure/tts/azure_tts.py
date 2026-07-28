@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from app.domain.audio.services.tts_service import TTSError, TTSService
+from app.domain.audio.value_objects.word_timing import WordTiming
 
 
 class AzureTTSService(TTSService):
@@ -39,6 +40,28 @@ class AzureTTSService(TTSService):
     def output_format(self) -> str:
         """Get the output format."""
         return self._output_format
+
+    async def synthesize_with_timings(self, text: str, output_path: Path) -> list[WordTiming]:
+        """Synthesize text to audio; word-boundary parity is deferred.
+
+        Azure exposes per-word offsets via a ``synthesis_word_boundary``
+        handler, but capturing them is intentionally deferred (feature 003
+        task T009): the synthesis path is unchanged and no timings are
+        returned yet, so keyed Azure deployments still play normally without
+        read-along highlighting.
+
+        Args:
+            text: Text content to synthesize.
+            output_path: Path where the MP3 file should be saved.
+
+        Returns:
+            An empty list (no timings captured for Azure yet).
+
+        Raises:
+            TTSError: If synthesis fails.
+        """
+        await self.synthesize(text, output_path)
+        return []
 
     async def synthesize(self, text: str, output_path: Path) -> None:
         """Synthesize text to audio file using Azure TTS.
