@@ -122,10 +122,14 @@ async def list_all_feeds():
     """List all of the current user's feeds, each with its categories.
 
     GET /api/feeds
+    GET /api/feeds?uncategorized=true  -> only feeds that have no category
     """
     user_id = get_current_user_id()
     container = get_request_container()
-    feeds = await container.feed_service.list_all_feeds(user_id)
+    if request.args.get("uncategorized") == "true":
+        feeds = await container.feed_service.list_uncategorized_feeds(user_id)
+    else:
+        feeds = await container.feed_service.list_all_feeds(user_id)
     return jsonify([feed.to_dict() for feed in feeds])
 
 

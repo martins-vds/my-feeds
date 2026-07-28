@@ -129,3 +129,24 @@ class TestFeedCategoryManyToMany:
 
             assert await feeds.exists_by_url_for_user(user_id, "https://dup.example/feed") is True
             assert await feeds.exists_by_url_for_user(user_id, "https://nope.example/feed") is False
+
+    @pytest.mark.asyncio
+    async def test_get_uncategorized_returns_only_feeds_without_categories(self, user_id):
+        factory = get_session_factory()
+        async with factory() as session:
+            cats = SQLAlchemyCategoryRepository(session)
+            feeds = SQLAlchemyFeedRepository(session)
+
+            c1 = await cats.save(Category.create(user_id=user_id, name="Tech", position=1))
+            await session.commit()
+
+            categorized = await feeds.save(
+                Feed.create(user_id=user_id, url="https://cat.example/feed", category_ids=[c1.id])
+            )
+            bare = await feeds.save(Feed.create(user_id=user_id, url="https://bare.example/feed"))
+            await session.commit()
+
+            uncategorized = await feeds.get_uncategorized(user_id)
+            ids = {f.id for f in uncategorized}
+            assert bare.id in ids
+            assert categorized.id not in ids

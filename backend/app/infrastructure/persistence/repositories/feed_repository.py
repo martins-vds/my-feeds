@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +48,20 @@ class SQLAlchemyFeedRepository(FeedRepository):
         result = await self._session.execute(
             select(FeedModel)
             .where(FeedModel.user_id == user_id)
+            .options(selectinload(FeedModel.categories))
+            .order_by(FeedModel.created_at)
+        )
+        models = result.scalars().all()
+        return [self._to_entity(model) for model in models]
+
+    async def get_uncategorized(self, user_id: UUID) -> list[Feed]:
+        """Get all feeds owned by a user that have no category labels."""
+        result = await self._session.execute(
+            select(FeedModel)
+            .where(
+                FeedModel.user_id == user_id,
+                ~exists().where(feed_categories.c.feed_id == FeedModel.id),
+            )
             .options(selectinload(FeedModel.categories))
             .order_by(FeedModel.created_at)
         )

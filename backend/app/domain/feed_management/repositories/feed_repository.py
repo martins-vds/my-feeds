@@ -49,6 +49,18 @@ class FeedRepository(ABC):
         ...
 
     @abstractmethod
+    async def get_uncategorized(self, user_id: UUID) -> list[Feed]:
+        """Get all feeds owned by a user that have no category labels.
+
+        Args:
+            user_id: The user's UUID
+
+        Returns:
+            List of the user's feeds that are not in any category
+        """
+        ...
+
+    @abstractmethod
     async def count_by_user(self, user_id: UUID) -> int:
         """Count total feeds for a user across all categories.
 

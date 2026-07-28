@@ -105,6 +105,17 @@ class FeedService:
         """
         return await self._feed_repository.get_by_user(user_id)
 
+    async def list_uncategorized_feeds(self, user_id: UUID) -> list[Feed]:
+        """Get all of the user's feeds that have no category.
+
+        Args:
+            user_id: The user's UUID
+
+        Returns:
+            List of the user's uncategorized feeds
+        """
+        return await self._feed_repository.get_uncategorized(user_id)
+
     async def get_feed(self, user_id: UUID, feed_id: UUID) -> Feed:
         """Get a single feed by ID.
 

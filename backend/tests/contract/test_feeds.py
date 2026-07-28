@@ -267,3 +267,28 @@ class TestDeleteFeed:
         response = await client.delete(f"/api/feeds/{fake_id}")
 
         assert response.status_code in (404, 401)
+
+
+class TestListAllFeedsUncategorizedFilter:
+    """Tests for GET /api/feeds?uncategorized=true."""
+
+    @pytest.mark.asyncio
+    async def test_uncategorized_filter_excludes_categorized_feeds(
+        self, client, auth_headers, feed_id
+    ):
+        """The seeded feed is categorized, so it appears unfiltered but not when filtered."""
+        all_resp = await client.get("/api/feeds", headers=auth_headers)
+        assert all_resp.status_code == 200
+        all_ids = {f["id"] for f in await all_resp.get_json()}
+        assert str(feed_id) in all_ids
+
+        uncat_resp = await client.get("/api/feeds?uncategorized=true", headers=auth_headers)
+        assert uncat_resp.status_code == 200
+        uncat = await uncat_resp.get_json()
+        assert isinstance(uncat, list)
+        assert str(feed_id) not in {f["id"] for f in uncat}
+
+    @pytest.mark.asyncio
+    async def test_uncategorized_filter_requires_authentication(self, client):
+        response = await client.get("/api/feeds?uncategorized=true")
+        assert response.status_code == 401
