@@ -71,10 +71,13 @@ export interface PostDetail extends Post {
 }
 
 /**
- * Unread post counts per feed plus the overall total.
+ * Unread post counts per feed and per category, an uncategorized total,
+ * plus the overall total.
  */
 export interface UnreadCounts {
     byFeed: Record<string, number>;
+    byCategory: Record<string, number>;
+    uncategorized: number;
     total: number;
 }
 
