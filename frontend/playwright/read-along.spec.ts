@@ -404,8 +404,13 @@ test.describe("Floating audio controls", () => {
         // Hidden while the inline player is on-screen.
         await expect(page.getByTestId("floating-audio-controls")).toBeHidden();
 
-        // Scroll the inline player out of view (but not down to the footer).
-        await page.evaluate(() => window.scrollTo(0, 1200));
+        // Scroll the inline player out of view (past its bottom edge, staying
+        // above the footer) using its actual position rather than a magic offset.
+        const playerBox = await page.getByTestId("play-pause-button").boundingBox();
+        await page.evaluate(
+            (y) => window.scrollTo(0, y),
+            (playerBox?.y ?? 0) + (playerBox?.height ?? 0) + 100
+        );
         await expect(page.getByTestId("floating-audio-controls")).toBeVisible();
 
         // Pause from the floating control → the button flips to Play.

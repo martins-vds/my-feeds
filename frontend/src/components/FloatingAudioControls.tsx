@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { flushSync } from "react-dom";
 import { Box, Fab, Stack, Button } from "@mui/material";
 import { PlayArrow as PlayIcon, Pause as PauseIcon } from "@mui/icons-material";
 import type { UseAudioPlayerResult } from "../hooks/useAudioPlayer";
@@ -63,14 +62,14 @@ export function FloatingAudioControls({
         if (!visible) setSpeedOpen(false);
     }, [visible]);
 
-    // Close speed options when the user clicks anywhere outside the speed controls.
-    // Uses flushSync so the DOM updates synchronously in React 18 (native event
-    // listener state updates are otherwise batched/deferred).
+    // Close the speed options when the user clicks or taps outside the speed
+    // controls. React 18 batches the state update from this native listener and
+    // flushes it before paint, so the stack closes without a visible delay.
     useEffect(() => {
         if (!speedOpen) return;
         const handleDismiss = (e: MouseEvent | TouchEvent) => {
             if (!speedContainerRef.current?.contains(e.target as Node)) {
-                flushSync(() => setSpeedOpen(false));
+                setSpeedOpen(false);
             }
         };
         document.addEventListener("click", handleDismiss);
@@ -96,7 +95,7 @@ export function FloatingAudioControls({
             }}
             sx={{
                 position: "fixed",
-                right: 16,
+                right: "calc(16px + env(safe-area-inset-right))",
                 bottom: "calc(16px + env(safe-area-inset-bottom))",
                 zIndex: (theme) => theme.zIndex.speedDial,
                 display: "flex",
@@ -116,6 +115,9 @@ export function FloatingAudioControls({
             >
                 {speedOpen && (
                     <Stack
+                        id="floating-speed-options"
+                        role="group"
+                        aria-label="Playback speed options"
                         spacing={0.5}
                         alignItems="center"
                         data-testid="floating-speed-options"
@@ -148,7 +150,9 @@ export function FloatingAudioControls({
                     size="small"
                     color="default"
                     aria-label="Playback speed"
+                    aria-haspopup="true"
                     aria-expanded={speedOpen}
+                    aria-controls={speedOpen ? "floating-speed-options" : undefined}
                     data-testid="floating-speed-button"
                     onClick={() => setSpeedOpen((o) => !o)}
                 >

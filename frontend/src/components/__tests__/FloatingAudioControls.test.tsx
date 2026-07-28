@@ -165,6 +165,16 @@ describe("FloatingAudioControls — speed", () => {
         expect(opts.querySelectorAll("button").length).toBe(7);
     });
 
+    it("exposes disclosure semantics on the speed control", () => {
+        open();
+        const btn = screen.getByTestId("floating-speed-button");
+        expect(btn.getAttribute("aria-haspopup")).toBe("true");
+        expect(btn.getAttribute("aria-controls")).toBe("floating-speed-options");
+        const opts = screen.getByTestId("floating-speed-options");
+        expect(opts.getAttribute("role")).toBe("group");
+        expect(opts.getAttribute("id")).toBe("floating-speed-options");
+    });
+
     it("selecting a rate calls setPlaybackRate and closes the options", () => {
         const player = open();
         fireEvent.click(screen.getByLabelText("Set speed 2x"));
