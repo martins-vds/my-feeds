@@ -112,6 +112,30 @@ afterEach(() => {
 });
 
 describe("useReadAlong active-word tracking", () => {
+    it("re-wraps and re-enables after highlight is toggled off then on (US3)", () => {
+        const mediaEl = makeMediaEl();
+        const view = render(
+            h(Harness, { timings: TIMINGS, mediaEl, highlightEnabled: true })
+        );
+        // Wrapped and eligible on first enable.
+        expect(document.querySelectorAll(".ra-word")).toHaveLength(5);
+        expect(view.getByTestId("active-state").textContent).toBe("true");
+
+        // Toggle highlight OFF → spans are unwrapped, highlighting inactive.
+        view.rerender(
+            h(Harness, { timings: TIMINGS, mediaEl, highlightEnabled: false })
+        );
+        expect(document.querySelectorAll(".ra-word")).toHaveLength(0);
+        expect(view.getByTestId("active-state").textContent).toBe("false");
+
+        // Toggle highlight ON again → re-wraps and re-enables (not dead).
+        view.rerender(
+            h(Harness, { timings: TIMINGS, mediaEl, highlightEnabled: true })
+        );
+        expect(document.querySelectorAll(".ra-word")).toHaveLength(5);
+        expect(view.getByTestId("active-state").textContent).toBe("true");
+    });
+
     it("enables highlighting for aligned timings and wraps words once", () => {
         const mediaEl = makeMediaEl();
         const { getByTestId } = render(h(Harness, { timings: TIMINGS, mediaEl }));

@@ -93,3 +93,22 @@ export function wrapWords(container: HTMLElement, startIndex = 0): WrapResult {
 
     return { count: index - startIndex, elements };
 }
+
+/**
+ * Reverse {@link wrapWords}: replace every `.ra-word` span under `container`
+ * with a plain text node of its text, then merge adjacent text nodes. This
+ * restores the container to an unwrapped state so it can be re-wrapped cleanly
+ * (e.g. when read-along highlighting is toggled off and back on). Idempotent:
+ * a container with no `.ra-word` spans is left unchanged.
+ *
+ * @param container Element whose `.ra-word` spans to unwrap.
+ */
+export function unwrapWords(container: HTMLElement): void {
+    const spans = container.querySelectorAll<HTMLElement>("span.ra-word");
+    for (const span of spans) {
+        span.replaceWith(document.createTextNode(span.textContent ?? ""));
+    }
+    // Merge the adjacent text nodes left behind so later tokenization matches
+    // the original (unwrapped) structure.
+    container.normalize();
+}

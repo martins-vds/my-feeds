@@ -217,21 +217,26 @@ class AudioService:
         # Synthesize audio and capture per-word timings
         timings = await self._tts.synthesize_with_timings(text_to_synthesize, output_path)
 
-        # Persist timings as a sidecar when the engine produced any, and record
-        # the queryable marker on the row. Missing/empty timings -> no sidecar.
+        # Always persist a sidecar for a freshly generated clip — even when the
+        # engine emitted no word boundaries (empty `words`). Writing it
+        # unconditionally marks the clip "processed at the current cache
+        # version": the timings-aware short-circuit (which checks the sidecar)
+        # then never re-synthesizes it, and `has_timings = True` keeps the
+        # backfill job from re-selecting it forever. `_load_word_timings`
+        # returns None for an empty set, so the API still omits `wordTimings`
+        # and highlighting stays disabled for that clip.
         words = [
             {"text": t.text, "startMs": t.start_ms, "durationMs": t.duration_ms} for t in timings
         ]
-        has_timings = bool(words)
-        if has_timings:
-            self._cache.save_timings(
-                cache_key,
-                {
-                    "schemaVersion": 1,
-                    "voiceId": self._tts.voice_id,
-                    "words": words,
-                },
-            )
+        self._cache.save_timings(
+            cache_key,
+            {
+                "schemaVersion": 1,
+                "voiceId": self._tts.voice_id,
+                "words": words,
+            },
+        )
+        has_timings = True
 
         # Get file size
         file_size = self._cache.get_file_size(cache_key)

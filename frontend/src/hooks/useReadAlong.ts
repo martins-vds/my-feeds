@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { WordTiming } from "../types";
 import { alignSpokenToDisplay, normalizeToken } from "../utils/alignTimings";
-import { collectWords, wrapWords } from "../utils/wrapWords";
+import { collectWords, unwrapWords, wrapWords } from "../utils/wrapWords";
 
 export interface UseReadAlongArgs {
     timings: WordTiming[] | null;
@@ -127,10 +127,17 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
         mapRef.current = null;
         setHighlightingActive(false);
 
-        if (!highlightEnabled || !timings || timings.length === 0) return;
-
         const title = titleRef.current;
         const content = contentRef.current;
+        // Start from a clean, unwrapped DOM so a re-run — toggling "Highlight
+        // while playing" off then on (US3), or React StrictMode's mount
+        // double-invoke — re-wraps correctly instead of finding every word
+        // already inside a `.ra-word` span (which would make collectWords
+        // return nothing and silently disable highlighting for good).
+        if (title) unwrapWords(title);
+        if (content) unwrapWords(content);
+
+        if (!highlightEnabled || !timings || timings.length === 0) return;
         if (!title && !content) return;
 
         const spoken = timings.map((t) => normalizeToken(t.text));
@@ -161,6 +168,10 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
 
         return () => {
             clearActive();
+            // Unwrap so the next run (or unmount) leaves the sanitized DOM as it
+            // was found — keeping the wrap step fully re-entrant.
+            if (title) unwrapWords(title);
+            if (content) unwrapWords(content);
         };
     }, [timings, highlightEnabled, titleRef, contentRef, clearActive]);
 

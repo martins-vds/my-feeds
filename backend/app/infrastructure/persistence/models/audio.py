@@ -74,7 +74,7 @@ class AudioModel(Base):
         Boolean,
         nullable=False,
         server_default=text("false"),
-        comment="Whether a valid word-timing sidecar exists for this clip",
+        comment="True once a word-timing sidecar has been written (processed at current cache version; may hold zero words)",
     )
 
     # Relationships

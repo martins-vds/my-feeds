@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { wrapWords, collectWords } from "../wrapWords";
+import { wrapWords, collectWords, unwrapWords } from "../wrapWords";
 
 function container(html: string): HTMLElement {
     const el = document.createElement("div");
@@ -89,5 +89,39 @@ describe("collectWords", () => {
         wrapWords(el, 0);
         // Already wrapped → no fresh tokens to collect.
         expect(collectWords(el)).toEqual([]);
+    });
+});
+
+describe("unwrapWords", () => {
+    beforeEach(() => {
+        document.body.innerHTML = "";
+    });
+
+    it("restores the original text so words can be collected again", () => {
+        const el = container("one two three");
+        wrapWords(el, 0);
+        expect(el.querySelectorAll(".ra-word")).toHaveLength(3);
+
+        unwrapWords(el);
+        expect(el.querySelectorAll(".ra-word")).toHaveLength(0);
+        expect(el.textContent).toBe("one two three");
+        // No longer inside spans, so the words are collectable again.
+        expect(collectWords(el)).toEqual(["one", "two", "three"]);
+    });
+
+    it("supports a wrap → unwrap → wrap cycle (re-entrant)", () => {
+        const el = container("alpha beta");
+        wrapWords(el, 0);
+        unwrapWords(el);
+        const again = wrapWords(el, 0);
+        expect(again.count).toBe(2);
+        expect(el.querySelectorAll(".ra-word")).toHaveLength(2);
+    });
+
+    it("is a no-op on a container with no .ra-word spans", () => {
+        const el = container("plain text");
+        unwrapWords(el);
+        expect(el.textContent).toBe("plain text");
+        expect(el.querySelectorAll(".ra-word")).toHaveLength(0);
     });
 });

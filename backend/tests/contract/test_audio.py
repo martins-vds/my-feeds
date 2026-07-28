@@ -110,6 +110,18 @@ class TestStreamAudio:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_rejects_malformed_cache_key(self, client):
+        """Non SHA-256-hex keys are rejected with 404 before any filesystem
+        lookup, closing the path-traversal vector on this public route."""
+        # 64 chars but not hex -> fails validation (would otherwise hit the FS).
+        resp = await client.get("/api/audio/" + "g" * 64)
+        assert resp.status_code == 404
+
+        # Encoded traversal attempt never escapes the cache directory.
+        resp2 = await client.get("/api/audio/..%2f..%2f..%2fetc%2fpasswd")
+        assert resp2.status_code == 404
+
+    @pytest.mark.asyncio
     async def test_streaming_is_public(self, client, test_audio):
         """GET /audio/{cacheKey} does not require authentication."""
         # Audio streaming could be public (security through obscurity of cache key)

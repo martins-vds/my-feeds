@@ -191,3 +191,57 @@ class TestLoadWordTimings:
         service = _make_service(cache=cache)
 
         assert service._load_word_timings("k" * 64) == words
+
+
+class TestZeroBoundaryProcessing:
+    """A clip the engine produced no word boundaries for is still marked
+    processed (sidecar written, has_timings True) so it is neither re-synthesized
+    on demand nor re-selected forever by the backfill job (regression for I1).
+    Uses a real AudioCacheManager so exists/exists_timings reflect actual I/O."""
+
+    @pytest.mark.asyncio
+    async def test_zero_boundary_clip_is_processed_once(self, tmp_path):
+        from app.infrastructure.tts.cache_manager import AudioCacheManager
+
+        post_id = uuid4()
+        cache = AudioCacheManager(cache_dir=tmp_path)
+
+        async def _synth(_text, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\xff\xfb\x90\x00")  # real audio bytes...
+            return []  # ...but the engine emits no word boundaries
+
+        tts = MagicMock()
+        tts.voice_id = "en-US-AriaNeural"
+        tts.synthesize_with_timings = AsyncMock(side_effect=_synth)
+
+        store: dict = {}
+        audio_repo = AsyncMock()
+        audio_repo.get_by_post_id.side_effect = lambda pid: store.get(pid)
+        audio_repo.delete_by_post_id = AsyncMock()
+
+        async def _create(audio):
+            store[audio.post_id] = audio
+            return audio
+
+        audio_repo.create.side_effect = _create
+        post_repo = AsyncMock()
+        post_repo.get_by_id.return_value = SimpleNamespace(
+            id=post_id, content="body", title="Title"
+        )
+
+        service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
+
+        first = await service.generate_for_post(post_id)
+        assert first.status == AudioStatus.READY
+        created = store[post_id]
+        # Sidecar written despite zero boundaries, and the row marked processed.
+        assert cache.exists_timings(created.cache_key) is True
+        assert created.has_timings is True
+        # Empty timings -> the API omits wordTimings (highlighting disabled).
+        assert first.word_timings is None
+
+        # A second request short-circuits on the sidecar - no re-synthesis.
+        second = await service.generate_for_post(post_id)
+        assert second.status == AudioStatus.READY
+        assert tts.synthesize_with_timings.await_count == 1

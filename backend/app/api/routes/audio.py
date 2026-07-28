@@ -1,6 +1,7 @@
 """Audio API routes for TTS operations."""
 
 import mimetypes
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -12,6 +13,11 @@ from app.config.container import get_request_container
 from app.infrastructure.oauth.session import session_manager
 
 bp = Blueprint("audio", __name__)
+
+# Cache keys are SHA-256 hex digests (see AudioCacheManager.generate_cache_key).
+# Validating the shape before the key is joined into a filesystem path prevents
+# path-traversal via a crafted key on the public /audio/<cache_key> route.
+_CACHE_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def get_current_user_id() -> UUID:
@@ -96,6 +102,12 @@ async def stream_audio(cache_key: str):
         206: Partial content with Content-Range header
         404: Audio not found
     """
+    # Cache keys are always SHA-256 hex; reject anything else up front so a
+    # crafted key cannot escape the cache directory (path traversal) when it is
+    # joined into the on-disk file path.
+    if not _CACHE_KEY_RE.fullmatch(cache_key):
+        return jsonify({"error": "Audio not found"}), 404
+
     container = get_request_container()
     audio_service = container.audio_service
 

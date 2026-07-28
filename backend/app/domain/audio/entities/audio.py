@@ -22,7 +22,9 @@ class Audio:
         created_at: Generation timestamp
         last_accessed_at: Last playback request
         access_count: Number of playback requests
-        has_timings: Whether a valid word-timing sidecar exists for this clip
+        has_timings: True once the clip has been generated at the current cache
+            version (its word-timing sidecar has been written; the sidecar may
+            hold zero words). Drives idempotent backfill selection.
     """
 
     post_id: UUID
