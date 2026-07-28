@@ -68,13 +68,17 @@ export function FloatingAudioControls({
     // listener state updates are otherwise batched/deferred).
     useEffect(() => {
         if (!speedOpen) return;
-        const handleDocClick = (e: MouseEvent) => {
+        const handleDismiss = (e: MouseEvent | TouchEvent) => {
             if (!speedContainerRef.current?.contains(e.target as Node)) {
                 flushSync(() => setSpeedOpen(false));
             }
         };
-        document.addEventListener("click", handleDocClick);
-        return () => document.removeEventListener("click", handleDocClick);
+        document.addEventListener("click", handleDismiss);
+        document.addEventListener("touchend", handleDismiss);
+        return () => {
+            document.removeEventListener("click", handleDismiss);
+            document.removeEventListener("touchend", handleDismiss);
+        };
     }, [speedOpen]);
 
     const closeSpeed = useCallback(() => {

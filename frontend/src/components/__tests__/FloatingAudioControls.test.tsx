@@ -183,4 +183,10 @@ describe("FloatingAudioControls — speed", () => {
         fireEvent.click(document.body);
         expect(screen.queryByTestId("floating-speed-options")).toBeNull();
     });
+
+    it("closes the options on tap-away (touchend)", () => {
+        open();
+        fireEvent.touchEnd(document.body);
+        expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+    });
 });
