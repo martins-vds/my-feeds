@@ -146,3 +146,41 @@ describe("FloatingAudioControls — play/pause", () => {
 });
 
 // NOTE: `makePlayer`, `Harness`, `renderOffscreen`, `setIntersecting` are reused by Task 3.
+
+describe("FloatingAudioControls — speed", () => {
+    function open(player = makePlayer({ playbackRate: 1 })) {
+        renderOffscreen(player);
+        fireEvent.click(screen.getByTestId("floating-speed-button"));
+        return player;
+    }
+
+    it("shows the current playback rate on the speed circle", () => {
+        renderOffscreen(makePlayer({ playbackRate: 1.5 }));
+        expect(screen.getByTestId("floating-speed-button").textContent).toBe("1.5x");
+    });
+
+    it("opens the speed options with all supported rates", () => {
+        open();
+        const opts = screen.getByTestId("floating-speed-options");
+        expect(opts.querySelectorAll("button").length).toBe(7);
+    });
+
+    it("selecting a rate calls setPlaybackRate and closes the options", () => {
+        const player = open();
+        fireEvent.click(screen.getByLabelText("Set speed 2x"));
+        expect(player.setPlaybackRate).toHaveBeenCalledWith(2);
+        expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+    });
+
+    it("closes the options on Escape", () => {
+        open();
+        fireEvent.keyDown(screen.getByTestId("floating-audio-controls"), { key: "Escape" });
+        expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+    });
+
+    it("closes the options when clicking away", () => {
+        open();
+        fireEvent.click(document.body);
+        expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+    });
+});

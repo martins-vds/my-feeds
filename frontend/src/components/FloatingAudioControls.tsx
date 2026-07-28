@@ -1,7 +1,9 @@
-import { useEffect, useState, type RefObject } from "react";
-import { Box, Fab } from "@mui/material";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { flushSync } from "react-dom";
+import { Box, Fab, Stack, Button } from "@mui/material";
 import { PlayArrow as PlayIcon, Pause as PauseIcon } from "@mui/icons-material";
 import type { UseAudioPlayerResult } from "../hooks/useAudioPlayer";
+import { PLAYBACK_SPEEDS } from "../constants/audio";
 
 export interface FloatingAudioControlsProps {
     /** The same player object the inline AudioPlayer receives. */
@@ -49,14 +51,45 @@ export function FloatingAudioControls({
     const playerOnScreen = useOnScreen(anchorRef, true);
     const footerOnScreen = useOnScreen(footerRef, false);
 
+    const [speedOpen, setSpeedOpen] = useState(false);
+    const speedFabRef = useRef<HTMLButtonElement>(null);
+    const speedContainerRef = useRef<HTMLDivElement>(null);
+
     const activeClip = player.isPlaying || player.status === "paused";
     const visible = activeClip && !playerOnScreen && !footerOnScreen;
+
+    // Collapse the speed stack whenever the controls hide.
+    useEffect(() => {
+        if (!visible) setSpeedOpen(false);
+    }, [visible]);
+
+    // Close speed options when the user clicks anywhere outside the speed controls.
+    // Uses flushSync so the DOM updates synchronously in React 18 (native event
+    // listener state updates are otherwise batched/deferred).
+    useEffect(() => {
+        if (!speedOpen) return;
+        const handleDocClick = (e: MouseEvent) => {
+            if (!speedContainerRef.current?.contains(e.target as Node)) {
+                flushSync(() => setSpeedOpen(false));
+            }
+        };
+        document.addEventListener("click", handleDocClick);
+        return () => document.removeEventListener("click", handleDocClick);
+    }, [speedOpen]);
+
+    const closeSpeed = useCallback(() => {
+        setSpeedOpen(false);
+        speedFabRef.current?.focus();
+    }, []);
 
     if (!visible) return null;
 
     return (
         <Box
             data-testid="floating-audio-controls"
+            onKeyDown={(e) => {
+                if (e.key === "Escape" && speedOpen) closeSpeed();
+            }}
             sx={{
                 position: "fixed",
                 right: 16,
@@ -68,6 +101,56 @@ export function FloatingAudioControls({
                 gap: 1,
             }}
         >
+            <Box
+                ref={speedContainerRef}
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1,
+                }}
+            >
+                {speedOpen && (
+                    <Stack
+                        spacing={0.5}
+                        alignItems="center"
+                        data-testid="floating-speed-options"
+                    >
+                        {PLAYBACK_SPEEDS.map((speed) => (
+                            <Button
+                                key={speed}
+                                size="small"
+                                variant={speed === player.playbackRate ? "contained" : "text"}
+                                aria-pressed={speed === player.playbackRate}
+                                aria-label={`Set speed ${speed}x`}
+                                onClick={() => {
+                                    player.setPlaybackRate(speed);
+                                    closeSpeed();
+                                }}
+                                sx={{
+                                    minWidth: 56,
+                                    borderRadius: 999,
+                                    bgcolor: "background.paper",
+                                    boxShadow: 2,
+                                }}
+                            >
+                                {speed}x
+                            </Button>
+                        ))}
+                    </Stack>
+                )}
+                <Fab
+                    ref={speedFabRef}
+                    size="small"
+                    color="default"
+                    aria-label="Playback speed"
+                    aria-expanded={speedOpen}
+                    data-testid="floating-speed-button"
+                    onClick={() => setSpeedOpen((o) => !o)}
+                >
+                    {player.playbackRate}x
+                </Fab>
+            </Box>
             <Fab
                 color="primary"
                 aria-label={player.isPlaying ? "Pause" : "Play"}
