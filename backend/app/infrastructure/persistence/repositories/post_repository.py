@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, exists, func, inspect, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -131,6 +131,15 @@ class SQLAlchemyPostRepository(PostRepository):
         )
         return result.scalar() or False
 
+    async def _reload(self, post_id: UUID) -> PostModel:
+        """Reload a PostModel with audio and feed relationships eager-loaded."""
+        result = await self._session.execute(
+            select(PostModel)
+            .where(PostModel.id == post_id)
+            .options(selectinload(PostModel.audio), selectinload(PostModel.feed))
+        )
+        return result.scalar_one()
+
     async def save(self, post: Post) -> Post:
         """Save a post (create or update)."""
         existing = await self._session.get(PostModel, post.id)
@@ -144,13 +153,13 @@ class SQLAlchemyPostRepository(PostRepository):
             existing.link = post.link
             existing.published_at = post.published_at
             await self._session.flush()
-            return self._to_entity(existing)
+            return self._to_entity(await self._reload(existing.id))
         else:
             # Create new post
             model = self._to_model(post)
             self._session.add(model)
             await self._session.flush()
-            return self._to_entity(model)
+            return self._to_entity(await self._reload(model.id))
 
     async def save_many(self, posts: List[Post]) -> List[Post]:
         """Save multiple posts efficiently."""
@@ -351,12 +360,6 @@ class SQLAlchemyPostRepository(PostRepository):
         Content is sanitized on read (defense in depth) so even rows that were
         stored before ingestion-time sanitization are safe when served.
         """
-        # Safely check if relationships are loaded without triggering lazy load
-        mapper = inspect(model)
-        has_audio = False
-        if 'audio' in mapper.dict:
-            has_audio = mapper.dict['audio'] is not None
-        
         post = Post(
             id=model.id,
             feed_id=model.feed_id,
@@ -369,12 +372,11 @@ class SQLAlchemyPostRepository(PostRepository):
             author=model.author,
             fetched_at=model.fetched_at,
             is_read=False,  # Populated by caller
-            has_audio=has_audio,
+            has_audio=model.audio is not None,
         )
-        # Populate feed metadata if loaded
-        if 'feed' in mapper.dict and mapper.dict['feed']:
-            post.feed_title = mapper.dict['feed'].title
-            post.feed_icon_url = mapper.dict['feed'].icon_url
+        if model.feed:
+            post.feed_title = model.feed.title
+            post.feed_icon_url = model.feed.icon_url
         return post
 
     @staticmethod
