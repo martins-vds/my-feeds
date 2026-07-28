@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import PostCard from "./PostCard";
+import { PostListSkeleton } from "./skeletons/PostListSkeleton";
 import type { PostSummary } from "../hooks/usePostsData";
 
 interface PostListProps {
@@ -26,15 +27,6 @@ interface PostListProps {
     onMarkAsRead?: (postId: string, isRead: boolean) => void;
     onPostClick?: (post: PostSummary) => void;
 }
-
-/**
- * Loading skeleton for posts
- */
-const PostsSkeleton: React.FC = () => (
-    <Box sx={{ py: 4, display: "flex", justifyContent: "center" }}>
-        <CircularProgress />
-    </Box>
-);
 
 /**
  * Empty state when no posts match filters
@@ -107,7 +99,7 @@ export const PostList: React.FC<PostListProps> = ({
 }) => {
     // Initial loading state
     if (loading && posts.length === 0) {
-        return <PostsSkeleton />;
+        return <PostListSkeleton />;
     }
 
     // Error state with no posts

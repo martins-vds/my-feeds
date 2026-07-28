@@ -36,7 +36,7 @@ describe("PostList", () => {
       render(
         <PostList posts={[]} loading={true} loadingMore={false} hasMore={false} error={null} />
       );
-      expect(screen.getByRole("progressbar")).toBeInTheDocument();
+      expect(screen.getByTestId("posts-skeleton")).toBeInTheDocument();
     });
 
     it("should display empty state when no posts exist", () => {
@@ -233,5 +233,18 @@ describe("PostList", () => {
       );
       expect(screen.getByText("Audio")).toBeInTheDocument();
     });
+  });
+
+  it("shows the skeleton (not a spinner) while the first page loads", () => {
+    render(
+      <PostList
+        posts={[]}
+        loading
+        loadingMore={false}
+        hasMore={false}
+        error={null}
+      />
+    );
+    expect(screen.queryByTestId("posts-skeleton")).not.toBeNull();
   });
 });
