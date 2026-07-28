@@ -13,7 +13,6 @@ import {
     Chip,
     Divider,
     Alert,
-    CircularProgress,
     Button,
     Breadcrumbs,
     Link,
@@ -37,6 +36,7 @@ import { useAudioPlayer } from "../../hooks/useAudioPlayer";
 import { useReadAlong } from "../../hooks/useReadAlong";
 import { useReadAlongPreferences } from "../../hooks/useReadAlongPreferences";
 import { hasReadableContent } from "../../utils/readableContent";
+import { PostDetailSkeleton } from "../../components/skeletons/PostDetailSkeleton";
 
 interface PostDetailResponse {
     id: string;
@@ -142,10 +142,10 @@ export const PostDetailPage: React.FC = () => {
     // Loading state
     if (loading) {
         return (
-            <Container maxWidth="md" sx={{ py: 4 }}>
-                <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-                    <CircularProgress />
-                </Box>
+            <Container maxWidth="md" sx={{ py: 3 }}>
+                <Paper elevation={0} sx={{ p: { xs: 2, md: 4 } }}>
+                    <PostDetailSkeleton />
+                </Paper>
             </Container>
         );
     }
