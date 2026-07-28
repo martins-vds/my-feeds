@@ -100,4 +100,29 @@ describe("alignSpokenToDisplay", () => {
         expect(result.matchedRatio).toBeGreaterThan(0.9);
         expect(result.enabled).toBe(false);
     });
+
+    it("disables highlighting for an empty spoken sequence", () => {
+        const result = alignSpokenToDisplay([], ["hello", "world"]);
+        expect(result.enabled).toBe(false);
+        expect(result.matchedRatio).toBe(0);
+        expect(result.timingToDisplay.length).toBe(0);
+    });
+
+    it("does not match a display token beyond the bounded look-ahead window", () => {
+        // LOOKAHEAD is 12: the scan covers display indices [0, 12]. A match at
+        // index 13 is out of range, so the spoken token is treated as a miss —
+        // proving alignment is bounded rather than a full scan.
+        const fillers = Array.from({ length: 13 }, (_, i) => `f${i}`); // indices 0..12
+        const beyond = alignSpokenToDisplay(["target"], [...fillers, "target"]); // target at 13
+        expect(beyond.timingToDisplay[0]).toBe(-1);
+        expect(beyond.enabled).toBe(false);
+
+        // Control: the same token within the window (index 12) is found.
+        const within = alignSpokenToDisplay(
+            ["target"],
+            [...fillers.slice(0, 12), "target"] // target at 12
+        );
+        expect(within.timingToDisplay[0]).toBe(12);
+        expect(within.enabled).toBe(true);
+    });
 });

@@ -92,6 +92,15 @@ class TestCorruptTimings:
 
         assert cache_manager.load_timings(key) is None
 
+    def test_non_object_json_returns_none(self, cache_manager):
+        key = _key("14")
+        path = cache_manager.get_timings_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Well-formed JSON, but a top-level array rather than an object.
+        path.write_text(json.dumps([1, 2, 3]))
+
+        assert cache_manager.load_timings(key) is None
+
 
 class TestOrphanReclamation:
     @pytest.mark.asyncio

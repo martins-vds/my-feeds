@@ -121,3 +121,33 @@ async def test_generate_pending_audio_continues_after_a_failure():
     session.rollback.assert_awaited_once()
     session.commit.assert_awaited_once()
     session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_error_status_outcome_is_logged_and_not_counted():
+    """A post whose generation returns an ERROR status (no exception) is still
+    committed, but is logged and not counted as generated."""
+    p1 = uuid4()
+    session = _session_returning([p1])
+
+    audio_service = AsyncMock()
+    audio_service.generate_for_post.return_value = SimpleNamespace(
+        status=AudioStatus.ERROR, error="no readable content"
+    )
+
+    with (
+        patch(
+            "app.infrastructure.jobs.audio_generation.create_session",
+            return_value=session,
+        ),
+        patch(
+            "app.infrastructure.jobs.audio_generation.create_audio_service",
+            return_value=audio_service,
+        ),
+    ):
+        count = await generate_pending_audio(batch_size=5)
+
+    assert count == 0  # ERROR outcome is not counted as generated
+    session.commit.assert_awaited_once()  # committed despite the non-READY status
+    session.rollback.assert_not_awaited()  # not an exception path
+    session.close.assert_awaited_once()

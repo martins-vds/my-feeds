@@ -100,6 +100,21 @@ class TestAzureTTSService:
         """AzureTTSService outputs MP3 format."""
         assert azure_tts_service.output_format == "mp3"
 
+    @pytest.mark.asyncio
+    async def test_synthesize_with_timings_delegates_and_returns_empty(
+        self, azure_tts_service, tmp_path
+    ):
+        """Azure word-boundary capture is deferred (T009): synthesis still runs,
+        but no timings are returned yet, so keyed Azure deployments play without
+        read-along. Pins the deferred contract until parity is implemented."""
+        output_path = tmp_path / "azure.mp3"
+        azure_tts_service.synthesize = AsyncMock()
+
+        timings = await azure_tts_service.synthesize_with_timings("Hello world", output_path)
+
+        assert timings == []
+        azure_tts_service.synthesize.assert_awaited_once_with("Hello world", output_path)
+
 
 class TestMockTTSService:
     """Tests for MockTTSService used in testing."""
@@ -241,6 +256,33 @@ class TestEdgeTTSTimingCapture:
         with patch("edge_tts.Communicate", return_value=mock_comm):
             with pytest.raises(TTSError):
                 await service.synthesize_with_timings("Hi", output_path)
+
+    @pytest.mark.asyncio
+    async def test_missing_edge_tts_dependency_raises(self, service, tmp_path):
+        """A missing edge-tts import surfaces as a friendly TTSError."""
+        import sys
+
+        # Setting the module to None in sys.modules makes `import edge_tts` raise.
+        with patch.dict(sys.modules, {"edge_tts": None}):
+            with pytest.raises(TTSError, match="edge-tts is not installed"):
+                await service.synthesize_with_timings("Hello", tmp_path / "x.mp3")
+
+    @pytest.mark.asyncio
+    async def test_stream_failure_is_wrapped_as_tts_error(self, service, tmp_path):
+        """An exception raised mid-stream is wrapped as TTSError, not leaked."""
+
+        def failing_factory():
+            async def gen():
+                yield {"type": "audio", "data": b"\xff\xfb"}
+                raise RuntimeError("stream exploded")
+
+            return gen()
+
+        mock_comm = MagicMock()
+        mock_comm.stream = failing_factory
+        with patch("edge_tts.Communicate", return_value=mock_comm):
+            with pytest.raises(TTSError, match="edge-tts synthesis failed"):
+                await service.synthesize_with_timings("Hello", tmp_path / "x.mp3")
 
     @pytest.mark.asyncio
     async def test_synthesize_still_writes_audio(self, service, tmp_path):

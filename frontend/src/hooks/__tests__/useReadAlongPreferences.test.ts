@@ -2,7 +2,7 @@
  * Unit tests for useReadAlongPreferences (US3).
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useReadAlongPreferences } from "../useReadAlongPreferences";
 
@@ -55,5 +55,35 @@ describe("useReadAlongPreferences", () => {
         const { result } = renderHook(() => useReadAlongPreferences());
         expect(result.current.highlight).toBe(false);
         expect(result.current.autoScroll).toBe(true);
+    });
+
+    it("falls back to defaults when localStorage reads throw (private mode)", () => {
+        const getItem = vi
+            .spyOn(Storage.prototype, "getItem")
+            .mockImplementation(() => {
+                throw new Error("storage disabled");
+            });
+        try {
+            const { result } = renderHook(() => useReadAlongPreferences());
+            expect(result.current.highlight).toBe(true);
+            expect(result.current.autoScroll).toBe(true);
+        } finally {
+            getItem.mockRestore();
+        }
+    });
+
+    it("swallows write failures and still updates in-memory state", () => {
+        const setItem = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(() => {
+                throw new Error("storage disabled");
+            });
+        try {
+            const { result } = renderHook(() => useReadAlongPreferences());
+            expect(() => act(() => result.current.setHighlight(false))).not.toThrow();
+            expect(result.current.highlight).toBe(false);
+        } finally {
+            setItem.mockRestore();
+        }
     });
 });
