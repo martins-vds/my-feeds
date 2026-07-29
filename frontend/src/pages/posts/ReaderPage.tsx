@@ -77,11 +77,13 @@ export const ReaderPage: React.FC = () => {
         markAllRead,
     } = usePostsData(categoryId ?? undefined, feedId ?? undefined);
 
-    // Feeds & categories
+    // Feeds & categories (lazy)
     const {
         categories,
-        feeds,
-        loading: loadingFeeds,
+        feedsByCategory,
+        loadingFeeds,
+        loadFeedsForCategory,
+        loading: feedsLoading,
         error: feedsError,
         createCategory,
         updateCategory,
@@ -220,8 +222,11 @@ export const ReaderPage: React.FC = () => {
 
     const scopeTitle = useMemo(() => {
         if (feedId) {
-            const feed = feeds.find((f) => f.id === feedId);
-            return feed?.title || feed?.url || "Feed";
+            const loaded = Object.values(feedsByCategory)
+                .flat()
+                .find((f) => f.id === feedId);
+            const fromPost = posts.find((p) => p.feedId === feedId)?.feedTitle;
+            return loaded?.title || loaded?.url || fromPost || "Feed";
         }
         if (isUncategorized) return "Uncategorized";
         if (categoryId) {
@@ -229,13 +234,15 @@ export const ReaderPage: React.FC = () => {
             return category?.name || "Category";
         }
         return "All items";
-    }, [feedId, categoryId, isUncategorized, feeds, categories]);
+    }, [feedId, categoryId, isUncategorized, feedsByCategory, categories, posts]);
 
     const sidebarContent = (
         <FeedSidebar
             categories={categories}
-            feeds={feeds}
-            loading={loadingFeeds}
+            feedsByCategory={feedsByCategory}
+            loadingFeeds={loadingFeeds}
+            onExpandCategory={loadFeedsForCategory}
+            loading={feedsLoading}
             error={feedsError}
             selectedCategoryId={realCategoryId}
             activeFeedId={feedId}
@@ -243,6 +250,8 @@ export const ReaderPage: React.FC = () => {
             uncategorizedActive={isUncategorized}
             totalUnread={unread.total}
             unreadByFeed={unread.byFeed}
+            unreadByCategory={unread.byCategory}
+            uncategorizedUnread={unread.uncategorized}
             onSelectAll={handleSelectAll}
             onSelectCategory={handleSelectCategory}
             onSelectFeed={handleSelectFeed}

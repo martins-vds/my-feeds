@@ -23,7 +23,9 @@ import type { ReadState } from "../hooks/usePostsData";
 
 interface FeedSidebarProps {
     categories: Category[];
-    feeds: Feed[];
+    feedsByCategory: Record<string, Feed[]>;
+    loadingFeeds: Set<string>;
+    onExpandCategory: (key: string) => void;
     loading: boolean;
     error: string | null;
 
@@ -36,6 +38,8 @@ interface FeedSidebarProps {
     // Unread counts
     totalUnread: number;
     unreadByFeed: Record<string, number>;
+    unreadByCategory: Record<string, number>;
+    uncategorizedUnread: number;
 
     // Filter callbacks
     onSelectAll: () => void;
@@ -60,7 +64,9 @@ interface FeedSidebarProps {
 
 export function FeedSidebar({
     categories,
-    feeds,
+    feedsByCategory,
+    loadingFeeds,
+    onExpandCategory,
     loading,
     error,
     selectedCategoryId,
@@ -69,6 +75,8 @@ export function FeedSidebar({
     uncategorizedActive,
     totalUnread,
     unreadByFeed,
+    unreadByCategory,
+    uncategorizedUnread,
     onSelectAll,
     onSelectCategory,
     onSelectFeed,
@@ -135,13 +143,17 @@ export function FeedSidebar({
             <Box sx={{ flexGrow: 1, overflowY: "auto" }}>
                 <CategoryList
                     categories={categories}
-                    feeds={feeds}
+                    feedsByCategory={feedsByCategory}
+                    loadingFeeds={loadingFeeds}
+                    onExpandCategory={onExpandCategory}
                     loading={loading}
                     error={error}
                     selectedCategoryId={selectedCategoryId}
                     onSelectCategory={onSelectCategory}
                     activeFeedId={activeFeedId}
                     unreadByFeed={unreadByFeed}
+                    unreadByCategory={unreadByCategory}
+                    uncategorizedUnread={uncategorizedUnread}
                     onSelectFeed={onSelectFeed}
                     uncategorizedActive={uncategorizedActive}
                     onSelectUncategorized={onSelectUncategorized}

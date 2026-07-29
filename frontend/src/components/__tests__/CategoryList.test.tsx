@@ -40,7 +40,11 @@ function makeFeed(overrides: Partial<Feed> = {}): Feed {
 
 const defaultProps = {
   categories: [] as Category[],
-  feeds: [] as Feed[],
+  feedsByCategory: {} as Record<string, Feed[]>,
+  loadingFeeds: new Set<string>(),
+  onExpandCategory: vi.fn(),
+  unreadByCategory: {} as Record<string, number>,
+  uncategorizedUnread: 0,
   loading: false,
   error: null as string | null,
   selectedCategoryId: null as string | null,
@@ -300,5 +304,53 @@ describe("CategoryList", () => {
   it("shows the sidebar skeleton while categories load", () => {
     render(<CategoryList {...defaultProps} loading={true} />);
     expect(screen.queryByTestId("sidebar-skeleton")).not.toBeNull();
+  });
+
+  describe("lazy feed loading", () => {
+    it("requests a category's feeds when it is expanded", async () => {
+      const onExpandCategory = vi.fn();
+      const cats = [makeCategory({ id: "c1", name: "Expandable" })];
+      render(
+        <CategoryList
+          {...defaultProps}
+          categories={cats}
+          onExpandCategory={onExpandCategory}
+        />
+      );
+
+      await userEvent.click(screen.getByText("Expandable"));
+      await waitFor(() => expect(onExpandCategory).toHaveBeenCalledWith("c1"));
+    });
+
+    it("shows the feed-rows skeleton while an expanded category's feeds load", async () => {
+      const cats = [makeCategory({ id: "c1", name: "Loading Cat" })];
+      const { container } = render(
+        <CategoryList
+          {...defaultProps}
+          categories={cats}
+          loadingFeeds={new Set(["c1"])}
+        />
+      );
+      // Expand the category; its feeds are not cached and loadingFeeds has c1,
+      // so the FeedRowsSkeleton renders inside the open Collapse.
+      await userEvent.click(screen.getByText("Loading Cat"));
+      await waitFor(() => {
+        expect(
+          container.querySelector('[data-testid="feed-rows-skeleton"]')
+        ).not.toBeNull();
+      });
+    });
+
+    it("badges a collapsed category from unreadByCategory", () => {
+      const cats = [makeCategory({ id: "c1", name: "Badged" })];
+      render(
+        <CategoryList
+          {...defaultProps}
+          categories={cats}
+          unreadByCategory={{ c1: 7 }}
+        />
+      );
+      expect(screen.getByText("7")).toBeInTheDocument();
+    });
   });
 });

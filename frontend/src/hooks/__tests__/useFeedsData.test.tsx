@@ -44,7 +44,7 @@ function mockRoutes() {
 }
 
 describe("useFeedsData (lazy)", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); });
 
   it("fetches categories + uncategorized on mount, but not category feeds", async () => {
     mockRoutes();

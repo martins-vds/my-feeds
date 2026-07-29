@@ -2,7 +2,7 @@
  * CategoryList component - displays list of categories with management actions
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
     Box,
     List,
@@ -45,13 +45,14 @@ import { FeedList } from "./FeedList";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { SidebarSkeleton } from "./skeletons/SidebarSkeleton";
 import { ApiError } from "../services/api";
-
-// Sentinel key for the pseudo-group that holds feeds with no categories.
-const UNCATEGORIZED_KEY = "__uncategorized__";
+import { FeedRowsSkeleton } from "./skeletons/FeedRowsSkeleton";
+import { UNCATEGORIZED_KEY } from "../hooks/useFeedsData";
 
 interface CategoryListProps {
     categories: Category[];
-    feeds: Feed[];
+    feedsByCategory: Record<string, Feed[]>;
+    loadingFeeds: Set<string>;
+    onExpandCategory: (key: string) => void;
     loading: boolean;
     error: string | null;
     selectedCategoryId: string | null;
@@ -66,6 +67,8 @@ interface CategoryListProps {
     onSetFeedActive: (feedId: string, isActive: boolean) => Promise<Feed>;
     activeFeedId?: string | null;
     unreadByFeed?: Record<string, number>;
+    unreadByCategory?: Record<string, number>;
+    uncategorizedUnread?: number;
     onSelectFeed?: (feedId: string) => void;
     uncategorizedActive?: boolean;
     onSelectUncategorized?: () => void;
@@ -76,7 +79,9 @@ interface CategoryListProps {
 
 export function CategoryList({
     categories,
-    feeds,
+    feedsByCategory,
+    loadingFeeds,
+    onExpandCategory,
     loading,
     error,
     selectedCategoryId,
@@ -91,6 +96,8 @@ export function CategoryList({
     onSetFeedActive,
     activeFeedId = null,
     unreadByFeed,
+    unreadByCategory,
+    uncategorizedUnread = 0,
     onSelectFeed,
     uncategorizedActive = false,
     onSelectUncategorized,
@@ -118,6 +125,22 @@ export function CategoryList({
     );
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
+
+    useEffect(() => {
+        for (const id of expandedCategories) {
+            if (id === UNCATEGORIZED_KEY) continue; // uncategorized loads on mount
+            // Deps are [expandedCategories, feedsByCategory, onExpandCategory] —
+            // deliberately NOT loadingFeeds. On a failed load, feedsByCategory keeps
+            // the same reference, so this effect does not re-fire → no infinite retry
+            // loop. loadFeedsForCategory is internally idempotent (it skips keys already
+            // loaded or in flight via a synchronous stateRef read), so a redundant call
+            // here is a safe no-op. A refresh() replaces the feedsByCategory object,
+            // which correctly re-triggers reloads of categories that are still expanded.
+            if (!(id in feedsByCategory)) {
+                onExpandCategory(id);
+            }
+        }
+    }, [expandedCategories, feedsByCategory, onExpandCategory]);
 
     // Toggle category expansion
     const toggleExpand = useCallback((categoryId: string) => {
@@ -301,22 +324,13 @@ export function CategoryList({
         setActionError(null);
     }, []);
 
-    // Get feeds for a category (a feed can belong to several)
+    // Get a category's loaded feeds (empty until expanded/loaded).
     const getFeedsForCategory = useCallback(
-        (categoryId: string): Feed[] => {
-            return feeds.filter((feed) => feed.categoryIds.includes(categoryId));
-        },
-        [feeds]
+        (categoryId: string): Feed[] => feedsByCategory[categoryId] ?? [],
+        [feedsByCategory]
     );
 
-    // Feeds that carry no category at all
-    const uncategorizedFeeds = feeds.filter(
-        (feed) => feed.categoryIds.length === 0
-    );
-    const uncategorizedUnread = uncategorizedFeeds.reduce(
-        (n, f) => n + (unreadByFeed?.[f.id] ?? 0),
-        0
-    );
+    const uncategorizedFeeds = feedsByCategory[UNCATEGORIZED_KEY] ?? [];
 
     // Get the category being deleted
     const deletingCategory = deletingCategoryId
@@ -403,10 +417,9 @@ export function CategoryList({
                     const isExpanded = expandedCategories.has(category.id);
                     const isSelected = selectedCategoryId === category.id;
                     const categoryFeeds = getFeedsForCategory(category.id);
-                    const categoryUnread = categoryFeeds.reduce(
-                        (n, f) => n + (unreadByFeed?.[f.id] ?? 0),
-                        0
-                    );
+                    const categoryUnread = unreadByCategory?.[category.id] ?? 0;
+                    const feedsLoading =
+                        loadingFeeds.has(category.id) && !(category.id in feedsByCategory);
 
                     return (
                         <Box key={category.id}>
@@ -460,27 +473,27 @@ export function CategoryList({
                             </ListItem>
 
                             {/* Nested feeds */}
-                            <Collapse
-                                in={isExpanded}
-                                timeout="auto"
-                                unmountOnExit
-                            >
-                                <FeedList
-                                    feeds={categoryFeeds}
-                                    categories={categories}
-                                    onDeleteFeed={onDeleteFeed}
-                                    onRefreshFeed={onRefreshFeed}
-                                    onSetFeedCategories={onSetFeedCategories}
-                                    onSetFeedActive={onSetFeedActive}
-                                    activeFeedId={activeFeedId}
-                                    unreadByFeed={unreadByFeed}
-                                    onSelectFeed={onSelectFeed}
-                                    onMarkFeedRead={onMarkFeedRead}
-                                    onAddFeed={() => {
-                                        setAddFeedCategoryId(category.id);
-                                        setShowAddFeedDialog(true);
-                                    }}
-                                />
+                            <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                {feedsLoading ? (
+                                    <FeedRowsSkeleton />
+                                ) : (
+                                    <FeedList
+                                        feeds={categoryFeeds}
+                                        categories={categories}
+                                        onDeleteFeed={onDeleteFeed}
+                                        onRefreshFeed={onRefreshFeed}
+                                        onSetFeedCategories={onSetFeedCategories}
+                                        onSetFeedActive={onSetFeedActive}
+                                        activeFeedId={activeFeedId}
+                                        unreadByFeed={unreadByFeed}
+                                        onSelectFeed={onSelectFeed}
+                                        onMarkFeedRead={onMarkFeedRead}
+                                        onAddFeed={() => {
+                                            setAddFeedCategoryId(category.id);
+                                            setShowAddFeedDialog(true);
+                                        }}
+                                    />
+                                )}
                             </Collapse>
                         </Box>
                     );
