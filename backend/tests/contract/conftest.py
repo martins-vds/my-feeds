@@ -89,6 +89,17 @@ _SEED_FEED_IDS = (TEST_FEED_ID, TEST_OTHER_FEED_ID)
 
 
 @pytest.fixture(autouse=True)
+async def _reset_response_cache():
+    """Clear the process-wide response cache between contract tests so a body
+    cached in one test can't leak into the next."""
+    from app.infrastructure.http.response_cache import reset_response_cache
+
+    reset_response_cache()
+    yield
+    reset_response_cache()
+
+
+@pytest.fixture(autouse=True)
 async def _cleanup_created_rows(app):
     """Contract tests run against a persistent database with no transactional
     rollback, so rows created through the API (categories, feeds) would

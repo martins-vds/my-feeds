@@ -9,8 +9,11 @@ means the browser stores the representation but always revalidates.
 import hashlib
 import json
 from typing import Any, Awaitable, Callable
+from uuid import UUID
 
 from quart import Response, request
+
+from app.infrastructure.http.response_cache import get_response_cache
 
 CACHE_CONTROL = "private, no-cache"
 
@@ -51,6 +54,29 @@ async def conditional_json(build_body: Callable[[], Awaitable[Any]]) -> Response
     body = await build_body()
     payload = _canonical(body)
     etag = _strong_etag(payload)
+    if request.headers.get("If-None-Match") == etag:
+        return _not_modified(etag)
+    return _json_response(payload, etag)
+
+
+async def cached_conditional_json(
+    user_id: UUID, cache_key: str, build_body: Callable[[], Awaitable[Any]]
+) -> Response:
+    """Like conditional_json, but serve (etag, body) from a per-user TTL cache.
+
+    On a hit the stored bytes are returned without rebuilding; on a miss the
+    body is built, serialized, hashed, and stored. The 304 logic is identical.
+    """
+    cache = get_response_cache()
+    cached = await cache.get(user_id, cache_key)
+    if cached is not None:
+        etag, payload = cached
+    else:
+        body = await build_body()
+        payload = _canonical(body)
+        etag = _strong_etag(payload)
+        await cache.set(user_id, cache_key, etag, payload)
+
     if request.headers.get("If-None-Match") == etag:
         return _not_modified(etag)
     return _json_response(payload, etag)

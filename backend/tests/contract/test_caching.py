@@ -45,3 +45,35 @@ class TestETagOnReads:
             headers={**auth_headers, "If-None-Match": resp.headers["ETag"]},
         )
         assert second.status_code == 304
+
+
+class TestBodyCacheInvalidation:
+    @pytest.mark.asyncio
+    async def test_creating_a_category_changes_the_categories_etag(self, client, auth_headers):
+        first = await client.get("/api/categories", headers=auth_headers)
+        etag1 = first.headers["ETag"]
+
+        created = await client.post(
+            "/api/categories", headers=auth_headers, json={"name": "Cache Test Cat"}
+        )
+        assert created.status_code == 201
+
+        second = await client.get("/api/categories", headers=auth_headers)
+        # A conditional GET with the OLD etag must NOT 304 (cache was invalidated
+        # and the list changed).
+        revalidate = await client.get(
+            "/api/categories", headers={**auth_headers, "If-None-Match": etag1}
+        )
+        assert revalidate.status_code == 200
+        assert second.headers["ETag"] != etag1
+        names = [c["name"] for c in await second.get_json()]
+        assert "Cache Test Cat" in names
+
+    @pytest.mark.asyncio
+    async def test_unchanged_categories_still_304(self, client, auth_headers):
+        first = await client.get("/api/categories", headers=auth_headers)
+        etag = first.headers["ETag"]
+        again = await client.get(
+            "/api/categories", headers={**auth_headers, "If-None-Match": etag}
+        )
+        assert again.status_code == 304

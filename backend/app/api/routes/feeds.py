@@ -5,7 +5,8 @@ from uuid import UUID
 from quart import Blueprint, current_app, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
-from app.api.middleware.conditional import conditional_json
+from app.api.middleware.conditional import cached_conditional_json, conditional_json
+from app.infrastructure.http.response_cache import get_response_cache
 from app.application.services.feed_service import (
     CategoryNotFoundError,
     FeedConflictError,
@@ -68,7 +69,7 @@ async def list_feeds_in_category(category_id: UUID):
         return [feed.to_dict() for feed in feeds]
 
     try:
-        return await conditional_json(build)
+        return await cached_conditional_json(user_id, f"category-feeds:{category_id}", build)
     except CategoryNotFoundError:
         return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except FeedPermissionError:
@@ -105,6 +106,7 @@ async def add_feed(category_id: UUID):
         # Commit so the new feed is visible, then ingest its posts in the
         # background instead of blocking the request.
         await container.session.commit()
+        await get_response_cache().invalidate_user(user_id)
         current_app.add_background_task(ingest_feed_posts, feed.id)
         return jsonify(feed.to_dict()), 201
     except FeedLimitError as e:
@@ -139,6 +141,8 @@ async def list_all_feeds():
             feeds = await container.feed_service.list_all_feeds(user_id)
         return [feed.to_dict() for feed in feeds]
 
+    if uncategorized:
+        return await cached_conditional_json(user_id, "feeds:uncategorized", build)
     return await conditional_json(build)
 
 
@@ -175,6 +179,7 @@ async def create_feed():
         # Commit so the new feed is visible, then ingest its posts in the
         # background instead of blocking the request.
         await container.session.commit()
+        await get_response_cache().invalidate_user(user_id)
         current_app.add_background_task(ingest_feed_posts, feed.id)
         return jsonify(feed.to_dict()), 201
     except FeedLimitError as e:
@@ -244,6 +249,7 @@ async def update_feed(feed_id: UUID):
             if not isinstance(data["isActive"], bool):
                 raise ValidationError("isActive must be a boolean")
             feed = await container.feed_service.set_feed_active(user_id, feed_id, data["isActive"])
+        await get_response_cache().invalidate_user(user_id)
         return jsonify(feed.to_dict())
     except FeedNotFoundError:
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
@@ -268,6 +274,7 @@ async def delete_feed(feed_id: UUID):
 
     try:
         await container.feed_service.delete_feed(user_id, feed_id)
+        await get_response_cache().invalidate_user(user_id)
         return "", 204
     except FeedNotFoundError:
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404

@@ -5,7 +5,8 @@ from uuid import UUID
 from quart import Blueprint, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
-from app.api.middleware.conditional import conditional_json
+from app.api.middleware.conditional import cached_conditional_json
+from app.infrastructure.http.response_cache import get_response_cache
 from app.application.services.category_service import (
     CategoryLimitError,
     CategoryNameConflictError,
@@ -49,7 +50,7 @@ async def list_categories():
         categories = await container.category_service.list_categories(user_id)
         return [cat.to_dict() for cat in categories]
 
-    return await conditional_json(build)
+    return await cached_conditional_json(user_id, "categories", build)
 
 
 @bp.route("", methods=["POST"])
@@ -81,6 +82,7 @@ async def create_category():
     container = get_request_container()
     try:
         category = await container.category_service.create_category(user_id, name)
+        await get_response_cache().invalidate_user(user_id)
         return jsonify(category.to_dict()), 201
     except CategoryLimitError as e:
         raise ValidationError(str(e))
@@ -153,6 +155,7 @@ async def update_category(category_id: UUID):
         category = await container.category_service.update_category(
             user_id, category_id, name=name, position=position
         )
+        await get_response_cache().invalidate_user(user_id)
         return jsonify(category.to_dict())
     except CategoryNotFoundError:
         return jsonify({
@@ -188,6 +191,7 @@ async def delete_category(category_id: UUID):
 
     try:
         await container.category_service.delete_category(user_id, category_id)
+        await get_response_cache().invalidate_user(user_id)
         return "", 204
     except CategoryNotFoundError:
         return jsonify({
