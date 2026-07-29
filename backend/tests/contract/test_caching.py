@@ -77,3 +77,23 @@ class TestBodyCacheInvalidation:
             "/api/categories", headers={**auth_headers, "If-None-Match": etag}
         )
         assert again.status_code == 304
+
+
+class TestUpdateFeedAtomicValidation:
+    @pytest.mark.asyncio
+    async def test_bad_isactive_with_valid_categories_does_not_mutate(
+        self, client, auth_headers, feed_id, category_id
+    ):
+        """A combined PATCH with valid categoryIds + a non-bool isActive must 400
+        WITHOUT applying the category change — no partial mutation, so the
+        category-feeds cache cannot be left stale."""
+        resp = await client.patch(
+            f"/api/feeds/{feed_id}",
+            headers=auth_headers,
+            json={"categoryIds": [], "isActive": "not-a-bool"},
+        )
+        assert resp.status_code == 400
+
+        after = await client.get(f"/api/feeds/{feed_id}", headers=auth_headers)
+        body = await after.get_json()
+        assert body["categoryIds"] == [str(category_id)]  # unchanged

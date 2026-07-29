@@ -239,6 +239,12 @@ async def update_feed(feed_id: UUID):
     if "categoryIds" not in data and "isActive" not in data:
         raise ValidationError("categoryIds or isActive is required")
 
+    # Validate the isActive type BEFORE any mutation so a bad value can't leave a
+    # partial update (categories changed) paired with a stale cache — the cache is
+    # only invalidated after both mutations succeed.
+    if "isActive" in data and not isinstance(data["isActive"], bool):
+        raise ValidationError("isActive must be a boolean")
+
     container = get_request_container()
     try:
         feed = None
@@ -246,8 +252,6 @@ async def update_feed(feed_id: UUID):
             category_ids = _parse_category_ids(data.get("categoryIds"))
             feed = await container.feed_service.set_feed_categories(user_id, feed_id, category_ids)
         if "isActive" in data:
-            if not isinstance(data["isActive"], bool):
-                raise ValidationError("isActive must be a boolean")
             feed = await container.feed_service.set_feed_active(user_id, feed_id, data["isActive"])
         await get_response_cache().invalidate_user(user_id)
         return jsonify(feed.to_dict())
