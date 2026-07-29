@@ -68,7 +68,9 @@ class TTSService(ABC):
 
         Each tag is replaced with a single space so adjacent words separated
         only by markup (e.g. ``for<code>x</code>loop``) do not fuse into one
-        spoken token. Whitespace is then collapsed.
+        spoken token. HTML entities (e.g. ``&nbsp;``, ``&gt;``, ``&amp;``) are
+        decoded so they are spoken as their real characters rather than literal
+        entity names. Whitespace is then collapsed.
 
         Args:
             text: Text that may contain HTML
@@ -76,10 +78,15 @@ class TTSService(ABC):
         Returns:
             Plain text with HTML removed
         """
+        import html
         import re
 
         # Replace each HTML tag with a space so tag boundaries never fuse words.
         clean = re.sub(r"<[^>]+>", " ", text)
+        # Decode entities after tag removal so &nbsp;/&gt;/&amp; aren't spoken as
+        # literal names; &nbsp; becomes U+00A0, folded into a normal space by the
+        # whitespace collapse below.
+        clean = html.unescape(clean)
         # Normalize whitespace
         clean = re.sub(r"\s+", " ", clean)
         return clean.strip()

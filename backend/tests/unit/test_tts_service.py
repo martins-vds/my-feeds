@@ -184,6 +184,14 @@ class TestStripHtmlSpacing:
         """Plain text without tags is returned trimmed."""
         assert service.strip_html("  Hello world  ") == "Hello world"
 
+    def test_decodes_html_entities(self, service):
+        """Entities are decoded so they aren't spoken as literal names."""
+        assert service.strip_html("Q &gt; 1 &amp; done") == "Q > 1 & done"
+
+    def test_nbsp_entity_folds_to_space(self, service):
+        """&nbsp; decodes to U+00A0, then collapses to a normal space."""
+        assert service.strip_html("Helion&nbsp;has progressed") == "Helion has progressed"
+
 
 class TestEdgeTTSTimingCapture:
     """EdgeTTSService.synthesize_with_timings streams WordBoundary events."""

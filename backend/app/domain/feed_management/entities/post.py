@@ -126,9 +126,13 @@ class Post:
         """
         text = self.summary or self.content or ""
         # Strip HTML tags (simple approach)
+        import html
         import re
 
         text = re.sub(r"<[^>]+>", "", text)
+        # Decode HTML entities (e.g. &nbsp;, &gt;, &amp;) after removing tags so
+        # they display as real characters instead of literal entity text.
+        text = html.unescape(text)
         text = text.strip()
 
         if len(text) <= max_length:
