@@ -262,11 +262,29 @@ export const ReaderPage: React.FC = () => {
             onMarkFeedRead={(id, isRead) => handleMarkAllRead({ feedId: id }, isRead)}
             onCreateCategory={createCategory}
             onUpdateCategory={updateCategory}
-            onDeleteCategory={deleteCategory}
-            onAddFeed={addFeed}
-            onDeleteFeed={deleteFeed}
+            onDeleteCategory={async (id) => {
+                await deleteCategory(id);
+                // Deleting a category moves its feeds to Uncategorized — the
+                // per-category/uncategorized badges are backend-sourced, so refetch.
+                refetchUnread();
+            }}
+            onAddFeed={async (categoryId, url) => {
+                const feed = await addFeed(categoryId, url);
+                refetchUnread();
+                return feed;
+            }}
+            onDeleteFeed={async (id) => {
+                await deleteFeed(id);
+                // A deleted feed's unread posts leave the category/total totals.
+                refetchUnread();
+            }}
             onRefreshFeed={refreshFeed}
-            onSetFeedCategories={setFeedCategories}
+            onSetFeedCategories={async (feedId, categoryIds) => {
+                const feed = await setFeedCategories(feedId, categoryIds);
+                // Moving a feed between categories shifts the per-category totals.
+                refetchUnread();
+                return feed;
+            }}
             onSetFeedActive={setFeedActive}
         />
     );
