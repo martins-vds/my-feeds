@@ -92,4 +92,67 @@ describe("useFeedsData (lazy)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).not.toBeNull();
   });
+
+  it("caches an empty category and does not refetch", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/categories") return mockCategories as never;
+      if (url === "/feeds?uncategorized=true") return [] as never;
+      if (url === "/categories/cat-1/feeds") return [] as never;
+      return [] as never;
+    });
+    const { result } = renderHook(() => useFeedsData());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.loadFeedsForCategory("cat-1");
+    });
+    expect(result.current.feedsByCategory["cat-1"]).toEqual([]);
+    const callsBefore = vi
+      .mocked(api.get)
+      .mock.calls.filter((c) => c[0] === "/categories/cat-1/feeds").length;
+
+    await act(async () => {
+      await result.current.loadFeedsForCategory("cat-1");
+    });
+    const callsAfter = vi
+      .mocked(api.get)
+      .mock.calls.filter((c) => c[0] === "/categories/cat-1/feeds").length;
+    expect(callsAfter).toBe(callsBefore); // empty array is "loaded" → no refetch
+  });
+
+  it("discards a stale in-flight category load after refresh() resets the cache", async () => {
+    let resolveCat1: (feeds: unknown) => void = () => {};
+    const cat1Pending = new Promise<unknown>((r) => {
+      resolveCat1 = r;
+    });
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/categories") return mockCategories as never;
+      if (url === "/feeds?uncategorized=true") return [] as never;
+      if (url === "/categories/cat-1/feeds") return (cat1Pending as never);
+      return [] as never;
+    });
+
+    const { result } = renderHook(() => useFeedsData());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Start a category load; its fetch stays pending.
+    let loadPromise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      loadPromise = result.current.loadFeedsForCategory("cat-1");
+    });
+    expect(result.current.loadingFeeds.has("cat-1")).toBe(true);
+
+    // A full refresh() completes, resetting the cache and clearing loadingFeeds.
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    // Now the stale fetch resolves — its write MUST be discarded.
+    await act(async () => {
+      resolveCat1([{ id: "stale-feed", categoryIds: ["cat-1"] }]);
+      await loadPromise;
+    });
+
+    expect("cat-1" in result.current.feedsByCategory).toBe(false);
+  });
 });

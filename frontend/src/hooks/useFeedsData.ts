@@ -55,6 +55,10 @@ export function useFeedsData(): UseFeedsDataReturn {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Bumped on every refresh() so an in-flight loadFeedsForCategory whose fetch
+  // resolves AFTER a cache reset can detect it is stale and discard its write.
+  const generationRef = useRef(0);
+
   const fetchCategories = useCallback(
     async (): Promise<Category[]> => api.get<Category[]>("/categories"),
     []
@@ -70,6 +74,9 @@ export function useFeedsData(): UseFeedsDataReturn {
    * Category feed caches are dropped so expanded groups reload lazily.
    */
   const refresh = useCallback(async () => {
+    // Invalidate any in-flight per-category loads: their writes must not land
+    // after this reset.
+    generationRef.current += 1;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const [categories, uncategorized] = await Promise.all([
@@ -103,6 +110,11 @@ export function useFeedsData(): UseFeedsDataReturn {
     const current = stateRef.current;
     if (key in current.feedsByCategory || current.loadingFeeds.has(key)) return;
 
+    // Capture the generation so a refresh() during this fetch invalidates it.
+    // (Two synchronous calls for the same key before re-render can both pass the
+    // guard and double-fetch; the writes are identical data, so that is benign.)
+    const gen = generationRef.current;
+
     setState((prev) => {
       const loadingFeeds = new Set(prev.loadingFeeds);
       loadingFeeds.add(key);
@@ -115,6 +127,7 @@ export function useFeedsData(): UseFeedsDataReturn {
           ? await api.get<Feed[]>("/feeds?uncategorized=true")
           : await api.get<Feed[]>(`/categories/${key}/feeds`);
       setState((prev) => {
+        if (generationRef.current !== gen) return prev; // a refresh() superseded us
         const loadingFeeds = new Set(prev.loadingFeeds);
         loadingFeeds.delete(key);
         return {
@@ -125,12 +138,13 @@ export function useFeedsData(): UseFeedsDataReturn {
       });
     } catch {
       setState((prev) => {
+        if (generationRef.current !== gen) return prev; // a refresh() superseded us
         const loadingFeeds = new Set(prev.loadingFeeds);
         loadingFeeds.delete(key);
         return { ...prev, loadingFeeds };
       });
     }
-  // stateRef is a ref object — stable, no need in deps
+  // stateRef/generationRef are ref objects — stable, no need in deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
