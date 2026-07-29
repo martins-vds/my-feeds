@@ -1295,14 +1295,23 @@ Remove the line `const UNCATEGORIZED_KEY = "__uncategorized__";`.
     useEffect(() => {
         for (const id of expandedCategories) {
             if (id === UNCATEGORIZED_KEY) continue; // uncategorized loads on mount
-            if (!(id in feedsByCategory) && !loadingFeeds.has(id)) {
+            // Deps are [expandedCategories, feedsByCategory, onExpandCategory] —
+            // deliberately NOT loadingFeeds. On a failed load, feedsByCategory keeps
+            // the same reference, so this effect does not re-fire → no infinite retry
+            // loop. loadFeedsForCategory is internally idempotent (it skips keys already
+            // loaded or in flight via a synchronous stateRef read), so a redundant call
+            // here is a safe no-op. A refresh() replaces the feedsByCategory object,
+            // which correctly re-triggers reloads of categories that are still expanded.
+            if (!(id in feedsByCategory)) {
                 onExpandCategory(id);
             }
         }
-    }, [expandedCategories, feedsByCategory, loadingFeeds, onExpandCategory]);
+    }, [expandedCategories, feedsByCategory, onExpandCategory]);
 ```
 
 Add `useEffect` to the React import (`import { useState, useCallback, useEffect } from "react";`).
+
+> **Why not depend on `loadingFeeds`:** including it would re-fire the effect every time a load starts/ends. A *failing* load ends by removing its key from `loadingFeeds` without adding to `feedsByCategory`, so the effect would immediately call `onExpandCategory(id)` again → an infinite loop of failing requests. Depending only on `feedsByCategory` breaks that loop because a failed load does not change the `feedsByCategory` reference.
 
 5. Replace `getFeedsForCategory` and the uncategorized derivations:
 
