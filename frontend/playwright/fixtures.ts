@@ -113,9 +113,11 @@ export async function mockApi(
 
 /**
  * Mock the endpoints the unified reader loads on mount:
- * GET /categories (raw array), GET /feeds (raw array), GET /posts (list),
- * and GET /posts/unread-counts. Per-test POST/PATCH/DELETE handlers can be
- * layered on top (they fall through the GET-only mocks).
+ * GET /categories (raw array), GET /feeds?uncategorized=true (uncategorized
+ * feeds on mount), GET /categories/{id}/feeds (lazy per-category on expand),
+ * GET /posts (list), and GET /posts/unread-counts.
+ * Per-test POST/PATCH/DELETE handlers can be layered on top (they fall through
+ * the GET-only mocks).
  */
 export async function setupReaderApi(
   page: Page,
@@ -125,7 +127,12 @@ export async function setupReaderApi(
     posts?: unknown[];
     hasMore?: boolean;
     nextCursor?: string | null;
-    unread?: { byFeed: Record<string, number>; total: number };
+    unread?: {
+      byFeed: Record<string, number>;
+      byCategory?: Record<string, number>;
+      uncategorized?: number;
+      total: number;
+    };
   } = {}
 ) {
   const {
@@ -134,14 +141,44 @@ export async function setupReaderApi(
     posts = [],
     hasMore = false,
     nextCursor = null,
-    unread = { byFeed: {}, total: 0 },
+    unread = { byFeed: {}, byCategory: {}, uncategorized: 0, total: 0 },
   } = opts;
   // Don't let the Google Fonts <link> delay page load in tests.
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
   await mockApi(page, "**/api/categories", categories, { method: "GET" });
-  await mockApi(page, "**/api/feeds", feeds, { method: "GET" });
   await mockApi(page, "**/api/posts**", { posts, hasMore, nextCursor }, { method: "GET" });
   await mockApi(page, "**/api/posts/unread-counts", unread, { method: "GET" });
+
+  // Uncategorized feeds load on mount: GET /api/feeds?uncategorized=true.
+  // (Any GET /api/feeds in the lazy app is the uncategorized request.)
+  await page.route("**/api/feeds**", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const uncategorized = (feeds as Array<{ categoryIds: string[] }>).filter(
+      (f) => f.categoryIds.length === 0
+    );
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(uncategorized),
+    });
+  });
+
+  // A category's feeds load on expand: GET /api/categories/{id}/feeds.
+  // Registered last so it wins over the broad **/api/categories mock above.
+  await page.route("**/api/categories/*/feeds", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const url = new URL(route.request().url());
+    const match = url.pathname.match(/\/categories\/([^/]+)\/feeds$/);
+    const catId = match?.[1];
+    const inCategory = (feeds as Array<{ categoryIds: string[] }>).filter((f) =>
+      catId ? f.categoryIds.includes(catId) : false
+    );
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(inCategory),
+    });
+  });
 }
 
 // ── Custom fixtures ────────────────────────────────────────────────────
