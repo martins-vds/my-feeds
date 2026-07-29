@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Box,
     Button,
@@ -6,6 +6,7 @@ import {
     Typography,
     Tooltip,
     CircularProgress,
+    LinearProgress,
     Menu,
     MenuItem,
 } from "@mui/material";
@@ -68,6 +69,21 @@ export function AudioPlayer({
 
     const [speedAnchor, setSpeedAnchor] = useState<null | HTMLElement>(null);
 
+    // Count seconds elapsed while audio is being generated so the wait shows
+    // visible progress instead of a spinner that looks frozen.
+    const [generatingElapsed, setGeneratingElapsed] = useState(0);
+    useEffect(() => {
+        if (status !== "generating") {
+            setGeneratingElapsed(0);
+            return;
+        }
+        const start = Date.now();
+        const id = window.setInterval(() => {
+            setGeneratingElapsed(Math.floor((Date.now() - start) / 1000));
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [status]);
+
     // Use initial values if provided and no audio has been generated yet
     const effectiveUrl = audioUrl || initialAudioUrl;
     const effectiveDuration = durationSeconds ?? initialDuration;
@@ -104,13 +120,50 @@ export function AudioPlayer({
         );
     }
 
-    // Loading state
+    // Loading state (brief: fetching audio status or an existing file)
     if (status === "loading") {
         return (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <CircularProgress size={24} />
                 <Typography variant="body2" color="text.secondary">
-                    Generating audio...
+                    Loading audio…
+                </Typography>
+            </Box>
+        );
+    }
+
+    // Generating state (slow: server-side TTS synthesis). A moving progress bar
+    // plus an elapsed timer keep the wait from looking stuck.
+    if (status === "generating") {
+        return (
+            <Box sx={{ width: "100%" }} data-testid="audio-generating">
+                <Box
+                    sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 1,
+                        mb: 0.5,
+                    }}
+                >
+                    <Typography variant="body2" color="text.secondary">
+                        Generating audio…
+                    </Typography>
+                    <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        data-testid="audio-generating-elapsed"
+                    >
+                        {formatTime(generatingElapsed)}
+                    </Typography>
+                </Box>
+                <LinearProgress />
+                <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: "block", mt: 0.5 }}
+                >
+                    This can take a moment for longer articles.
                 </Typography>
             </Box>
         );

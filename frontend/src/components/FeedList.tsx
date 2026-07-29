@@ -289,18 +289,22 @@ export function FeedList({
                                     )}
                                 </ListItemIcon>
                                 <ListItemText
+                                    sx={{ minWidth: 0 }}
+                                    primaryTypographyProps={{
+                                        component: "div",
+                                        sx: {
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 1,
+                                            minWidth: 0,
+                                        },
+                                    }}
                                     primary={
-                                        <Box
-                                            sx={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 1,
-                                            }}
-                                        >
+                                        <>
                                             <Typography
                                                 variant="body2"
                                                 noWrap
-                                                sx={{ flexGrow: 1 }}
+                                                sx={{ flexGrow: 1, minWidth: 0 }}
                                             >
                                                 {feed.title || feed.url}
                                             </Typography>
@@ -318,6 +322,7 @@ export function FeedList({
                                                         size="small"
                                                         color="error"
                                                         variant="outlined"
+                                                        sx={{ flexShrink: 0 }}
                                                     />
                                                 </Tooltip>
                                             )}
@@ -330,6 +335,7 @@ export function FeedList({
                                                         label="Paused"
                                                         size="small"
                                                         variant="outlined"
+                                                        sx={{ flexShrink: 0 }}
                                                     />
                                                 </Tooltip>
                                             )}
@@ -338,11 +344,12 @@ export function FeedList({
                                                     label={unreadCount}
                                                     size="small"
                                                     color="primary"
-                                                    sx={{ height: 20 }}
+                                                    sx={{ height: 20, flexShrink: 0 }}
                                                 />
                                             )}
-                                        </Box>
+                                        </>
                                     }
+                                    secondaryTypographyProps={{ noWrap: true }}
                                     secondary={
                                         feed.title
                                             ? new URL(feed.url).hostname

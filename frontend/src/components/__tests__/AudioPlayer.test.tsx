@@ -83,22 +83,47 @@ describe("AudioPlayer", () => {
   });
 
   describe("loading state", () => {
-    it("should display spinner when generating audio", () => {
+    it("should display spinner when loading audio", () => {
       setMockState({ status: "loading" });
 
       render(<AudioPlayer player={mockPlayer} />);
       expect(screen.getByRole("progressbar")).toBeInTheDocument();
     });
 
-    it("should display 'Generating audio...' text", () => {
+    it("should display 'Loading audio…' text", () => {
       setMockState({ status: "loading" });
 
       render(<AudioPlayer player={mockPlayer} />);
-      expect(screen.getByText("Generating audio...")).toBeInTheDocument();
+      expect(screen.getByText("Loading audio…")).toBeInTheDocument();
     });
 
     it("should not display listen or play buttons while loading", () => {
       setMockState({ status: "loading" });
+
+      render(<AudioPlayer player={mockPlayer} />);
+      expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("play-pause-button")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("generating state", () => {
+    it("should display a progress bar while generating", () => {
+      setMockState({ status: "generating" });
+
+      render(<AudioPlayer player={mockPlayer} />);
+      expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    });
+
+    it("should display 'Generating audio…' text and an elapsed timer", () => {
+      setMockState({ status: "generating" });
+
+      render(<AudioPlayer player={mockPlayer} />);
+      expect(screen.getByText("Generating audio…")).toBeInTheDocument();
+      expect(screen.getByTestId("audio-generating-elapsed")).toBeInTheDocument();
+    });
+
+    it("should not display listen or play buttons while generating", () => {
+      setMockState({ status: "generating" });
 
       render(<AudioPlayer player={mockPlayer} />);
       expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();

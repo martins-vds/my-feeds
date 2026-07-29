@@ -93,13 +93,26 @@ export const theme = createTheme({
             color: "#1C1917", // stone-900 on amber-400 → ~10:1 (AA), reads on dark bg
           },
         },
-        // Respect users who prefer reduced motion.
+        // Respect users who prefer reduced motion — but keep essential progress
+        // indicators (spinners / progress bars) animating. A frozen loading
+        // spinner reads as "stuck", which is worse than the subtle motion it
+        // replaces. Class selectors + !important beat the universal reset.
         "@media (prefers-reduced-motion: reduce)": {
           "*, *::before, *::after": {
             animationDuration: "0.01ms !important",
             animationIterationCount: "1 !important",
             transitionDuration: "0.01ms !important",
             scrollBehavior: "auto !important",
+          },
+          ".MuiCircularProgress-indeterminate, .MuiCircularProgress-circleIndeterminate":
+          {
+            animationDuration: "1.4s !important",
+            animationIterationCount: "infinite !important",
+          },
+          ".MuiLinearProgress-bar1Indeterminate, .MuiLinearProgress-bar2Indeterminate":
+          {
+            animationDuration: "2.1s !important",
+            animationIterationCount: "infinite !important",
           },
         },
       },

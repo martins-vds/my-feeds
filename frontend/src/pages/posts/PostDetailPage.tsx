@@ -3,7 +3,12 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
+import {
+    useParams,
+    useNavigate,
+    useLocation,
+    Link as RouterLink,
+} from "react-router-dom";
 import {
     Container,
     Box,
@@ -73,6 +78,12 @@ function formatDate(dateString: string): string {
 export const PostDetailPage: React.FC = () => {
     const { id: postId } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // The reader stashes its filtered URL here when opening a post. Fall back to
+    // the reader root when the post was opened directly (deep link / refresh).
+    const backTo =
+        (location.state as { from?: string } | null)?.from ?? "/posts";
 
     const [post, setPost] = useState<PostDetailResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -125,6 +136,18 @@ export const PostDetailPage: React.FC = () => {
         fetchPost();
     }, [postId]);
 
+    // If the post already has generated audio, load it right away so the player
+    // shows the controls instead of the "Listen to article" button. Runs once
+    // per post when audio availability is known; generateAudio only fetches the
+    // existing file (it does not re-synthesize).
+    const audioReady = player.status === "idle";
+    useEffect(() => {
+        if (post?.hasAudio && audioReady) {
+            player.generateAudio();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [post?.hasAudio]);
+
     // Handle read state toggle
     const handleToggleReadState = useCallback(
         async (id: string, isRead: boolean) => {
@@ -134,10 +157,17 @@ export const PostDetailPage: React.FC = () => {
         []
     );
 
-    // Handle back navigation
+    // Handle back navigation. Prefer a real history pop so the reader restores
+    // its previous scroll position and in-memory post list; only fall back to an
+    // explicit navigation when there is no app history to return to (e.g. the
+    // post was opened via a direct link or a page refresh).
     const handleBack = useCallback(() => {
-        navigate("/posts");
-    }, [navigate]);
+        if (location.key !== "default") {
+            navigate(-1);
+        } else {
+            navigate(backTo);
+        }
+    }, [navigate, location.key, backTo]);
 
     // Loading state
     if (loading) {
@@ -156,7 +186,7 @@ export const PostDetailPage: React.FC = () => {
                             <ArrowBackIcon />
                         </IconButton>
                         <Breadcrumbs aria-label="breadcrumb">
-                            <Link component={RouterLink} to="/posts" underline="hover" color="inherit">
+                            <Link component={RouterLink} to={backTo} underline="hover" color="inherit">
                                 Posts
                             </Link>
                         </Breadcrumbs>
@@ -221,7 +251,7 @@ export const PostDetailPage: React.FC = () => {
                     <Breadcrumbs aria-label="breadcrumb">
                         <Link
                             component={RouterLink}
-                            to="/posts"
+                            to={backTo}
                             underline="hover"
                             color="inherit"
                         >

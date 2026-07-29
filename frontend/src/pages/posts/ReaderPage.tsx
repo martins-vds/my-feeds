@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
     Box,
     Drawer,
@@ -48,6 +48,7 @@ function parseReadState(value: string | null): ReadState {
 
 export const ReaderPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const theme = useTheme();
     const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
 
@@ -215,9 +216,14 @@ export const ReaderPage: React.FC = () => {
 
     const handlePostClick = useCallback(
         (post: PostSummary) => {
-            navigate(`/posts/${post.id}`);
+            // Remember the current reader scope (category/feed/read filters live
+            // in the URL) so returning from the post restores this exact view
+            // instead of resetting to the default "All items" list.
+            navigate(`/posts/${post.id}`, {
+                state: { from: `${location.pathname}${location.search}` },
+            });
         },
-        [navigate]
+        [navigate, location.pathname, location.search]
     );
 
     const scopeTitle = useMemo(() => {

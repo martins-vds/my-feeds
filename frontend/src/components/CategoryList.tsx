@@ -48,6 +48,24 @@ import { ApiError } from "../services/api";
 import { FeedRowsSkeleton } from "./skeletons/FeedRowsSkeleton";
 import { UNCATEGORIZED_KEY } from "../hooks/useFeedsData";
 
+// Expanded categories are remembered for the browsing session so returning to
+// the reader (e.g. after opening and closing a post) keeps the same branches
+// open instead of collapsing the whole tree.
+const EXPANDED_STORAGE_KEY = "myfeeds.expandedCategories";
+
+function readStoredExpanded(): Set<string> {
+    if (typeof window === "undefined") return new Set();
+    try {
+        const raw = window.sessionStorage.getItem(EXPANDED_STORAGE_KEY);
+        if (!raw) return new Set();
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed.filter((v): v is string => typeof v === "string"));
+    } catch {
+        return new Set();
+    }
+}
+
 interface CategoryListProps {
     categories: Category[];
     feedsByCategory: Record<string, Feed[]>;
@@ -107,7 +125,7 @@ export function CategoryList({
 }: CategoryListProps) {
     // Local state
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-        new Set()
+        readStoredExpanded
     );
     const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
     const [menuCategoryId, setMenuCategoryId] = useState<string | null>(null);
@@ -141,6 +159,20 @@ export function CategoryList({
             }
         }
     }, [expandedCategories, feedsByCategory, onExpandCategory]);
+
+    // Persist expansion so returning to the reader keeps the same categories
+    // open. Storage failures (private mode / quota) are non-fatal.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.sessionStorage.setItem(
+                EXPANDED_STORAGE_KEY,
+                JSON.stringify([...expandedCategories])
+            );
+        } catch {
+            // Ignore — expansion just won't survive the remount.
+        }
+    }, [expandedCategories]);
 
     // Toggle category expansion
     const toggleExpand = useCallback((categoryId: string) => {
@@ -442,6 +474,7 @@ export function CategoryList({
                                     onClick={() =>
                                         handleCategoryClick(category.id)
                                     }
+                                    sx={{ pr: 7 }}
                                 >
                                     <ListItemIcon sx={{ minWidth: 36 }}>
                                         {isExpanded ? (
@@ -458,6 +491,9 @@ export function CategoryList({
                                         )}
                                     </ListItemIcon>
                                     <ListItemText
+                                        sx={{ minWidth: 0 }}
+                                        primaryTypographyProps={{ noWrap: true }}
+                                        secondaryTypographyProps={{ noWrap: true }}
                                         primary={category.name}
                                         secondary={`${category.feedCount} feed${category.feedCount !== 1 ? "s" : ""}`}
                                     />
@@ -466,7 +502,7 @@ export function CategoryList({
                                             label={categoryUnread}
                                             size="small"
                                             color="primary"
-                                            sx={{ mr: 1, height: 20 }}
+                                            sx={{ ml: 1, height: 20, flexShrink: 0 }}
                                         />
                                     )}
                                 </ListItemButton>
@@ -522,6 +558,7 @@ export function CategoryList({
                                     onSelectUncategorized?.();
                                     toggleExpand(UNCATEGORIZED_KEY);
                                 }}
+                                sx={{ pr: 7 }}
                             >
                                 <ListItemIcon sx={{ minWidth: 36 }}>
                                     {expandedCategories.has(UNCATEGORIZED_KEY) ? (
@@ -534,6 +571,9 @@ export function CategoryList({
                                     <FolderIcon />
                                 </ListItemIcon>
                                 <ListItemText
+                                    sx={{ minWidth: 0 }}
+                                    primaryTypographyProps={{ noWrap: true }}
+                                    secondaryTypographyProps={{ noWrap: true }}
                                     primary="Uncategorized"
                                     secondary={`${uncategorizedFeeds.length} feed${uncategorizedFeeds.length !== 1 ? "s" : ""}`}
                                 />
@@ -542,7 +582,7 @@ export function CategoryList({
                                         label={uncategorizedUnread}
                                         size="small"
                                         color="primary"
-                                        sx={{ mr: 1, height: 20 }}
+                                        sx={{ ml: 1, height: 20, flexShrink: 0 }}
                                     />
                                 )}
                             </ListItemButton>

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import api from "../services/api";
 import type { AudioInfo, AudioPending, AudioResponse, WordTiming } from "../types";
 
-export type AudioStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "error";
+export type AudioStatus = "idle" | "loading" | "generating" | "ready" | "playing" | "paused" | "error";
 
 export interface UseAudioPlayerResult {
     status: AudioStatus;
@@ -57,7 +57,7 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
 
     // Generate or fetch audio URL
     const generateAudio = useCallback(async () => {
-        if (status === "loading") return;
+        if (status === "loading" || status === "generating") return;
 
         setStatus("loading");
         setError(null);
@@ -99,7 +99,10 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
 
                 audioRef.current = audio;
             } else if (response.status === "generating") {
-                // Poll for completion
+                // Audio is being synthesized server-side; surface a dedicated
+                // "generating" state (distinct from the brief "loading" fetch)
+                // and poll for completion.
+                setStatus("generating");
                 const pending = response as AudioPending;
                 const pollInterval = (pending.estimatedSeconds ?? 5) * 200; // Poll 5 times during estimate
 

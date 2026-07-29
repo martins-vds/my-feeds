@@ -4,8 +4,9 @@
  * These tests mock the post detail API and audio endpoints to exercise
  * the full AudioPlayer component lifecycle.
  *
- * AudioPlayer starts in idle state (no auto-fetch) and only calls the
- * audio API when the user clicks "Listen".
+ * The player starts idle and generates on demand when the user clicks
+ * "Listen". A post that already has audio (hasAudio) auto-loads its
+ * controls on open, without a click.
  */
 
 import { test, expect, mockApi, makePostDetail } from "./fixtures";
@@ -196,5 +197,45 @@ test.describe("TTS Audio Playback", () => {
 
     // Should show player after retry
     await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
+  });
+
+  test("auto-loads the player when the post already has audio", async ({ authedPage: page }) => {
+    // A post flagged hasAudio should surface the controls immediately, without
+    // the user clicking "Listen to article".
+    const readyPost = makePostDetail("feed-1", {
+      id: "audio-existing-post",
+      title: "Post With Existing Audio",
+      content: "<p>Already narrated.</p>",
+      hasAudio: true,
+    });
+    await mockApi(page, `**/api/posts/${readyPost.id}`, readyPost);
+    await mockApi(page, "**/api/categories", { categories: [] });
+
+    await page.route(`**/api/posts/${readyPost.id}/audio`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          postId: readyPost.id,
+          status: "ready",
+          url: "/api/audio/existing-key",
+          durationSeconds: 60,
+        }),
+      })
+    );
+    await page.route("**/api/audio/**", (route) => {
+      const wav = Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74,
+        0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x44, 0xac, 0x00, 0x00, 0x44, 0xac,
+        0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
+      ]);
+      return route.fulfill({ status: 200, contentType: "audio/wav", body: wav });
+    });
+
+    await page.goto(`/posts/${readyPost.id}`);
+
+    // Controls appear automatically; the "Listen to article" button never shows.
+    await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("listen-button")).toHaveCount(0);
   });
 });
