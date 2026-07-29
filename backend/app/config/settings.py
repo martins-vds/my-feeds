@@ -71,10 +71,12 @@ class Settings(BaseSettings):
     audio_cache_dir: str = "audio_cache"
     audio_max_cache_size_mb: int = 1000
     audio_cache_version: str = Field(
-        default="v2",
+        default="v3",
         description=(
             "Version tag hashed into audio cache keys. Bump to rotate every key "
-            "(e.g. to backfill word timings for pre-feature clips)."
+            "(e.g. after changing text preparation). Existing clips are "
+            "regenerated lazily on next access when the stored key no longer "
+            "matches the current version."
         ),
     )
 

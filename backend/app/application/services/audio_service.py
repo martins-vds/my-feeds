@@ -71,6 +71,26 @@ class AudioService:
         self._tts = tts_service
         self._cache = cache_manager
 
+    @staticmethod
+    def _synthesis_text(title: str, content: str | None) -> str:
+        """Build the exact text handed to the TTS engine for a post.
+
+        Shared by generation and the cache-key freshness check so both always
+        agree on what a post's audio is keyed on.
+        """
+        return f"{title}. {content or ''}".strip()
+
+    def _current_cache_key(self, title: str, content: str | None) -> str:
+        """Cache key a post's audio *should* have at the current cache version.
+
+        Comparing this against the stored key detects both a cache-version bump
+        and an edited post, so stale clips are regenerated instead of served.
+        """
+        return self._cache.generate_cache_key(
+            self._synthesis_text(title, content),
+            self._tts.voice_id,
+        )
+
     async def get_or_generate_audio(
         self,
         post_id: UUID,
@@ -96,12 +116,16 @@ class AudioService:
         if not post:
             raise ValueError(f"Post {post_id} not found")
 
-        # Check if audio already exists. Only short-circuit when BOTH the MP3
-        # and a timings sidecar are present; otherwise fall through and
-        # regenerate so pre-feature (timing-less) clips are backfilled.
+        # Check if audio already exists. Only short-circuit when the stored key
+        # still matches the current one (same content + cache version) AND both
+        # the MP3 and a timings sidecar are present; otherwise fall through and
+        # regenerate so pre-feature (timing-less) clips are backfilled and a
+        # cache-version bump actually rotates stale clips.
         existing_audio = await self._audio_repo.get_by_post_id(post_id)
+        current_cache_key = self._current_cache_key(post.title, post.content)
         if (
             existing_audio
+            and existing_audio.cache_key == current_cache_key
             and self._cache.exists(existing_audio.cache_key)
             and self._cache.exists_timings(existing_audio.cache_key)
         ):
@@ -155,8 +179,10 @@ class AudioService:
             raise ValueError(f"Post {post_id} not found")
 
         existing_audio = await self._audio_repo.get_by_post_id(post_id)
+        current_cache_key = self._current_cache_key(post.title, post.content)
         if (
             existing_audio
+            and existing_audio.cache_key == current_cache_key
             and self._cache.exists(existing_audio.cache_key)
             and self._cache.exists_timings(existing_audio.cache_key)
         ):
@@ -203,7 +229,7 @@ class AudioService:
             Created Audio entity
         """
         # Prepare text for synthesis
-        text_to_synthesize = f"{title}. {content or ''}".strip()
+        text_to_synthesize = self._synthesis_text(title, content)
 
         # Generate cache key
         cache_key = self._cache.generate_cache_key(

@@ -104,6 +104,9 @@ class TestGenerateForPostBranches:
         audio_repo = AsyncMock()
         audio_repo.get_by_post_id.return_value = existing
         cache = MagicMock()
+        # Freshness check: the stored key still matches the current one, so the
+        # clip is served as-is rather than regenerated.
+        cache.generate_cache_key.return_value = "c" * 64
         cache.exists.return_value = True
         cache.exists_timings.return_value = True
         cache.load_timings.return_value = {
@@ -121,6 +124,49 @@ class TestGenerateForPostBranches:
         assert result.word_timings == [{"text": "Hi", "startMs": 0, "durationMs": 10}]
         # Idempotent: an already-timed clip is not re-synthesized.
         tts.synthesize_with_timings.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_regenerates_when_stored_key_is_stale(self, tmp_path):
+        """A clip whose stored key no longer matches the current one (cache
+        version bumped or post edited) is regenerated, not served stale."""
+        from app.domain.audio.value_objects.word_timing import WordTiming
+
+        post_id = uuid4()
+        # Stored under an old cache version; on-disk files still exist.
+        existing = SimpleNamespace(cache_key="c" * 64, duration_seconds=12.0)
+        post_repo = AsyncMock()
+        post_repo.get_by_id.return_value = SimpleNamespace(
+            id=post_id, content="body", title="Title"
+        )
+        audio_repo = AsyncMock()
+        audio_repo.get_by_post_id.return_value = existing
+        audio_repo.create.side_effect = lambda audio: audio
+
+        tts = MagicMock()
+        tts.voice_id = "en-US-AriaNeural"
+        tts.synthesize_with_timings = AsyncMock(
+            return_value=[WordTiming(text="Title", start_ms=0, duration_ms=100)]
+        )
+        cache = MagicMock()
+        # Current key differs from the stored "c"*64 -> stale -> regenerate.
+        cache.generate_cache_key.return_value = "e" * 64
+        cache.get_file_path.return_value = tmp_path / "e.mp3"
+        cache.get_file_size.return_value = 8000
+        cache._cache_dir = tmp_path
+        cache.exists.return_value = True
+        cache.exists_timings.return_value = True
+        cache.load_timings.return_value = {
+            "schemaVersion": 1,
+            "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
+        }
+
+        service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
+        result = await service.generate_for_post(post_id)
+
+        assert result.status == AudioStatus.READY
+        assert result.cache_key == "e" * 64
+        # Stale key forced a real re-synthesis despite files existing on disk.
+        tts.synthesize_with_timings.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_fresh_generation_writes_sidecar_and_returns_timings(self, tmp_path):

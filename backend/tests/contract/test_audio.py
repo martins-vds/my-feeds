@@ -174,6 +174,31 @@ async def _delete_audio_row(post_id):
         await session.commit()
 
 
+async def _expected_cache_key(post_id):
+    """Cache key the AudioService computes for ``post_id`` at the current config.
+
+    The READY short-circuit now serves a cached clip only when the stored key
+    still matches this one, so seeding under it keeps these tests exercising the
+    delivery path instead of triggering a regeneration.
+    """
+    from app.application.services.audio_service import AudioService
+    from app.config.container import create_cache_manager, create_tts_service
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        row = (
+            await session.execute(
+                sqltext("SELECT title, content FROM posts WHERE id = :pid"), {"pid": post_id}
+            )
+        ).one()
+
+    cache = create_cache_manager()
+    tts = create_tts_service()
+    text = AudioService._synthesis_text(row.title, row.content)
+    return cache.generate_cache_key(text, tts.voice_id)
+
+
 class TestPostAudioWordTimings:
     """READY response delivers ordered wordTimings when a valid sidecar exists."""
 
@@ -183,7 +208,7 @@ class TestPostAudioWordTimings:
         from app.config.container import create_cache_manager
 
         cache = create_cache_manager()
-        cache_key = "1a" * 32
+        cache_key = await _expected_cache_key(post_id)
         words = [
             {"text": "Test", "startMs": 0, "durationMs": 300},
             {"text": "Post", "startMs": 350, "durationMs": 300},
@@ -230,7 +255,7 @@ class TestPostAudioWordTimings:
         from app.config.container import create_cache_manager
 
         cache = create_cache_manager()
-        cache_key = "2b" * 32
+        cache_key = await _expected_cache_key(read_post_id)
 
         mp3 = cache.get_file_path(cache_key)
         mp3.parent.mkdir(parents=True, exist_ok=True)

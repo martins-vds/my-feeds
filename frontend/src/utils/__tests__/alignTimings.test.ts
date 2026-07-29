@@ -125,4 +125,87 @@ describe("alignSpokenToDisplay", () => {
         expect(within.timingToDisplay[0]).toBe(12);
         expect(within.enabled).toBe(true);
     });
+
+    it("maps a long spoken sub-word onto its compound display word (DALL•E)", () => {
+        // The browser shows "DALL•E" as one word; the engine says "dall".
+        const spoken = ["the", "dall", "model", "makes", "images"];
+        const display = ["the", "dall•e", "model", "makes", "images"];
+        const result = alignSpokenToDisplay(spoken, display);
+        expect(result.enabled).toBe(true);
+        expect(result.timingToDisplay[1]).toBe(1); // "dall" -> the "dall•e" word
+    });
+
+    it("aligns spoken URL parts back to the single on-screen URL word", () => {
+        // A bare URL is one display token but is spoken part-by-part.
+        const spoken = ["visit", "www", "example", "com", "books", "now"];
+        const display = ["visit", "www.example.com/books", "now"];
+        const result = alignSpokenToDisplay(spoken, display);
+        expect(result.enabled).toBe(true);
+        // Each URL part (>=3 chars) points at the one URL word (index 1).
+        expect(Array.from(result.timingToDisplay)).toEqual([0, 1, 1, 1, 1, 2]);
+    });
+
+    it("recovers a post that would diverge on a long spelled-out URL", () => {
+        // Nine URL parts spoken consecutively are an 8+ miss run (divergence)
+        // without the compound fallback; with it they all map to the URL word.
+        const urlParts = [
+            "www", "simonandschuster", "com", "books",
+            "deep", "utopia", "nick", "bostrom", "home",
+        ];
+        const spoken = ["read", ...urlParts, "soon"];
+        const display = [
+            "read",
+            "www.simonandschuster.com/books/deep/utopia/nick/bostrom/home",
+            "soon",
+        ];
+        const withFallback = alignSpokenToDisplay(spoken, display);
+        expect(withFallback.enabled).toBe(true);
+        expect(withFallback.timingToDisplay[0]).toBe(0); // "read"
+        expect(withFallback.timingToDisplay[withFallback.timingToDisplay.length - 1]).toBe(2);
+        for (let i = 1; i <= urlParts.length; i++) {
+            expect(withFallback.timingToDisplay[i]).toBe(1); // each part -> URL word
+        }
+    });
+
+    it("ignores compound sub-words for short spoken tokens (avoids false matches)", () => {
+        // "at" (2 chars) must NOT match the "at" inside "at&t"; too short to be
+        // a confident sub-word match, so it is a miss rather than a wrong jump.
+        const spoken = ["ring", "at", "home"];
+        const display = ["ring", "at&t", "home"]; // "at" exists only inside "at&t"
+        const result = alignSpokenToDisplay(spoken, display);
+        expect(result.timingToDisplay[1]).toBe(-1);
+    });
+
+    it("keeps hyphenated and apostrophe words intact (not treated as compounds)", () => {
+        // "well-known"/"don't" are single tokens on both sides; they must match
+        // 1:1 and never be split into sub-words.
+        const result = alignSpokenToDisplay(
+            ["well-known", "don't"],
+            ["well-known", "don't"]
+        );
+        expect(result.enabled).toBe(true);
+        expect(Array.from(result.timingToDisplay)).toEqual([0, 1]);
+    });
+
+    it("re-anchors after a greedy overshoot on a repeated word", () => {
+        // "dup" matches its later copy (index 8), overshooting past x/y/z; the
+        // miss run then triggers a confident re-anchor back to them.
+        const spoken = ["a", "b", "dup", "m1", "m2", "m3", "m4", "m5", "x", "y", "z"];
+        const display = [
+            "a", "b", "real", "x", "y", "z",
+            "w6", "w7", "dup", "w9", "w10", "w11", "w12",
+        ];
+        const result = alignSpokenToDisplay(spoken, display);
+        expect(result.timingToDisplay[8]).toBe(3); // x re-anchored
+        expect(result.timingToDisplay[9]).toBe(4); // y
+        expect(result.timingToDisplay[10]).toBe(5); // z
+    });
+
+    it("still disables when no confident re-anchor exists", () => {
+        // Entirely mismatched sequences: resync must not force-enable garbage.
+        const spoken = Array.from({ length: 12 }, (_, i) => `s${i}`);
+        const display = Array.from({ length: 12 }, (_, i) => `d${i}`);
+        const result = alignSpokenToDisplay(spoken, display);
+        expect(result.enabled).toBe(false);
+    });
 });
