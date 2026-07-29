@@ -5,6 +5,7 @@ from uuid import UUID
 from quart import Blueprint, current_app, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
+from app.api.middleware.conditional import conditional_json
 from app.application.services.feed_service import (
     CategoryNotFoundError,
     FeedConflictError,
@@ -62,9 +63,12 @@ async def list_feeds_in_category(category_id: UUID):
     user_id = get_current_user_id()
     container = get_request_container()
 
-    try:
+    async def build():
         feeds = await container.feed_service.list_feeds_in_category(user_id, category_id)
-        return jsonify([feed.to_dict() for feed in feeds])
+        return [feed.to_dict() for feed in feeds]
+
+    try:
+        return await conditional_json(build)
     except CategoryNotFoundError:
         return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except FeedPermissionError:
@@ -126,11 +130,16 @@ async def list_all_feeds():
     """
     user_id = get_current_user_id()
     container = get_request_container()
-    if request.args.get("uncategorized") == "true":
-        feeds = await container.feed_service.list_uncategorized_feeds(user_id)
-    else:
-        feeds = await container.feed_service.list_all_feeds(user_id)
-    return jsonify([feed.to_dict() for feed in feeds])
+    uncategorized = request.args.get("uncategorized") == "true"
+
+    async def build():
+        if uncategorized:
+            feeds = await container.feed_service.list_uncategorized_feeds(user_id)
+        else:
+            feeds = await container.feed_service.list_all_feeds(user_id)
+        return [feed.to_dict() for feed in feeds]
+
+    return await conditional_json(build)
 
 
 @bp.route("/feeds", methods=["POST"])

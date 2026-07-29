@@ -5,6 +5,7 @@ from uuid import UUID
 from quart import Blueprint, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
+from app.api.middleware.conditional import conditional_json
 from app.application.services.category_service import (
     CategoryLimitError,
     CategoryNameConflictError,
@@ -43,8 +44,12 @@ async def list_categories():
     """
     user_id = get_current_user_id()
     container = get_request_container()
-    categories = await container.category_service.list_categories(user_id)
-    return jsonify([cat.to_dict() for cat in categories])
+
+    async def build():
+        categories = await container.category_service.list_categories(user_id)
+        return [cat.to_dict() for cat in categories]
+
+    return await conditional_json(build)
 
 
 @bp.route("", methods=["POST"])

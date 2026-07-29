@@ -6,6 +6,7 @@ from uuid import UUID
 from quart import Blueprint, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
+from app.api.middleware.conditional import conditional_json
 from app.application.services.post_service import (
     PostNotFoundError,
     PostPermissionError,
@@ -95,24 +96,23 @@ async def list_posts():
         except ValueError:
             raise ValidationError("Invalid before timestamp format")
 
-    # Get posts from service
-    result = await container.post_service.list_posts(
-        user_id=user_id,
-        category_id=category_id,
-        feed_id=feed_id,
-        read_state=read_state,  # type: ignore
-        before=before,
-        limit=limit,
-        uncategorized=uncategorized,
-    )
-
-    return jsonify(
-        {
+    async def build():
+        result = await container.post_service.list_posts(
+            user_id=user_id,
+            category_id=category_id,
+            feed_id=feed_id,
+            read_state=read_state,  # type: ignore
+            before=before,
+            limit=limit,
+            uncategorized=uncategorized,
+        )
+        return {
             "posts": [post.to_summary_dict() for post in result.posts],
             "hasMore": result.has_more,
             "nextCursor": result.next_cursor,
         }
-    )
+
+    return await conditional_json(build)
 
 
 @bp.route("/unread-counts", methods=["GET"])
@@ -132,16 +132,16 @@ async def unread_counts():
     user_id = get_current_user_id()
     container = get_request_container()
 
-    counts = await container.post_service.get_unread_counts(user_id)
-
-    return jsonify(
-        {
+    async def build():
+        counts = await container.post_service.get_unread_counts(user_id)
+        return {
             "byFeed": {str(fid): c for fid, c in counts.by_feed.items()},
             "byCategory": {str(cid): c for cid, c in counts.by_category.items()},
             "uncategorized": counts.uncategorized,
             "total": counts.total,
         }
-    )
+
+    return await conditional_json(build)
 
 
 @bp.route("/read-state", methods=["PUT"])
