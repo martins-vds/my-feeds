@@ -82,6 +82,9 @@ async def create_category():
     container = get_request_container()
     try:
         category = await container.category_service.create_category(user_id, name)
+        # Commit-then-invalidate: persist before clearing the cache so a concurrent
+        # same-user read cannot re-cache the pre-commit body.
+        await container.session.commit()
         await get_response_cache().invalidate_user(user_id)
         return jsonify(category.to_dict()), 201
     except CategoryLimitError as e:
@@ -155,6 +158,8 @@ async def update_category(category_id: UUID):
         category = await container.category_service.update_category(
             user_id, category_id, name=name, position=position
         )
+        # Commit-then-invalidate (see create_category).
+        await container.session.commit()
         await get_response_cache().invalidate_user(user_id)
         return jsonify(category.to_dict())
     except CategoryNotFoundError:
@@ -191,6 +196,8 @@ async def delete_category(category_id: UUID):
 
     try:
         await container.category_service.delete_category(user_id, category_id)
+        # Commit-then-invalidate (see create_category).
+        await container.session.commit()
         await get_response_cache().invalidate_user(user_id)
         return "", 204
     except CategoryNotFoundError:

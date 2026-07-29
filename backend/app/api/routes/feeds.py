@@ -253,6 +253,9 @@ async def update_feed(feed_id: UUID):
             feed = await container.feed_service.set_feed_categories(user_id, feed_id, category_ids)
         if "isActive" in data:
             feed = await container.feed_service.set_feed_active(user_id, feed_id, data["isActive"])
+        # Commit-then-invalidate: persist before clearing the cache so a concurrent
+        # same-user read cannot re-cache the pre-commit body.
+        await container.session.commit()
         await get_response_cache().invalidate_user(user_id)
         return jsonify(feed.to_dict())
     except FeedNotFoundError:
@@ -278,6 +281,8 @@ async def delete_feed(feed_id: UUID):
 
     try:
         await container.feed_service.delete_feed(user_id, feed_id)
+        # Commit-then-invalidate (see update_feed).
+        await container.session.commit()
         await get_response_cache().invalidate_user(user_id)
         return "", 204
     except FeedNotFoundError:
