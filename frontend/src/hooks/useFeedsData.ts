@@ -144,8 +144,8 @@ export function useFeedsData(): UseFeedsDataReturn {
         return { ...prev, loadingFeeds };
       });
     }
-  // stateRef/generationRef are ref objects — stable, no need in deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // stateRef/generationRef are ref objects — stable, no need in deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const createCategory = useCallback(

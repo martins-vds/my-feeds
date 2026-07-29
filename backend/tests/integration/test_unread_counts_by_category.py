@@ -89,6 +89,6 @@ class TestUnreadCountsByCategory:
 
             by_category, uncategorized = await posts.get_unread_counts_by_category(user_id)
 
-            assert by_category[c1.id] == 2   # f1(1) + f2(1)
-            assert by_category[c2.id] == 1   # f1(1)
-            assert uncategorized == 3        # f3(3)
+            assert by_category[c1.id] == 2  # f1(1) + f2(1)
+            assert by_category[c2.id] == 1  # f1(1)
+            assert uncategorized == 3  # f3(3)

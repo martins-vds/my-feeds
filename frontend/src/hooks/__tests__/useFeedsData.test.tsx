@@ -121,7 +121,7 @@ describe("useFeedsData (lazy)", () => {
   });
 
   it("discards a stale in-flight category load after refresh() resets the cache", async () => {
-    let resolveCat1: (feeds: unknown) => void = () => {};
+    let resolveCat1: (feeds: unknown) => void = () => { };
     const cat1Pending = new Promise<unknown>((r) => {
       resolveCat1 = r;
     });

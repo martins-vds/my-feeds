@@ -181,9 +181,7 @@ class PostRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_unread_counts_by_category(
-        self, user_id: UUID
-    ) -> tuple[dict[UUID, int], int]:
+    async def get_unread_counts_by_category(self, user_id: UUID) -> tuple[dict[UUID, int], int]:
         """Get unread post counts grouped by category, plus an uncategorized total.
 
         A feed in several categories contributes its unread count to each of

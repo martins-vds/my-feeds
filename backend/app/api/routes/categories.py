@@ -90,10 +90,7 @@ async def create_category():
     except CategoryLimitError as e:
         raise ValidationError(str(e))
     except CategoryNameConflictError:
-        return jsonify({
-            "error": "conflict",
-            "message": f"Category '{name}' already exists"
-        }), 409
+        return jsonify({"error": "conflict", "message": f"Category '{name}' already exists"}), 409
     except ValueError as e:
         raise ValidationError(str(e))
 
@@ -117,15 +114,9 @@ async def get_category(category_id: UUID):
         result["feeds"] = []
         return jsonify(result)
     except CategoryNotFoundError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except CategoryPermissionError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404
 
 
 @bp.route("/<uuid:category_id>", methods=["PATCH"])
@@ -163,20 +154,11 @@ async def update_category(category_id: UUID):
         await get_response_cache().invalidate_user(user_id)
         return jsonify(category.to_dict())
     except CategoryNotFoundError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except CategoryPermissionError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except CategoryNameConflictError:
-        return jsonify({
-            "error": "conflict",
-            "message": f"Category '{name}' already exists"
-        }), 409
+        return jsonify({"error": "conflict", "message": f"Category '{name}' already exists"}), 409
     except ValueError as e:
         raise ValidationError(str(e))
 
@@ -201,12 +183,6 @@ async def delete_category(category_id: UUID):
         await get_response_cache().invalidate_user(user_id)
         return "", 204
     except CategoryNotFoundError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except CategoryPermissionError:
-        return jsonify({
-            "error": "not_found",
-            "message": "Category not found"
-        }), 404
+        return jsonify({"error": "not_found", "message": "Category not found"}), 404

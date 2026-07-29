@@ -252,9 +252,7 @@ class SQLAlchemyPostRepository(PostRepository):
         result = await self._session.execute(stmt)
         return {row[0]: row[1] for row in result.all()}
 
-    async def get_unread_counts_by_category(
-        self, user_id: UUID
-    ) -> tuple[dict[UUID, int], int]:
+    async def get_unread_counts_by_category(self, user_id: UUID) -> tuple[dict[UUID, int], int]:
         """Get unread post counts grouped by category, plus an uncategorized total."""
         # Per-category: posts -> feeds -> feed_categories, count unread per category.
         by_cat_stmt = (
