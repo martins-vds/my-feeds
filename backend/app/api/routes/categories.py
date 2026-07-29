@@ -6,7 +6,6 @@ from quart import Blueprint, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
 from app.api.middleware.conditional import cached_conditional_json
-from app.infrastructure.http.response_cache import get_response_cache
 from app.application.services.category_service import (
     CategoryLimitError,
     CategoryNameConflictError,
@@ -14,6 +13,7 @@ from app.application.services.category_service import (
     CategoryPermissionError,
 )
 from app.config.container import get_request_container
+from app.infrastructure.http.response_cache import get_response_cache
 from app.infrastructure.oauth.session import session_manager
 
 bp = Blueprint("categories", __name__, url_prefix="/categories")

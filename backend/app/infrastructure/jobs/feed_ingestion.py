@@ -9,6 +9,7 @@ import logging
 from uuid import UUID
 
 from app.config.container import create_feed_service, create_session
+from app.infrastructure.http.response_cache import get_response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,11 @@ async def ingest_feed_posts(feed_id: UUID) -> int:
         feed_service = create_feed_service(session)
         count = await feed_service.ingest_feed(feed_id)
         await session.commit()
+        # Feed metadata (last-fetched time, error counts) may have changed, so
+        # drop the owner's cached feed lists rather than letting them lag to TTL.
+        owner_id = await feed_service.get_feed_owner(feed_id)
+        if owner_id is not None:
+            await get_response_cache().invalidate_user(owner_id)
         logger.info("Ingested %d new post(s) for feed %s", count, feed_id)
         return count
     except Exception:

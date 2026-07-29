@@ -77,8 +77,9 @@ class SQLAlchemyPostRepository(PostRepository):
         if before is not None:
             query = query.where(PostModel.published_at < before)
 
-        # Order by published_at descending (newest first)
-        query = query.order_by(PostModel.published_at.desc())
+        # Order by published_at descending (newest first); id breaks ties so the
+        # ordering — and the response ETag — is deterministic.
+        query = query.order_by(PostModel.published_at.desc(), PostModel.id.desc())
 
         # Limit
         query = query.limit(limit)
@@ -113,7 +114,7 @@ class SQLAlchemyPostRepository(PostRepository):
         result = await self._session.execute(
             select(PostModel)
             .where(PostModel.feed_id == feed_id)
-            .order_by(PostModel.published_at.desc())
+            .order_by(PostModel.published_at.desc(), PostModel.id.desc())
             .limit(limit)
         )
         models = result.scalars().all()

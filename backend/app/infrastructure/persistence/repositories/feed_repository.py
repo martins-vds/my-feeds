@@ -38,7 +38,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
             .join(feed_categories, FeedModel.id == feed_categories.c.feed_id)
             .where(feed_categories.c.category_id == category_id)
             .options(selectinload(FeedModel.categories))
-            .order_by(FeedModel.created_at)
+            .order_by(FeedModel.created_at, FeedModel.id)
         )
         models = result.scalars().all()
         return [self._to_entity(model) for model in models]
@@ -49,7 +49,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
             select(FeedModel)
             .where(FeedModel.user_id == user_id)
             .options(selectinload(FeedModel.categories))
-            .order_by(FeedModel.created_at)
+            .order_by(FeedModel.created_at, FeedModel.id)
         )
         models = result.scalars().all()
         return [self._to_entity(model) for model in models]
@@ -63,7 +63,7 @@ class SQLAlchemyFeedRepository(FeedRepository):
                 ~exists().where(feed_categories.c.feed_id == FeedModel.id),
             )
             .options(selectinload(FeedModel.categories))
-            .order_by(FeedModel.created_at)
+            .order_by(FeedModel.created_at, FeedModel.id)
         )
         models = result.scalars().all()
         return [self._to_entity(model) for model in models]

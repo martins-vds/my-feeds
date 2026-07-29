@@ -36,7 +36,7 @@ class SQLAlchemyCategoryRepository(CategoryRepository):
         result = await self._session.execute(
             select(CategoryModel)
             .where(CategoryModel.user_id == user_id)
-            .order_by(CategoryModel.position)
+            .order_by(CategoryModel.position, CategoryModel.id)
         )
         models = result.scalars().all()
 

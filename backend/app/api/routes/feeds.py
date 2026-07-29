@@ -6,7 +6,6 @@ from quart import Blueprint, current_app, jsonify, request
 
 from app.api.middleware import UnauthorizedError, ValidationError
 from app.api.middleware.conditional import cached_conditional_json, conditional_json
-from app.infrastructure.http.response_cache import get_response_cache
 from app.application.services.feed_service import (
     CategoryNotFoundError,
     FeedConflictError,
@@ -16,6 +15,7 @@ from app.application.services.feed_service import (
 )
 from app.config.container import get_request_container
 from app.domain.feed_management.services.feed_validator import FeedValidationError
+from app.infrastructure.http.response_cache import get_response_cache
 from app.infrastructure.jobs.feed_ingestion import ingest_feed_posts
 from app.infrastructure.oauth.session import session_manager
 
@@ -259,10 +259,13 @@ async def update_feed(feed_id: UUID):
         await get_response_cache().invalidate_user(user_id)
         return jsonify(feed.to_dict())
     except FeedNotFoundError:
+        await container.session.rollback()
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
     except CategoryNotFoundError:
+        await container.session.rollback()
         return jsonify({"error": "not_found", "message": "Category not found"}), 404
     except FeedPermissionError:
+        await container.session.rollback()
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
 
 

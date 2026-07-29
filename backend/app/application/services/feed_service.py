@@ -116,6 +116,15 @@ class FeedService:
         """
         return await self._feed_repository.get_uncategorized(user_id)
 
+    async def get_feed_owner(self, feed_id: UUID) -> UUID | None:
+        """Return the id of the user that owns a feed, or None if it's missing.
+
+        Used by the background ingest job to invalidate the owner's cached feed
+        lists after feed metadata (last-fetched time, error counts) changes.
+        """
+        feed = await self._feed_repository.get_by_id(feed_id)
+        return feed.user_id if feed else None
+
     async def get_feed(self, user_id: UUID, feed_id: UUID) -> Feed:
         """Get a single feed by ID.
 
