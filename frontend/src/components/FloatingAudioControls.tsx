@@ -122,27 +122,42 @@ export function FloatingAudioControls({
                         alignItems="center"
                         data-testid="floating-speed-options"
                     >
-                        {PLAYBACK_SPEEDS.map((speed) => (
-                            <Button
-                                key={speed}
-                                size="small"
-                                variant={speed === player.playbackRate ? "contained" : "text"}
-                                aria-pressed={speed === player.playbackRate}
-                                aria-label={`Set speed ${speed}x`}
-                                onClick={() => {
-                                    player.setPlaybackRate(speed);
-                                    closeSpeed();
-                                }}
-                                sx={{
-                                    minWidth: 56,
-                                    borderRadius: 999,
-                                    bgcolor: "background.paper",
-                                    boxShadow: 2,
-                                }}
-                            >
-                                {speed}x
-                            </Button>
-                        ))}
+                        {PLAYBACK_SPEEDS.map((speed) => {
+                            const selected = speed === player.playbackRate;
+                            return (
+                                <Button
+                                    key={speed}
+                                    size="small"
+                                    variant={selected ? "contained" : "text"}
+                                    aria-pressed={selected}
+                                    aria-label={`Set speed ${speed}x`}
+                                    onClick={() => {
+                                        player.setPlaybackRate(speed);
+                                        closeSpeed();
+                                    }}
+                                    sx={{
+                                        minWidth: 56,
+                                        borderRadius: 999,
+                                        boxShadow: 2,
+                                        // Selected is a filled accent pill (contrast text on
+                                        // primary); unselected are white pills with accent text.
+                                        // Previously the contained variant kept a paper
+                                        // background, hiding its white label until hover.
+                                        bgcolor: selected ? "primary.main" : "background.paper",
+                                        color: selected
+                                            ? "primary.contrastText"
+                                            : "primary.main",
+                                        "&:hover": {
+                                            bgcolor: selected
+                                                ? "primary.dark"
+                                                : "background.paper",
+                                        },
+                                    }}
+                                >
+                                    {speed}x
+                                </Button>
+                            );
+                        })}
                     </Stack>
                 )}
                 <Fab
