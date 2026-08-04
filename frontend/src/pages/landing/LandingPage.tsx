@@ -33,7 +33,7 @@ const features = [
 ];
 
 export function LandingPage() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isPendingSignup } = useAuth();
 
   if (isLoading) {
     return (
@@ -49,6 +49,10 @@ export function LandingPage() {
         <CircularProgress />
       </Box>
     );
+  }
+
+  if (isPendingSignup) {
+    return <Navigate to="/signup" replace />;
   }
 
   if (isAuthenticated) {

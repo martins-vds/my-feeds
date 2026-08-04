@@ -14,13 +14,14 @@ const mockedUseAuth = vi.mocked(useAuth);
 
 function authState(
   isLoading: boolean,
-  isAuthenticated: boolean
+  isAuthenticated: boolean,
+  isPendingSignup = false
 ): ReturnType<typeof useAuth> {
   return {
     user: null,
     isLoading,
     isAuthenticated,
-    isPendingSignup: false,
+    isPendingSignup,
     pendingProfile: null,
     error: null,
     login: vi.fn(),
@@ -39,6 +40,7 @@ function renderLanding() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/signin" element={<div>Sign in route</div>} />
+          <Route path="/signup" element={<div>Sign up route</div>} />
           <Route path="/posts" element={<div>Reader route</div>} />
         </Routes>
       </MemoryRouter>
@@ -70,6 +72,13 @@ describe("LandingPage", () => {
     expect(screen.getByText("Reader route")).toBeInTheDocument();
   });
 
+  it("redirects pending OAuth signups to profile completion", () => {
+    mockedUseAuth.mockReturnValue(authState(false, false, true));
+    renderLanding();
+
+    expect(screen.getByText("Sign up route")).toBeInTheDocument();
+  });
+
   it("renders the product pitch and required feature highlights for signed-out visitors", () => {
     mockedUseAuth.mockReturnValue(authState(false, false));
     renderLanding();
@@ -94,6 +103,14 @@ describe("LandingPage", () => {
       name: /sign in|start reading/i,
     });
     expect(links).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/signin"
+    );
+    expect(screen.getByRole("link", { name: "Start reading" })).toHaveAttribute(
+      "href",
+      "/signin"
+    );
 
     await user.click(screen.getByRole("link", { name: "Start reading" }));
 
