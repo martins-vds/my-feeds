@@ -7,6 +7,7 @@ import { OfflineIndicator } from "./components/OfflineIndicator";
 import { SignInPage } from "./pages/auth/SignInPage";
 import { SignUpPage } from "./pages/auth/SignUpPage";
 import { AuthCallback } from "./pages/auth/AuthCallback";
+import { LandingPage } from "./pages/landing";
 import { ReaderPage, PostDetailPage } from "./pages/posts";
 import { Box } from "@mui/material";
 
@@ -38,7 +39,9 @@ function App() {
   return (
     <ThemeWrapper>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
             {/* Public routes */}
             <Route path="/signin" element={<SignInPage />} />
@@ -46,7 +49,7 @@ function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
 
             {/* Protected routes */}
-            <Route path="/" element={<Navigate to="/posts" replace />} />
+            <Route path="/" element={<LandingPage />} />
             <Route
               path="/posts"
               element={
