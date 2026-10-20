@@ -4,9 +4,6 @@ Tests verify audio file caching and retrieval functionality.
 """
 
 import pytest
-from pathlib import Path
-from uuid import uuid4
-from unittest.mock import MagicMock, AsyncMock, patch
 
 
 class TestAudioCacheManager:
@@ -81,13 +78,15 @@ class TestAudioCacheManager:
         assert "a1" in str(path)
         assert path.name == f"{cache_key}.mp3"
 
-    def test_exists_returns_false_for_missing_file(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_exists_returns_false_for_missing_file(self, cache_manager):
         """exists returns False when file doesn't exist."""
         cache_key = "nonexistent" + "0" * 53
 
-        assert cache_manager.exists(cache_key) is False
+        assert await cache_manager.exists(cache_key) is False
 
-    def test_exists_returns_true_for_existing_file(self, cache_manager, tmp_path):
+    @pytest.mark.asyncio
+    async def test_exists_returns_true_for_existing_file(self, cache_manager):
         """exists returns True when file exists."""
         cache_key = "a1b2c3d4" + "0" * 56
 
@@ -96,7 +95,7 @@ class TestAudioCacheManager:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(b"fake audio data")
 
-        assert cache_manager.exists(cache_key) is True
+        assert await cache_manager.exists(cache_key) is True
 
     @pytest.mark.asyncio
     async def test_save_creates_file(self, cache_manager):
@@ -148,7 +147,8 @@ class TestAudioCacheManager:
 
         assert not file_path.exists()
 
-    def test_get_file_size_returns_bytes(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_get_file_size_returns_bytes(self, cache_manager):
         """get_file_size returns file size in bytes."""
         cache_key = "f6a7b8c9" + "0" * 56
         data = b"x" * 1024  # 1KB
@@ -157,15 +157,16 @@ class TestAudioCacheManager:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(data)
 
-        size = cache_manager.get_file_size(cache_key)
+        size = await cache_manager.get_file_size(cache_key)
 
         assert size == 1024
 
-    def test_get_file_size_returns_none_for_missing(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_get_file_size_returns_none_for_missing(self, cache_manager):
         """get_file_size returns None for missing file."""
         cache_key = "a7b8c9d0" + "0" * 56
 
-        size = cache_manager.get_file_size(cache_key)
+        size = await cache_manager.get_file_size(cache_key)
 
         assert size is None
 
@@ -181,10 +182,10 @@ class TestAudioCacheCleanup:
         return AudioCacheManager(cache_dir=tmp_path, max_size_mb=1)
 
     @pytest.mark.asyncio
-    async def test_cleanup_removes_old_files(self, cache_manager, tmp_path):
+    async def test_cleanup_removes_old_files(self, cache_manager):
         """cleanup_old_files removes files older than retention period."""
-        from datetime import datetime, timedelta
         import os
+        from datetime import datetime, timedelta
 
         # Create old file
         cache_key = "oldfile12" + "0" * 56
@@ -201,7 +202,7 @@ class TestAudioCacheCleanup:
         assert not file_path.exists()
 
     @pytest.mark.asyncio
-    async def test_cleanup_preserves_recent_files(self, cache_manager, tmp_path):
+    async def test_cleanup_preserves_recent_files(self, cache_manager):
         """cleanup_old_files keeps files within retention period."""
         cache_key = "newfile12" + "0" * 56
         file_path = cache_manager.get_file_path(cache_key)

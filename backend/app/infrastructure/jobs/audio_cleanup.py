@@ -6,27 +6,26 @@ Cleans up old audio files from the cache directory based on retention policy.
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import List, Tuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.container import create_session
+from app.config.container import create_cache_manager, create_session
 from app.config.settings import get_settings
 from app.infrastructure.persistence.models.audio import AudioModel
+from app.infrastructure.tts.cache_manager import AudioCacheManager
 
 logger = logging.getLogger(__name__)
 
 
 async def cleanup_orphaned_audio_files(
-    cache_dir: Path,
+    cache: AudioCacheManager,
     session: AsyncSession,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Remove audio files that no longer have database records.
 
     Args:
-        cache_dir: Audio cache directory
+        cache: Configured audio cache manager
         session: Database session
 
     Returns:
@@ -35,32 +34,19 @@ async def cleanup_orphaned_audio_files(
     files_deleted = 0
     bytes_freed = 0
 
-    logger.info(f"Scanning for orphaned audio files in {cache_dir}")
+    logger.info("Scanning for orphaned audio files")
 
     # Get all cache keys from database
     stmt = select(AudioModel.cache_key)
     result = await session.execute(stmt)
     valid_cache_keys = {row[0] for row in result.fetchall()}
 
-    # Scan cache directory
-    for prefix_dir in cache_dir.iterdir():
-        if not prefix_dir.is_dir():
-            continue
-
-        for audio_file in prefix_dir.glob("*.mp3"):
-            # Extract cache key from filename
-            cache_key = audio_file.stem
-
-            if cache_key not in valid_cache_keys:
-                file_size = audio_file.stat().st_size
-                audio_file.unlink()
-                files_deleted += 1
-                bytes_freed += file_size
-                logger.debug(f"Deleted orphaned file: {audio_file.name}")
-
-        # Remove empty directories
-        if not any(prefix_dir.iterdir()):
-            prefix_dir.rmdir()
+    # Provider listing keeps cleanup independent of local paths.
+    for entry in await cache.list_audio_files():
+        if entry.cache_key not in valid_cache_keys and await cache.delete(entry.cache_key):
+            files_deleted += 1
+            bytes_freed += entry.size
+            logger.debug(f"Deleted orphaned audio: {entry.cache_key}")
 
     logger.info(
         f"Orphan cleanup complete: {files_deleted} files deleted, "
@@ -97,16 +83,16 @@ async def cleanup_old_audio_records(
 
 
 async def cleanup_cache_by_size(
-    cache_dir: Path,
+    cache: AudioCacheManager,
     max_size_mb: int,
     session: AsyncSession,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Remove oldest audio files if cache exceeds size limit.
 
     Uses LRU-style eviction based on last_accessed_at.
 
     Args:
-        cache_dir: Audio cache directory
+        cache: Configured audio cache manager
         max_size_mb: Maximum cache size in megabytes
         session: Database session
 
@@ -116,12 +102,8 @@ async def cleanup_cache_by_size(
     max_size_bytes = max_size_mb * 1024 * 1024
 
     # Calculate current cache size
-    total_size = sum(
-        f.stat().st_size
-        for prefix_dir in cache_dir.iterdir()
-        if prefix_dir.is_dir()
-        for f in prefix_dir.glob("*.mp3")
-    )
+    entries = {entry.cache_key: entry for entry in await cache.list_audio_files()}
+    total_size = sum(entry.size for entry in entries.values())
 
     if total_size <= max_size_bytes:
         logger.info(
@@ -141,11 +123,9 @@ async def cleanup_cache_by_size(
         if total_size - bytes_freed <= max_size_bytes:
             break
 
-        file_path = cache_dir / audio.file_path
-        if file_path.exists():
-            file_size = file_path.stat().st_size
-            file_path.unlink()
-            bytes_freed += file_size
+        entry = entries.get(audio.cache_key)
+        if entry and await cache.delete(audio.cache_key):
+            bytes_freed += entry.size
             files_deleted += 1
 
         await session.delete(audio)
@@ -165,29 +145,34 @@ async def run_audio_cleanup_job() -> None:
     This should be scheduled to run daily.
     """
     settings = get_settings()
-    cache_dir = Path(settings.audio_cache_dir)
     retention_days = settings.post_retention_days
     max_cache_size = settings.audio_max_cache_size_mb
+    cache = create_cache_manager()
 
     logger.info("Starting audio cache cleanup job")
 
     session = create_session()
     try:
+        await cache.initialize()
         # Step 1: Clean up old records
         await cleanup_old_audio_records(
             session=session,
             retention_days=retention_days,
         )
 
-        # Step 2: Clean up orphaned files
+        # Step 2: Expire cached audio by provider modification timestamps.
+        expired_count = await cache.cleanup_old_files(retention_days)
+        logger.info("Removed %s expired cached audio files", expired_count)
+
+        # Step 3: Clean up files without database records.
         await cleanup_orphaned_audio_files(
-            cache_dir=cache_dir,
+            cache=cache,
             session=session,
         )
 
-        # Step 3: Enforce size limit
+        # Step 4: Enforce size limit
         await cleanup_cache_by_size(
-            cache_dir=cache_dir,
+            cache=cache,
             max_size_mb=max_cache_size,
             session=session,
         )

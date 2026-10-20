@@ -62,7 +62,7 @@ async def test_short_circuit_returns_cached_when_mp3_and_sidecar_exist(tmp_path)
     first = await service.get_or_generate_audio(post_id, uuid4())
     assert first.status == AudioStatus.READY
     assert len(tts.calls) == 1
-    assert cache.exists_timings(first.cache_key)
+    assert await cache.exists_timings(first.cache_key)
     assert store[post_id].has_timings is True
 
     # Both MP3 and sidecar present → short-circuit, no regeneration.
@@ -80,15 +80,15 @@ async def test_regenerates_when_sidecar_missing(tmp_path):
     key = first.cache_key
 
     # Simulate a pre-feature clip: MP3 present, sidecar absent.
-    cache.delete_timings(key)
-    assert cache.exists(key)
-    assert not cache.exists_timings(key)
+    await cache.delete_timings(key)
+    assert await cache.exists(key)
+    assert not await cache.exists_timings(key)
 
     # Must regenerate rather than short-circuit on the MP3 alone.
     second = await service.get_or_generate_audio(post_id, uuid4())
     assert second.status == AudioStatus.READY
     assert len(tts.calls) == 2
-    assert cache.exists_timings(second.cache_key)
+    assert await cache.exists_timings(second.cache_key)
     assert store[post_id].has_timings is True
 
 
@@ -97,7 +97,7 @@ async def test_backfill_is_idempotent_same_key_single_row(tmp_path):
     service, tts, cache, post_id, store = _make_service(tmp_path)
 
     first = await service.get_or_generate_audio(post_id, uuid4())
-    cache.delete_timings(first.cache_key)
+    await cache.delete_timings(first.cache_key)
     second = await service.get_or_generate_audio(post_id, uuid4())
 
     # Same deterministic v2 key; a single row (no duplicates).
@@ -111,6 +111,6 @@ async def test_does_not_disrupt_a_working_clip(tmp_path):
 
     first = await service.get_or_generate_audio(post_id, uuid4())
     # A fully-cached clip streams without regeneration.
-    path = await service.get_audio_stream_path(first.cache_key)
-    assert path is not None and path.exists()
+    audio_data = await service.get_audio_stream_data(first.cache_key)
+    assert audio_data is not None and len(audio_data) > 0
     assert len(tts.calls) == 1

@@ -1,6 +1,9 @@
 """Quart application factory."""
 
-from quart import Quart
+from pathlib import Path
+
+from quart import Quart, abort, send_from_directory
+from werkzeug.exceptions import NotFound
 
 from app.api.middleware import register_error_handlers
 from app.api.routes import register_routes
@@ -21,6 +24,7 @@ def create_app() -> Quart:
 
     # Create Quart app
     app = Quart(__name__)
+    app.config["FRONTEND_DIST_DIR"] = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
     # Load settings
     settings = get_settings()
@@ -93,6 +97,9 @@ def create_app() -> Quart:
     @app.before_serving
     async def startup():
         """Initialize resources on startup."""
+        from app.config.container import create_cache_manager
+
+        await create_cache_manager().initialize()
         await init_db()
 
         # Background jobs (run separately from feed ingestion; skipped in
@@ -117,6 +124,9 @@ def create_app() -> Quart:
     @app.after_serving
     async def shutdown():
         """Cleanup resources on shutdown."""
+        from app.config.container import create_cache_manager
+
+        await create_cache_manager().close()
         await close_db()
 
     # Health check endpoint
@@ -124,6 +134,19 @@ def create_app() -> Quart:
     async def health_check():
         """Health check endpoint for container orchestration."""
         return {"status": "healthy"}
+
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    async def serve_frontend(path: str):
+        """Serve static assets and client-side routes from the built frontend."""
+        if path == "api" or path.startswith("api/"):
+            abort(404)
+
+        frontend_dist = app.config["FRONTEND_DIST_DIR"]
+        try:
+            return await send_from_directory(frontend_dist, path or "index.html")
+        except NotFound:
+            return await send_from_directory(frontend_dist, "index.html")
 
     return app
 

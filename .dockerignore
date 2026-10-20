@@ -9,6 +9,7 @@
 # Documentation
 *.md
 !README.md
+!backend/README.md
 specs/
 .github/
 .specify/
@@ -47,6 +48,7 @@ backend/dist/
 .env.*
 backend/.env
 frontend/.env
+backend/tests/
 
 # Logs
 *.log

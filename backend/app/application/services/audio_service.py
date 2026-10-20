@@ -1,9 +1,9 @@
 """Audio application service for TTS operations."""
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Optional
+from tempfile import TemporaryDirectory
 from uuid import UUID
 
 from app.domain.audio.entities.audio import Audio
@@ -13,7 +13,7 @@ from app.domain.feed_management.repositories.post_repository import PostReposito
 from app.infrastructure.tts.cache_manager import AudioCacheManager
 
 
-class AudioStatus(str, Enum):
+class AudioStatus(StrEnum):
     """Status of audio generation."""
 
     READY = "ready"
@@ -37,12 +37,12 @@ class AudioResult:
 
     status: AudioStatus
     post_id: UUID
-    url: Optional[str] = None
-    cache_key: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    estimated_seconds: Optional[int] = None
-    error: Optional[str] = None
-    word_timings: Optional[list[dict]] = None
+    url: str | None = None
+    cache_key: str | None = None
+    duration_seconds: float | None = None
+    estimated_seconds: int | None = None
+    error: str | None = None
+    word_timings: list[dict] | None = None
 
 
 class AudioService:
@@ -126,8 +126,8 @@ class AudioService:
         if (
             existing_audio
             and existing_audio.cache_key == current_cache_key
-            and self._cache.exists(existing_audio.cache_key)
-            and self._cache.exists_timings(existing_audio.cache_key)
+            and await self._cache.exists(existing_audio.cache_key)
+            and await self._cache.exists_timings(existing_audio.cache_key)
         ):
             # Record access for LRU tracking
             await self._audio_repo.record_access(existing_audio.id)
@@ -138,7 +138,7 @@ class AudioService:
                 url=f"/api/audio/{existing_audio.cache_key}",
                 cache_key=existing_audio.cache_key,
                 duration_seconds=existing_audio.duration_seconds,
-                word_timings=self._load_word_timings(existing_audio.cache_key),
+                word_timings=await self._load_word_timings(existing_audio.cache_key),
             )
 
         # Generate new audio
@@ -150,7 +150,7 @@ class AudioService:
                 url=f"/api/audio/{audio.cache_key}",
                 cache_key=audio.cache_key,
                 duration_seconds=audio.duration_seconds,
-                word_timings=self._load_word_timings(audio.cache_key),
+                word_timings=await self._load_word_timings(audio.cache_key),
             )
         except TTSError as e:
             return AudioResult(
@@ -183,8 +183,8 @@ class AudioService:
         if (
             existing_audio
             and existing_audio.cache_key == current_cache_key
-            and self._cache.exists(existing_audio.cache_key)
-            and self._cache.exists_timings(existing_audio.cache_key)
+            and await self._cache.exists(existing_audio.cache_key)
+            and await self._cache.exists_timings(existing_audio.cache_key)
         ):
             return AudioResult(
                 status=AudioStatus.READY,
@@ -192,7 +192,7 @@ class AudioService:
                 url=f"/api/audio/{existing_audio.cache_key}",
                 cache_key=existing_audio.cache_key,
                 duration_seconds=existing_audio.duration_seconds,
-                word_timings=self._load_word_timings(existing_audio.cache_key),
+                word_timings=await self._load_word_timings(existing_audio.cache_key),
             )
 
         try:
@@ -203,7 +203,7 @@ class AudioService:
                 url=f"/api/audio/{audio.cache_key}",
                 cache_key=audio.cache_key,
                 duration_seconds=audio.duration_seconds,
-                word_timings=self._load_word_timings(audio.cache_key),
+                word_timings=await self._load_word_timings(audio.cache_key),
             )
         except TTSError as e:
             return AudioResult(
@@ -237,11 +237,12 @@ class AudioService:
             self._tts.voice_id,
         )
 
-        # Get output path
-        output_path = self._cache.get_file_path(cache_key)
-
-        # Synthesize audio and capture per-word timings
-        timings = await self._tts.synthesize_with_timings(text_to_synthesize, output_path)
+        # Edge TTS writes to a filesystem path; stage the result before saving it
+        # through the selected provider.
+        with TemporaryDirectory() as staging_dir:
+            output_path = Path(staging_dir) / "audio.mp3"
+            timings = await self._tts.synthesize_with_timings(text_to_synthesize, output_path)
+            await self._cache.save(cache_key, output_path.read_bytes())
 
         # Always persist a sidecar for a freshly generated clip — even when the
         # engine emitted no word boundaries (empty `words`). Writing it
@@ -254,7 +255,7 @@ class AudioService:
         words = [
             {"text": t.text, "startMs": t.start_ms, "durationMs": t.duration_ms} for t in timings
         ]
-        self._cache.save_timings(
+        await self._cache.save_timings(
             cache_key,
             {
                 "schemaVersion": 1,
@@ -265,7 +266,7 @@ class AudioService:
         has_timings = True
 
         # Get file size
-        file_size = self._cache.get_file_size(cache_key)
+        file_size = await self._cache.get_file_size(cache_key)
 
         # Estimate duration (64kbps MP3 = 8KB/sec)
         duration_seconds = file_size / 8000 if file_size else None
@@ -274,7 +275,7 @@ class AudioService:
         audio = Audio(
             post_id=post_id,
             cache_key=cache_key,
-            file_path=str(output_path.relative_to(self._cache._cache_dir)),
+            file_path=self._cache.get_storage_path(cache_key),
             voice_id=self._tts.voice_id,
             duration_seconds=duration_seconds,
             file_size_bytes=file_size,
@@ -287,7 +288,7 @@ class AudioService:
         # Save new audio record
         return await self._audio_repo.create(audio)
 
-    def _load_word_timings(self, cache_key: str) -> Optional[list[dict]]:
+    async def _load_word_timings(self, cache_key: str) -> list[dict] | None:
         """Load ordered word timings for a clip, or None when unusable.
 
         Returns the ordered ``words`` array from the sidecar when a valid,
@@ -300,7 +301,7 @@ class AudioService:
         Returns:
             Ordered ``[{text, startMs, durationMs}]`` or None
         """
-        payload = self._cache.load_timings(cache_key)
+        payload = await self._cache.load_timings(cache_key)
         if not payload:
             return None
         words = payload.get("words")
@@ -308,23 +309,22 @@ class AudioService:
             return None
         return words
 
-    async def get_audio_stream_path(self, cache_key: str) -> Optional[Path]:
-        """Get file path for streaming audio.
+    async def get_audio_stream_data(self, cache_key: str) -> bytes | None:
+        """Load audio bytes for provider-neutral streaming.
 
         Args:
             cache_key: Audio cache key
 
         Returns:
-            Path to audio file, None if not found
+            Audio bytes, None if not found
         """
-        file_path = self._cache.get_file_path(cache_key)
-        if file_path.exists():
+        audio_data = await self._cache.load(cache_key)
+        if audio_data is not None:
             # Record access
             audio = await self._audio_repo.get_by_cache_key(cache_key)
             if audio:
                 await self._audio_repo.record_access(audio.id)
-            return file_path
-        return None
+        return audio_data
 
     async def delete_audio(self, post_id: UUID) -> bool:
         """Delete audio for a post.

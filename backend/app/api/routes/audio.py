@@ -1,13 +1,11 @@
 """Audio API routes for TTS operations."""
 
-import mimetypes
 import re
-from pathlib import Path
 from uuid import UUID
 
-from quart import Blueprint, jsonify, request, Response, send_file
+from quart import Blueprint, Response, jsonify, request
 
-from app.api.middleware import UnauthorizedError, ValidationError
+from app.api.middleware import UnauthorizedError
 from app.application.services.audio_service import AudioStatus
 from app.config.container import get_request_container
 from app.infrastructure.oauth.session import session_manager
@@ -111,41 +109,34 @@ async def stream_audio(cache_key: str):
     container = get_request_container()
     audio_service = container.audio_service
 
-    # Get file path
-    file_path = await audio_service.get_audio_stream_path(cache_key)
-    if not file_path or not file_path.exists():
+    audio_data = await audio_service.get_audio_stream_data(cache_key)
+    if audio_data is None:
         return jsonify({"error": "Audio not found"}), 404
-
-    file_size = file_path.stat().st_size
 
     # Check for Range header
     range_header = request.headers.get("Range")
     if range_header:
-        return await _handle_range_request(file_path, file_size, range_header)
+        return _handle_range_request(audio_data, range_header)
 
-    # Full file response
-    return await send_file(
-        file_path,
+    return Response(
+        audio_data,
         mimetype="audio/mpeg",
-        as_attachment=False,
+        headers={"Accept-Ranges": "bytes"},
     )
 
 
-async def _handle_range_request(
-    file_path: Path,
-    file_size: int,
-    range_header: str,
-) -> Response:
+def _handle_range_request(audio_data: bytes, range_header: str) -> Response:
     """Handle HTTP range request for partial content.
 
     Args:
-        file_path: Path to audio file
-        file_size: Total file size in bytes
+        audio_data: Complete audio file
         range_header: Range header value (e.g., "bytes=0-1023")
 
     Returns:
         206 Partial Content response
     """
+    file_size = len(audio_data)
+
     # Parse range header
     try:
         range_spec = range_header.replace("bytes=", "")
@@ -154,7 +145,7 @@ async def _handle_range_request(
         end = int(end_str) if end_str else file_size - 1
     except (ValueError, IndexError):
         # Invalid range format, return full file
-        return await send_file(file_path, mimetype="audio/mpeg")
+        return Response(audio_data, mimetype="audio/mpeg")
 
     # Validate range
     if start >= file_size:
@@ -167,10 +158,7 @@ async def _handle_range_request(
     end = min(end, file_size - 1)
     length = end - start + 1
 
-    # Read partial content
-    with open(file_path, "rb") as f:
-        f.seek(start)
-        data = f.read(length)
+    data = audio_data[start : end + 1]
 
     # Build response
     response = Response(
