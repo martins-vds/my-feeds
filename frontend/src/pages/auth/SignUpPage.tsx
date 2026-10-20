@@ -82,8 +82,7 @@ const TIMEZONES = getTimezones();
 
 export function SignUpPage() {
   const navigate = useNavigate();
-  const { isPendingSignup, pendingProfile, refreshUser, isLoading, isAuthenticated } =
-    useAuth();
+  const { isPendingSignup, pendingProfile, refreshUser, isLoading, isAuthenticated } = useAuth();
 
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(detectTimezone());
@@ -172,8 +171,9 @@ export function SignUpPage() {
             <Box
               sx={{
                 textAlign: "center",
-                mb: 3
-              }}>
+                mb: 3,
+              }}
+            >
               {pendingProfile?.avatarUrl && (
                 <Avatar
                   src={pendingProfile.avatarUrl}
@@ -195,14 +195,22 @@ export function SignUpPage() {
                   {(pendingProfile?.name || pendingProfile?.email || "?").charAt(0).toUpperCase()}
                 </Avatar>
               )}
-              <Typography variant="h5" component="h1" gutterBottom sx={{
-                fontWeight: 600
-              }}>
+              <Typography
+                variant="h5"
+                component="h1"
+                gutterBottom
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
                 Complete Your Profile
               </Typography>
-              <Typography variant="body2" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 Just a few more details to get started
               </Typography>
             </Box>
@@ -214,8 +222,9 @@ export function SignUpPage() {
                 sx={{
                   color: "text.secondary",
                   textAlign: "center",
-                  mb: 2
-                }}>
+                  mb: 2,
+                }}
+              >
                 Signing up as <strong>{pendingProfile.email}</strong>
               </Typography>
             )}
@@ -229,8 +238,9 @@ export function SignUpPage() {
                 variant="body2"
                 sx={{
                   textAlign: "center",
-                  mb: 2
-                }}>
+                  mb: 2,
+                }}
+              >
                 {serverError}
               </Typography>
             )}

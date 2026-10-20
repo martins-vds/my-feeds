@@ -236,15 +236,7 @@ describe("PostList", () => {
   });
 
   it("shows the skeleton (not a spinner) while the first page loads", () => {
-    render(
-      <PostList
-        posts={[]}
-        loading
-        loadingMore={false}
-        hasMore={false}
-        error={null}
-      />
-    );
+    render(<PostList posts={[]} loading loadingMore={false} hasMore={false} error={null} />);
     expect(screen.queryByTestId("posts-skeleton")).not.toBeNull();
   });
 });

@@ -5,4 +5,4 @@
 declare const self: ServiceWorkerGlobalScope;
 
 // Re-export to make types available
-export { };
+export {};
