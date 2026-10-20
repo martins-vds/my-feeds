@@ -9,7 +9,7 @@
 export function hasReadableContent(html: string | null | undefined): boolean {
     if (!html || !html.trim()) return false;
 
-    let body: HTMLElement | null = null;
+    let body: HTMLElement | null;
     try {
         body = new DOMParser().parseFromString(html, "text/html").body;
     } catch {

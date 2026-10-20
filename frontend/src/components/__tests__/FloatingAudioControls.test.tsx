@@ -10,6 +10,7 @@ const observers: { cb: IntersectionObserverCallback; els: Set<Element> }[] = [];
 class MockIO implements IntersectionObserver {
     root: Element | null = null;
     rootMargin = "";
+    scrollMargin = "";
     thresholds: ReadonlyArray<number> = [];
     els = new Set<Element>();
     constructor(cb: IntersectionObserverCallback) {

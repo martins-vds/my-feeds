@@ -87,7 +87,9 @@ export function AuthCallback() {
                 }}
             >
                 <CircularProgress size={48} sx={{ mb: 2 }} />
-                <Typography variant="body1" color="text.secondary">
+                <Typography variant="body1" sx={{
+                    color: "text.secondary"
+                }}>
                     Completing sign in...
                 </Typography>
             </Box>

@@ -169,7 +169,11 @@ export function SignUpPage() {
         <Card elevation={3}>
           <CardContent sx={{ p: 4 }}>
             {/* Header with avatar */}
-            <Box textAlign="center" mb={3}>
+            <Box
+              sx={{
+                textAlign: "center",
+                mb: 3
+              }}>
               {pendingProfile?.avatarUrl && (
                 <Avatar
                   src={pendingProfile.avatarUrl}
@@ -191,17 +195,27 @@ export function SignUpPage() {
                   {(pendingProfile?.name || pendingProfile?.email || "?").charAt(0).toUpperCase()}
                 </Avatar>
               )}
-              <Typography variant="h5" component="h1" gutterBottom fontWeight={600}>
+              <Typography variant="h5" component="h1" gutterBottom sx={{
+                fontWeight: 600
+              }}>
                 Complete Your Profile
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 Just a few more details to get started
               </Typography>
             </Box>
 
             {/* Read-only email from OAuth */}
             {pendingProfile?.email && (
-              <Typography variant="body2" color="text.secondary" textAlign="center" mb={2}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  textAlign: "center",
+                  mb: 2
+                }}>
                 Signing up as <strong>{pendingProfile.email}</strong>
               </Typography>
             )}
@@ -210,7 +224,13 @@ export function SignUpPage() {
 
             {/* Server error */}
             {serverError && (
-              <Typography color="error" variant="body2" textAlign="center" mb={2}>
+              <Typography
+                color="error"
+                variant="body2"
+                sx={{
+                  textAlign: "center",
+                  mb: 2
+                }}>
                 {serverError}
               </Typography>
             )}
@@ -230,7 +250,7 @@ export function SignUpPage() {
                 required
                 autoFocus
                 sx={{ mb: 2 }}
-                inputProps={{ maxLength: 255 }}
+                slotProps={{ htmlInput: { maxLength: 255 } }}
               />
 
               <Autocomplete

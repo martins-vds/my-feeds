@@ -125,7 +125,9 @@ export function AudioPlayer({
         return (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <CircularProgress size={24} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                }}>
                     Loading audio…
                 </Typography>
             </Box>
@@ -146,13 +148,17 @@ export function AudioPlayer({
                         mb: 0.5,
                     }}
                 >
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                    }}>
                         Generating audio…
                     </Typography>
                     <Typography
                         variant="caption"
-                        color="text.secondary"
                         data-testid="audio-generating-elapsed"
+                        sx={{
+                            color: "text.secondary"
+                        }}
                     >
                         {formatTime(generatingElapsed)}
                     </Typography>
@@ -160,9 +166,11 @@ export function AudioPlayer({
                 <LinearProgress />
                 <Typography
                     variant="caption"
-                    color="text.secondary"
-                    sx={{ display: "block", mt: 0.5 }}
-                >
+                    sx={{
+                        color: "text.secondary",
+                        display: "block",
+                        mt: 0.5
+                    }}>
                     This can take a moment for longer articles.
                 </Typography>
             </Box>
@@ -219,7 +227,12 @@ export function AudioPlayer({
                 />
             </Box>
 
-            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 45 }}>
+            <Typography
+                variant="caption"
+                sx={{
+                    color: "text.secondary",
+                    minWidth: 45
+                }}>
                 {effectiveDuration
                     ? `${formatTime(currentTime)} / ${formatTime(effectiveDuration)}`
                     : formatTime(currentTime)}

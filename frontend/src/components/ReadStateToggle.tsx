@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import {
     CheckCircle as CheckCircleIcon,
-    CheckCircleOutline as CheckCircleOutlineIcon,
+    CheckCircleOutlined as CheckCircleOutlineIcon,
 } from "@mui/icons-material";
 
 interface ReadStateToggleProps {

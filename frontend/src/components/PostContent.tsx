@@ -66,7 +66,11 @@ export const PostContent = React.forwardRef<HTMLDivElement, PostContentProps>(
         if (!sanitizedContent) {
             return (
                 <Box sx={{ py: 4 }} data-testid="post-content">
-                    <Typography color="text.secondary" textAlign="center">
+                    <Typography
+                        sx={{
+                            color: "text.secondary",
+                            textAlign: "center"
+                        }}>
                         This article is only available on the original site.
                     </Typography>
                 </Box>

@@ -128,18 +128,23 @@ export const PostCard: React.FC<PostCardProps> = ({
                             )}
                             <Typography
                                 variant="caption"
-                                color="text.secondary"
-                                sx={{ fontWeight: 500 }}
-                            >
+                                sx={{
+                                    color: "text.secondary",
+                                    fontWeight: 500
+                                }}>
                                 {post.feedTitle || "Unknown Feed"}
                             </Typography>
                             {post.author && (
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" sx={{
+                                    color: "text.secondary"
+                                }}>
                                     • {post.author}
                                 </Typography>
                             )}
                         </Box>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{
+                            color: "text.secondary"
+                        }}>
                             {formatDate(post.publishedAt)}
                         </Typography>
                     </Box>
@@ -165,15 +170,14 @@ export const PostCard: React.FC<PostCardProps> = ({
                     {post.hasContent && post.summary && (
                         <Typography
                             variant="body2"
-                            color="text.secondary"
                             sx={{
+                                color: "text.secondary",
                                 display: "-webkit-box",
                                 WebkitLineClamp: 2,
                                 WebkitBoxOrient: "vertical",
                                 overflow: "hidden",
-                                mb: 1,
-                            }}
-                        >
+                                mb: 1
+                            }}>
                             {post.summary}
                         </Typography>
                     )}

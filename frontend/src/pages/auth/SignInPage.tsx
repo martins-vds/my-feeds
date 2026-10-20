@@ -49,11 +49,19 @@ export function SignInPage() {
                 <Card elevation={3}>
                     <CardContent sx={{ p: 4 }}>
                         {/* Header */}
-                        <Box textAlign="center" mb={4}>
-                            <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
+                        <Box
+                            sx={{
+                                textAlign: "center",
+                                mb: 4
+                            }}>
+                            <Typography variant="h4" component="h1" gutterBottom sx={{
+                                fontWeight: 600
+                            }}>
                                 Almanac
                             </Typography>
-                            <Typography variant="body1" color="text.secondary">
+                            <Typography variant="body1" sx={{
+                                color: "text.secondary"
+                            }}>
                                 Sign in to access your personalized RSS feeds
                             </Typography>
                         </Box>
@@ -109,8 +117,14 @@ export function SignInPage() {
                         </Stack>
 
                         {/* Footer */}
-                        <Box textAlign="center" mt={4}>
-                            <Typography variant="body2" color="text.secondary">
+                        <Box
+                            sx={{
+                                textAlign: "center",
+                                mt: 4
+                            }}>
+                            <Typography variant="body2" sx={{
+                                color: "text.secondary"
+                            }}>
                                 By signing in, you agree to our terms of service and privacy policy.
                             </Typography>
                         </Box>

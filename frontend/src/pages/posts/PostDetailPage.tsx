@@ -257,7 +257,12 @@ export const PostDetailPage: React.FC = () => {
                         >
                             Posts
                         </Link>
-                        <Typography color="text.primary" noWrap sx={{ maxWidth: 200 }}>
+                        <Typography
+                            noWrap
+                            sx={{
+                                color: "text.primary",
+                                maxWidth: 200
+                            }}>
                             {post.title}
                         </Typography>
                     </Breadcrumbs>
@@ -319,8 +324,10 @@ export const PostDetailPage: React.FC = () => {
                         )}
                         <Typography
                             variant="body2"
-                            color="text.secondary"
                             data-testid="feed-title"
+                            sx={{
+                                color: "text.secondary"
+                            }}
                         >
                             {post.feedTitle || "Unknown Feed"}
                         </Typography>
@@ -332,8 +339,10 @@ export const PostDetailPage: React.FC = () => {
                             <PersonIcon fontSize="small" color="action" />
                             <Typography
                                 variant="body2"
-                                color="text.secondary"
                                 data-testid="post-author"
+                                sx={{
+                                    color: "text.secondary"
+                                }}
                             >
                                 {post.author}
                             </Typography>
@@ -345,8 +354,10 @@ export const PostDetailPage: React.FC = () => {
                         <CalendarIcon fontSize="small" color="action" />
                         <Typography
                             variant="body2"
-                            color="text.secondary"
                             data-testid="post-date"
+                            sx={{
+                                color: "text.secondary"
+                            }}
                         >
                             {formatDate(post.publishedAt)}
                         </Typography>

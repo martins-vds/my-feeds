@@ -117,8 +117,8 @@ export function CategoryForm({
                                 `${name.length}/${MAX_NAME_LENGTH}`
                             }
                             disabled={loading}
-                            inputProps={{
-                                maxLength: MAX_NAME_LENGTH + 10, // Allow some overflow for proper error display
+                            slotProps={{
+                                htmlInput: { maxLength: MAX_NAME_LENGTH + 10 }, // Allow some overflow for proper error display
                             }}
                             placeholder="e.g., Technology, News, Sports"
                         />

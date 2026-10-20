@@ -214,10 +214,10 @@ describe("useReadAlong active-word tracking", () => {
 
 describe("useReadAlong auto-scroll", () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    let scrollSpy: ReturnType<typeof vi.fn>;
+    let scrollSpy: ReturnType<typeof vi.fn<HTMLElement["scrollIntoView"]>>;
 
     beforeEach(() => {
-        scrollSpy = vi.fn();
+        scrollSpy = vi.fn<HTMLElement["scrollIntoView"]>();
         HTMLElement.prototype.scrollIntoView = scrollSpy;
     });
 

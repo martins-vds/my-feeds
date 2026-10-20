@@ -8,9 +8,9 @@ export interface FloatingAudioControlsProps {
     /** The same player object the inline AudioPlayer receives. */
     player: UseAudioPlayerResult;
     /** The inline player's container; observed for on-screen visibility. */
-    anchorRef: RefObject<HTMLElement>;
+    anchorRef: RefObject<HTMLElement | null>;
     /** The article footer actions row; hides the controls when it is in view. */
-    footerRef?: RefObject<HTMLElement>;
+    footerRef?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -19,7 +19,7 @@ export interface FloatingAudioControlsProps {
  * element or no IntersectionObserver support.
  */
 function useOnScreen(
-    ref: RefObject<HTMLElement> | undefined,
+    ref: RefObject<HTMLElement | null> | undefined,
     initial: boolean
 ): boolean {
     const [onScreen, setOnScreen] = useState(initial);
@@ -119,8 +119,10 @@ export function FloatingAudioControls({
                         role="group"
                         aria-label="Playback speed options"
                         spacing={0.5}
-                        alignItems="center"
                         data-testid="floating-speed-options"
+                        sx={{
+                            alignItems: "center"
+                        }}
                     >
                         {PLAYBACK_SPEEDS.map((speed) => {
                             const selected = speed === player.playbackRate;

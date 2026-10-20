@@ -157,9 +157,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
             start += wrapped.count;
         }
         if (content) {
-            const wrapped = wrapWords(content, start);
-            spans.push(...wrapped.elements);
-            start += wrapped.count;
+            spans.push(...wrapWords(content, start).elements);
         }
 
         spansRef.current = spans;

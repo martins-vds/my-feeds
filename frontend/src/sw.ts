@@ -7,7 +7,6 @@
  * - Stale-while-revalidate for images
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /// <reference lib="webworker" />
 /// <reference types="vite-plugin-pwa/client" />
 

@@ -134,9 +134,10 @@ export function AddFeedDialog({
                 <DialogContent>
                     <Typography
                         variant="body2"
-                        color="text.secondary"
-                        sx={{ mb: 2 }}
-                    >
+                        sx={{
+                            color: "text.secondary",
+                            mb: 2
+                        }}>
                         Enter the URL of an RSS or Atom feed. We'll fetch the
                         feed metadata and add it to your feeds. Categories are
                         optional and can be assigned later.
@@ -153,8 +154,8 @@ export function AddFeedDialog({
                         helperText={displayError || " "}
                         disabled={loading}
                         placeholder="https://example.com/feed.xml"
-                        inputProps={{
-                            maxLength: MAX_URL_LENGTH + 10,
+                        slotProps={{
+                            htmlInput: { maxLength: MAX_URL_LENGTH + 10 },
                         }}
                     />
                     {error && (

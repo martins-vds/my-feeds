@@ -14,7 +14,6 @@ vi.mock("../../services/api", () => ({
 import { useUnreadCounts } from "../useUnreadCounts";
 
 describe("useUnreadCounts", () => {
-  // @ts-expect-error vitest/testing-library type inference issue
   beforeEach(() => vi.clearAllMocks());
 
   it("exposes byFeed, byCategory, uncategorized and total from the API", async () => {

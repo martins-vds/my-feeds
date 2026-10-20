@@ -69,7 +69,9 @@ export function Header() {
           onClick={handleLogoClick}
         >
           <RssFeedIcon color="primary" sx={{ mr: 1 }} />
-          <Typography variant="h6" component="span" fontWeight={600}>
+          <Typography variant="h6" component="span" sx={{
+            fontWeight: 600
+          }}>
             Almanac
           </Typography>
         </Box>
@@ -95,10 +97,14 @@ export function Header() {
               anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
             >
               <Box sx={{ px: 2, py: 1 }}>
-                <Typography variant="subtitle2" fontWeight={600}>
+                <Typography variant="subtitle2" sx={{
+                  fontWeight: 600
+                }}>
                   {user.name || "User"}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>
                   {user.email}
                 </Typography>
               </Box>

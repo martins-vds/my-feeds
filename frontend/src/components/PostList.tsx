@@ -42,10 +42,14 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
         }}
         data-testid="posts-empty"
     >
-        <Typography variant="h6" color="text.secondary">
+        <Typography variant="h6" sx={{
+            color: "text.secondary"
+        }}>
             No posts found
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+            color: "text.secondary"
+        }}>
             Try adjusting your filters or add more feeds
         </Typography>
         {onRefresh && (
@@ -149,7 +153,9 @@ export const PostList: React.FC<PostListProps> = ({
                         Load More
                     </Button>
                 ) : posts.length > 0 ? (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                    }}>
                         You've reached the end
                     </Typography>
                 ) : null}

@@ -30,7 +30,7 @@ export function ReadAlongToggles({
                         checked={highlight}
                         onChange={(e) => onHighlightChange(e.target.checked)}
                         size="small"
-                        inputProps={{ "aria-label": "Highlight while playing" }}
+                        slotProps={{ input: { "aria-label": "Highlight while playing" } }}
                         data-testid="toggle-highlight"
                     />
                 }
@@ -42,7 +42,7 @@ export function ReadAlongToggles({
                         checked={autoScroll}
                         onChange={(e) => onAutoScrollChange(e.target.checked)}
                         size="small"
-                        inputProps={{ "aria-label": "Auto-scroll while playing" }}
+                        slotProps={{ input: { "aria-label": "Auto-scroll while playing" } }}
                         data-testid="toggle-autoscroll"
                     />
                 }
