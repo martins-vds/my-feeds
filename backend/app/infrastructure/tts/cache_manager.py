@@ -2,7 +2,6 @@
 
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 from app.infrastructure.tts.cache_provider import (
     AudioCacheProvider,
@@ -61,13 +60,13 @@ class AudioCacheManager:
     async def save(self, cache_key: str, data: bytes) -> None:
         await self._provider.save(cache_key, data)
 
-    async def load(self, cache_key: str) -> Optional[bytes]:
+    async def load(self, cache_key: str) -> bytes | None:
         return await self._provider.load(cache_key)
 
     async def delete(self, cache_key: str) -> bool:
         return await self._provider.delete(cache_key)
 
-    async def get_file_size(self, cache_key: str) -> Optional[int]:
+    async def get_file_size(self, cache_key: str) -> int | None:
         return await self._provider.get_file_size(cache_key)
 
     async def exists_timings(self, cache_key: str) -> bool:
@@ -76,7 +75,7 @@ class AudioCacheManager:
     async def save_timings(self, cache_key: str, payload: dict) -> None:
         await self._provider.save_timings(cache_key, payload)
 
-    async def load_timings(self, cache_key: str) -> Optional[dict]:
+    async def load_timings(self, cache_key: str) -> dict | None:
         return await self._provider.load_timings(cache_key)
 
     async def delete_timings(self, cache_key: str) -> bool:

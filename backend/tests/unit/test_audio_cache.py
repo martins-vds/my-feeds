@@ -4,9 +4,6 @@ Tests verify audio file caching and retrieval functionality.
 """
 
 import pytest
-from pathlib import Path
-from uuid import uuid4
-from unittest.mock import MagicMock, AsyncMock, patch
 
 
 class TestAudioCacheManager:
@@ -89,7 +86,7 @@ class TestAudioCacheManager:
         assert await cache_manager.exists(cache_key) is False
 
     @pytest.mark.asyncio
-    async def test_exists_returns_true_for_existing_file(self, cache_manager, tmp_path):
+    async def test_exists_returns_true_for_existing_file(self, cache_manager):
         """exists returns True when file exists."""
         cache_key = "a1b2c3d4" + "0" * 56
 
@@ -185,10 +182,10 @@ class TestAudioCacheCleanup:
         return AudioCacheManager(cache_dir=tmp_path, max_size_mb=1)
 
     @pytest.mark.asyncio
-    async def test_cleanup_removes_old_files(self, cache_manager, tmp_path):
+    async def test_cleanup_removes_old_files(self, cache_manager):
         """cleanup_old_files removes files older than retention period."""
-        from datetime import datetime, timedelta
         import os
+        from datetime import datetime, timedelta
 
         # Create old file
         cache_key = "oldfile12" + "0" * 56
@@ -205,7 +202,7 @@ class TestAudioCacheCleanup:
         assert not file_path.exists()
 
     @pytest.mark.asyncio
-    async def test_cleanup_preserves_recent_files(self, cache_manager, tmp_path):
+    async def test_cleanup_preserves_recent_files(self, cache_manager):
         """cleanup_old_files keeps files within retention period."""
         cache_key = "newfile12" + "0" * 56
         file_path = cache_manager.get_file_path(cache_key)

@@ -5,11 +5,12 @@ their dependencies. Dependencies are resolved per-request using the database
 session from the request context.
 """
 
+from contextvars import ContextVar
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings, get_settings
 from app.infrastructure.persistence.database import get_session_factory
-
 
 # =============================================================================
 # Singleton instances
@@ -366,8 +367,6 @@ class RequestContainer:
 
 
 # Global request container accessor (set per-request via middleware)
-from contextvars import ContextVar
-
 _request_container: ContextVar[RequestContainer | None] = ContextVar(
     "request_container", default=None
 )

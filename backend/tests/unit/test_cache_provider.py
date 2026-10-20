@@ -1,6 +1,6 @@
 """Tests for selecting the configured audio cache provider."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -30,7 +30,7 @@ class FakeBlob:
     async def upload_blob(self, data, overwrite):
         assert overwrite
         self.container.blobs[self.name] = bytes(data)
-        self.container.timestamps[self.name] = datetime.now(timezone.utc)
+        self.container.timestamps[self.name] = datetime.now(UTC)
 
     async def download_blob(self):
         async def readall():
@@ -44,7 +44,8 @@ class FakeBlob:
             last_modified=self.container.timestamps[self.name],
         )
 
-    async def delete_blob(self, **kwargs):
+    async def delete_blob(self, *, delete_snapshots):
+        assert delete_snapshots == "include"
         self.container.blobs.pop(self.name, None)
         self.container.timestamps.pop(self.name, None)
 
@@ -54,7 +55,7 @@ class FakeContainer:
         self.blobs = {}
         self.timestamps = {}
 
-    async def create_container(self):
+    async def get_container_properties(self):
         return None
 
     def get_blob_client(self, name):
@@ -69,7 +70,8 @@ class FakeContainer:
                     last_modified=self.timestamps[name],
                 )
 
-    async def delete_blob(self, name, **kwargs):
+    async def delete_blob(self, name, *, delete_snapshots):
+        assert delete_snapshots == "include"
         self.blobs.pop(name, None)
         self.timestamps.pop(name, None)
 
@@ -97,7 +99,10 @@ def test_cache_manager_factory_selects_blob_provider(monkeypatch):
     monkeypatch.setattr(
         container_module,
         "_settings",
-        Settings(audio_cache_provider="azure_blob", azure_blob_service_url="https://example.blob.core.windows.net"),
+        Settings(
+            audio_cache_provider="azure_blob",
+            azure_blob_service_url="https://example.blob.core.windows.net",
+        ),
     )
     monkeypatch.setattr(container_module, "_cache_manager", None)
 
@@ -145,7 +150,7 @@ async def test_blob_cleanup_uses_blob_timestamps_and_reclaims_orphan_sidecars():
     await cache.save(recent_key, b"recent")
     await cache.save_timings(recent_key, {"schemaVersion": 1, "words": []})
     await cache.save_timings(orphan_key, {"schemaVersion": 1, "words": []})
-    old_time = datetime.now(timezone.utc) - timedelta(days=91)
+    old_time = datetime.now(UTC) - timedelta(days=91)
     container.timestamps[f"ef/{old_key}.mp3"] = old_time
     container.timestamps[f"ef/{old_key}.json"] = old_time
     container.timestamps[f"34/{orphan_key}.json"] = old_time

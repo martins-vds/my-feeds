@@ -1,10 +1,9 @@
 """Audio application service for TTS operations."""
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
 from uuid import UUID
 
 from app.domain.audio.entities.audio import Audio
@@ -14,7 +13,7 @@ from app.domain.feed_management.repositories.post_repository import PostReposito
 from app.infrastructure.tts.cache_manager import AudioCacheManager
 
 
-class AudioStatus(str, Enum):
+class AudioStatus(StrEnum):
     """Status of audio generation."""
 
     READY = "ready"
@@ -38,12 +37,12 @@ class AudioResult:
 
     status: AudioStatus
     post_id: UUID
-    url: Optional[str] = None
-    cache_key: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    estimated_seconds: Optional[int] = None
-    error: Optional[str] = None
-    word_timings: Optional[list[dict]] = None
+    url: str | None = None
+    cache_key: str | None = None
+    duration_seconds: float | None = None
+    estimated_seconds: int | None = None
+    error: str | None = None
+    word_timings: list[dict] | None = None
 
 
 class AudioService:
@@ -289,7 +288,7 @@ class AudioService:
         # Save new audio record
         return await self._audio_repo.create(audio)
 
-    async def _load_word_timings(self, cache_key: str) -> Optional[list[dict]]:
+    async def _load_word_timings(self, cache_key: str) -> list[dict] | None:
         """Load ordered word timings for a clip, or None when unusable.
 
         Returns the ordered ``words`` array from the sidecar when a valid,
@@ -310,7 +309,7 @@ class AudioService:
             return None
         return words
 
-    async def get_audio_stream_data(self, cache_key: str) -> Optional[bytes]:
+    async def get_audio_stream_data(self, cache_key: str) -> bytes | None:
         """Load audio bytes for provider-neutral streaming.
 
         Args:

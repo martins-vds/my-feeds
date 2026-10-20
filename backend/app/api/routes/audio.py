@@ -3,9 +3,9 @@
 import re
 from uuid import UUID
 
-from quart import Blueprint, jsonify, request, Response
+from quart import Blueprint, Response, jsonify, request
 
-from app.api.middleware import UnauthorizedError, ValidationError
+from app.api.middleware import UnauthorizedError
 from app.application.services.audio_service import AudioStatus
 from app.config.container import get_request_container
 from app.infrastructure.oauth.session import session_manager

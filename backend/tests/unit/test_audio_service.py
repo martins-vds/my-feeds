@@ -109,10 +109,12 @@ class TestGenerateForPostBranches:
         cache.generate_cache_key.return_value = "c" * 64
         cache.exists = AsyncMock(return_value=True)
         cache.exists_timings = AsyncMock(return_value=True)
-        cache.load_timings = AsyncMock(return_value={
-            "schemaVersion": 1,
-            "words": [{"text": "Hi", "startMs": 0, "durationMs": 10}],
-        })
+        cache.load_timings = AsyncMock(
+            return_value={
+                "schemaVersion": 1,
+                "words": [{"text": "Hi", "startMs": 0, "durationMs": 10}],
+            }
+        )
         tts = MagicMock()
         tts.synthesize_with_timings = AsyncMock()
 
@@ -126,7 +128,7 @@ class TestGenerateForPostBranches:
         tts.synthesize_with_timings.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_regenerates_when_stored_key_is_stale(self, tmp_path):
+    async def test_regenerates_when_stored_key_is_stale(self):
         """A clip whose stored key no longer matches the current one (cache
         version bumped or post edited) is regenerated, not served stale."""
         from app.domain.audio.value_objects.word_timing import WordTiming
@@ -144,6 +146,7 @@ class TestGenerateForPostBranches:
 
         tts = MagicMock()
         tts.voice_id = "en-US-AriaNeural"
+
         async def synthesize(_text, path):
             path.write_bytes(b"audio")
             return [WordTiming(text="Title", start_ms=0, duration_ms=100)]
@@ -158,10 +161,12 @@ class TestGenerateForPostBranches:
         cache.exists = AsyncMock(return_value=True)
         cache.exists_timings = AsyncMock(return_value=True)
         cache.save_timings = AsyncMock()
-        cache.load_timings = AsyncMock(return_value={
-            "schemaVersion": 1,
-            "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
-        })
+        cache.load_timings = AsyncMock(
+            return_value={
+                "schemaVersion": 1,
+                "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
+            }
+        )
 
         service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
         result = await service.generate_for_post(post_id)
@@ -172,7 +177,7 @@ class TestGenerateForPostBranches:
         tts.synthesize_with_timings.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_fresh_generation_writes_sidecar_and_returns_timings(self, tmp_path):
+    async def test_fresh_generation_writes_sidecar_and_returns_timings(self):
         """A post with no cached clip is synthesized: timings are captured, the
         sidecar is written, has_timings is set on the row, and READY carries the
         ordered words (the capture -> persist -> serve happy path)."""
@@ -189,6 +194,7 @@ class TestGenerateForPostBranches:
 
         tts = MagicMock()
         tts.voice_id = "en-US-AriaNeural"
+
         async def synthesize(_text, path):
             path.write_bytes(b"audio")
             return [WordTiming(text="Title", start_ms=0, duration_ms=100)]
@@ -200,10 +206,12 @@ class TestGenerateForPostBranches:
         cache.get_file_size = AsyncMock(return_value=8000)
         cache.get_storage_path.return_value = "dd/" + "d" * 64 + ".mp3"
         cache.save_timings = AsyncMock()
-        cache.load_timings = AsyncMock(return_value={
-            "schemaVersion": 1,
-            "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
-        })
+        cache.load_timings = AsyncMock(
+            return_value={
+                "schemaVersion": 1,
+                "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
+            }
+        )
 
         service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
         result = await service.generate_for_post(post_id)

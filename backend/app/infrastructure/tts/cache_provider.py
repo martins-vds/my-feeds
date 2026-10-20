@@ -3,9 +3,8 @@
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from azure.core.exceptions import ResourceNotFoundError
 
@@ -39,7 +38,7 @@ class AudioCacheProvider(ABC):
         """Store audio bytes."""
 
     @abstractmethod
-    async def load(self, cache_key: str) -> Optional[bytes]:
+    async def load(self, cache_key: str) -> bytes | None:
         """Read audio bytes, or None if absent."""
 
     @abstractmethod
@@ -47,7 +46,7 @@ class AudioCacheProvider(ABC):
         """Delete audio and timing metadata."""
 
     @abstractmethod
-    async def get_file_size(self, cache_key: str) -> Optional[int]:
+    async def get_file_size(self, cache_key: str) -> int | None:
         """Return audio size in bytes."""
 
     @abstractmethod
@@ -59,7 +58,7 @@ class AudioCacheProvider(ABC):
         """Store the timing sidecar."""
 
     @abstractmethod
-    async def load_timings(self, cache_key: str) -> Optional[dict]:
+    async def load_timings(self, cache_key: str) -> dict | None:
         """Read a valid timing sidecar, or None."""
 
     @abstractmethod
@@ -106,7 +105,7 @@ class LocalFileCacheProvider(AudioCacheProvider):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
-    async def load(self, cache_key: str) -> Optional[bytes]:
+    async def load(self, cache_key: str) -> bytes | None:
         path = self.get_file_path(cache_key)
         return path.read_bytes() if path.is_file() else None
 
@@ -118,7 +117,7 @@ class LocalFileCacheProvider(AudioCacheProvider):
         await self.delete_timings(cache_key)
         return existed
 
-    async def get_file_size(self, cache_key: str) -> Optional[int]:
+    async def get_file_size(self, cache_key: str) -> int | None:
         path = self.get_file_path(cache_key)
         return path.stat().st_size if path.is_file() else None
 
@@ -132,7 +131,7 @@ class LocalFileCacheProvider(AudioCacheProvider):
         tmp_path.write_text(json.dumps(payload), encoding="utf-8")
         tmp_path.replace(path)
 
-    async def load_timings(self, cache_key: str) -> Optional[dict]:
+    async def load_timings(self, cache_key: str) -> dict | None:
         path = self.get_timings_path(cache_key)
         if not path.is_file():
             return None
@@ -161,13 +160,13 @@ class LocalFileCacheProvider(AudioCacheProvider):
                 CachedAudioFile(
                     cache_key=path.stem,
                     size=stat.st_size,
-                    last_modified=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+                    last_modified=datetime.fromtimestamp(stat.st_mtime, UTC),
                 )
             )
         return files
 
     async def cleanup_old_files(self, retention_days: int = 90) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
         deleted = 0
         for entry in await self.list_audio_files():
             if entry.last_modified < cutoff and await self.delete(entry.cache_key):
@@ -218,13 +217,7 @@ class AzureBlobCacheProvider(AudioCacheProvider):
                 credential=self._credential,
             )
             self._container = self._service_client.get_container_client(self._container_name)
-        try:
-            await self._container.create_container()
-        except Exception as exc:
-            from azure.core.exceptions import ResourceExistsError
-
-            if not isinstance(exc, ResourceExistsError):
-                raise
+        await self._container.get_container_properties()
 
     async def close(self) -> None:
         if self._service_client is not None:
@@ -245,7 +238,7 @@ class AzureBlobCacheProvider(AudioCacheProvider):
     async def save(self, cache_key: str, data: bytes) -> None:
         await self._blob(cache_key).upload_blob(data, overwrite=True)
 
-    async def load(self, cache_key: str) -> Optional[bytes]:
+    async def load(self, cache_key: str) -> bytes | None:
         blob = self._blob(cache_key)
         if not await blob.exists():
             return None
@@ -259,7 +252,7 @@ class AzureBlobCacheProvider(AudioCacheProvider):
         await self.delete_timings(cache_key)
         return existed
 
-    async def get_file_size(self, cache_key: str) -> Optional[int]:
+    async def get_file_size(self, cache_key: str) -> int | None:
         blob = self._blob(cache_key)
         try:
             properties = await blob.get_blob_properties()
@@ -274,7 +267,7 @@ class AzureBlobCacheProvider(AudioCacheProvider):
         data = json.dumps(payload).encode("utf-8")
         await self._blob(cache_key, ".json").upload_blob(data, overwrite=True)
 
-    async def load_timings(self, cache_key: str) -> Optional[dict]:
+    async def load_timings(self, cache_key: str) -> dict | None:
         blob = self._blob(cache_key, ".json")
         if not await blob.exists():
             return None
@@ -314,7 +307,7 @@ class AzureBlobCacheProvider(AudioCacheProvider):
     async def cleanup_old_files(self, retention_days: int = 90) -> int:
         if self._container is None:
             raise RuntimeError("Azure Blob cache provider has not been initialized")
-        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
         blobs = []
         async for blob in self._container.list_blobs():
             blobs.append(blob)

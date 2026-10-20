@@ -6,15 +6,14 @@ Cleans up old audio files from the cache directory based on retention policy.
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Tuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.container import create_cache_manager, create_session
 from app.config.settings import get_settings
-from app.infrastructure.tts.cache_manager import AudioCacheManager
 from app.infrastructure.persistence.models.audio import AudioModel
+from app.infrastructure.tts.cache_manager import AudioCacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def cleanup_orphaned_audio_files(
     cache: AudioCacheManager,
     session: AsyncSession,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Remove audio files that no longer have database records.
 
     Args:
@@ -87,7 +86,7 @@ async def cleanup_cache_by_size(
     cache: AudioCacheManager,
     max_size_mb: int,
     session: AsyncSession,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Remove oldest audio files if cache exceeds size limit.
 
     Uses LRU-style eviction based on last_accessed_at.
@@ -161,13 +160,17 @@ async def run_audio_cleanup_job() -> None:
             retention_days=retention_days,
         )
 
-        # Step 2: Clean up orphaned files
+        # Step 2: Expire cached audio by provider modification timestamps.
+        expired_count = await cache.cleanup_old_files(retention_days)
+        logger.info("Removed %s expired cached audio files", expired_count)
+
+        # Step 3: Clean up files without database records.
         await cleanup_orphaned_audio_files(
             cache=cache,
             session=session,
         )
 
-        # Step 3: Enforce size limit
+        # Step 4: Enforce size limit
         await cleanup_cache_by_size(
             cache=cache,
             max_size_mb=max_cache_size,
