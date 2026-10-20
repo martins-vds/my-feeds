@@ -58,7 +58,7 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-myfeeds}
-    # Optional: OAuth keys, Azure Speech, VAPID, SECRET_KEY, etc. `environment`
+    # Optional: OAuth keys, Azure Speech, SECRET_KEY, etc. `environment`
     # values above take precedence over anything in this file.
     env_file:
       - path: ./backend/.env

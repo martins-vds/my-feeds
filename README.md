@@ -55,7 +55,7 @@ language servers, test runners) and is not required to run the app.
 2. **(Optional) Configure environment**:
    ```bash
    cp .env.example .env                   # compose ports / postgres credentials
-   cp backend/.env.example backend/.env   # OAuth, Azure Speech, VAPID, SECRET_KEY
+   cp backend/.env.example backend/.env   # OAuth, Azure Speech, SECRET_KEY
    ```
    Every compose variable has a sensible default, so this is only needed to
    supply real credentials or change ports.
@@ -148,3 +148,20 @@ This project follows the [Constitution](/.specify/memory/constitution.md):
 ## License
 
 MIT
+
+## Deploy to Azure (azd)
+
+Infra lives in `infra/` (Bicep + Azure Verified Modules), all in Canada Central: App Service (Linux B1, container, VNet-integrated), PostgreSQL Flexible Server (free-tier B1ms) and Blob Storage behind private endpoints, VNet + private DNS zones, ACR (Basic). No Azure Speech.
+
+Network: Storage has no public access. The web app and Postgres are only reachable from the IPs in `ALLOWED_IPS` (comma-separated, empty = none). ACR stays public but Entra-only so ACR Tasks can build the image remotely.
+
+**GitHub Actions** (`.github/workflows/deploy.yml`, manual dispatch):
+
+```bash
+az login && gh auth login
+./infra/setup-github.sh   # identity + OIDC, GitHub env "production", variables/secrets
+```
+
+Replace the `placeholder` OAuth values in the `production` environment, then run **Deploy to Azure**.
+
+**Locally:** `azd up` (set `ALLOWED_IPS` etc. with `azd env set` first). Port defaults to 8000 (`APP_PORT`); locally the app reads `PORT`. OAuth callbacks: `<SERVICE_WEB_URI>/api/auth/<provider>/callback`.

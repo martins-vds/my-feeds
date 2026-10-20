@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "${AZURE_ENV_NAME}" },
+    "location": { "value": "${AZURE_LOCATION=canadacentral}" },
+    "allowedIps": { "value": "${ALLOWED_IPS=}" },
+    "postgresPassword": { "value": "${POSTGRES_PASSWORD}" },
+    "secretKey": { "value": "${SECRET_KEY}" },
+    "appPort": { "value": "${APP_PORT=8000}" },
+    "githubClientId": { "value": "${GITHUB_CLIENT_ID=}" },
+    "githubClientSecret": { "value": "${GITHUB_CLIENT_SECRET=}" },
+    "googleClientId": { "value": "${GOOGLE_CLIENT_ID=}" },
+    "googleClientSecret": { "value": "${GOOGLE_CLIENT_SECRET=}" },
+    "microsoftClientId": { "value": "${MICROSOFT_CLIENT_ID=}" },
+    "microsoftClientSecret": { "value": "${MICROSOFT_CLIENT_SECRET=}" }
+  }
+}

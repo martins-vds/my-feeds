@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PYTHONPATH=/app
 EXPOSE 5000
-CMD ["quart", "--app", "app.main:app", "run", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+CMD quart --app app.main:app run --host 0.0.0.0 --port "${PORT:-5000}" --reload
 
 # ---- prod -------------------------------------------------------------------
 FROM base AS prod
@@ -56,4 +56,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PYTHONPATH=/app
 EXPOSE 5000
-CMD ["hypercorn", "app.main:app", "--bind", "0.0.0.0:5000", "--workers", "4"]
+CMD exec hypercorn app.main:app --bind "0.0.0.0:${PORT:-5000}" --workers 4

@@ -99,3 +99,4 @@ backend/audio_cache/*
 # Database
 *.db
 *.sqlite3
+.azure/

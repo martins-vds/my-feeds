@@ -62,11 +62,6 @@ class Settings(BaseSettings):
     azure_speech_key: str = ""
     azure_speech_region: str = "eastus"
 
-    # VAPID (Push Notifications)
-    vapid_private_key: str = ""
-    vapid_public_key: str = ""
-    vapid_claim_email: str = "mailto:admin@example.com"
-
     # Audio Cache
     audio_cache_dir: str = "audio_cache"
     audio_cache_provider: Literal["local", "azure_blob"] = "local"
