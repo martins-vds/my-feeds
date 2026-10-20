@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,6 +69,9 @@ class Settings(BaseSettings):
 
     # Audio Cache
     audio_cache_dir: str = "audio_cache"
+    audio_cache_provider: Literal["local", "azure_blob"] = "local"
+    azure_blob_service_url: str | None = None
+    azure_blob_container_name: str = "audio-cache"
     audio_max_cache_size_mb: int = 1000
     audio_cache_version: str = Field(
         default="v3",
@@ -86,6 +89,13 @@ class Settings(BaseSettings):
 
     # Post Retention
     post_retention_days: int = 90
+
+    @model_validator(mode="after")
+    def validate_audio_cache_provider(self) -> "Settings":
+        """Require Azure Blob configuration when that provider is selected."""
+        if self.audio_cache_provider == "azure_blob" and not self.azure_blob_service_url:
+            raise ValueError("AZURE_BLOB_SERVICE_URL is required for azure_blob cache")
+        return self
 
     @property
     def is_production(self) -> bool:
