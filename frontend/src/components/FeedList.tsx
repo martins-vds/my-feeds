@@ -248,7 +248,7 @@ export function FeedList({
                 disabled={isRefreshing}
                 selected={activeFeedId === feed.id}
                 onClick={onSelectFeed ? () => onSelectFeed(feed.id) : undefined}
-                sx={{ opacity: isPaused ? 0.6 : 1 }}
+                sx={{ opacity: isPaused ? 0.6 : 1, pr: 6 }}
               >
                 <ListItemIcon sx={{ minWidth: 40 }}>
                   {feed.iconUrl ? (
