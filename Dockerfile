@@ -32,12 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY backend/ ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev
 
 COPY --from=frontend-build /build/dist /app/frontend/dist
 COPY backend/start.sh /app/start.sh
