@@ -18,6 +18,7 @@ jobs:
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       ALLOWED_IPS: ${{ vars.ALLOWED_IPS }}
+      WEB_APP_NAME: ${{ vars.WEB_APP_NAME }}
       APP_PORT: ${{ vars.APP_PORT }}
       GITHUB_CLIENT_ID: ${{ vars.OAUTH_GITHUB_CLIENT_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
@@ -28,7 +29,7 @@ jobs:
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: Azure/setup-azd@v2
 

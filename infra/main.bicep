@@ -12,6 +12,9 @@ param location string = 'canadacentral'
 @description('Comma-separated IPv4 addresses allowed to reach the web app and Postgres, e.g. "1.2.3.4,5.6.7.8". Empty = no public access.')
 param allowedIps string = ''
 
+@description('Web app name (global *.azurewebsites.net). setup-github.sh pins it so the OAuth redirect URI is known before deploy.')
+param webAppName string = ''
+
 @description('Port the container listens on (PORT for the app, WEBSITES_PORT for App Service).')
 param appPort int = 8000
 
@@ -37,7 +40,7 @@ var tags = { 'azd-env-name': environmentName }
 var token = uniqueString(subscription().id, environmentName, location)
 var postgresUser = 'myfeeds'
 var postgresDb = 'myfeeds'
-var appName = 'app-web-${token}'
+var appName = empty(webAppName) ? 'app-web-${token}' : webAppName
 var ips = filter(map(split(allowedIps, ','), ip => trim(ip)), ip => !empty(ip))
 var privateDnsZoneNames = [
   'privatelink.blob.${environment().suffixes.storage}'

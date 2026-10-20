@@ -7,6 +7,7 @@
     "allowedIps": { "value": "${ALLOWED_IPS=}" },
     "postgresPassword": { "value": "${POSTGRES_PASSWORD}" },
     "secretKey": { "value": "${SECRET_KEY}" },
+    "webAppName": { "value": "${WEB_APP_NAME=}" },
     "appPort": { "value": "${APP_PORT=8000}" },
     "githubClientId": { "value": "${GITHUB_CLIENT_ID=}" },
     "githubClientSecret": { "value": "${GITHUB_CLIENT_SECRET=}" },
