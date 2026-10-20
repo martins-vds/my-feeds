@@ -7,7 +7,7 @@
 .gitignore
 
 # Documentation
-*.md
+**/*.md
 !README.md
 !backend/README.md
 specs/
@@ -15,20 +15,20 @@ specs/
 .specify/
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-.pytest_cache/
-htmlcov/
-.coverage
-*.egg-info/
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/htmlcov/
+**/.coverage
+**/*.egg-info/
 
 # Node.js
-node_modules/
-.pnpm-store/
-coverage/
+**/node_modules/
+**/.pnpm-store/
+**/coverage/
 frontend/playwright-report/
 frontend/playwright/.cache/
 frontend/test-results/
@@ -40,23 +40,33 @@ backend/dist/
 # IDE
 .idea/
 .vscode/
-*.swp
-*.swo
+**/*.swp
+**/*.swo
+
+# azd / infra (.azure holds secrets)
+.azure/
+infra/
+azure.yaml
+.devcontainer/
+.agents/
+docs/
+scripts/
 
 # Environment files (inject via secrets)
-.env
-.env.*
+**/.env
+**/.env.*
 backend/.env
 frontend/.env
 backend/tests/
+backend/audio_cache/
 
 # Logs
-*.log
-logs/
+**/*.log
+**/logs/
 
 # OS
-.DS_Store
-Thumbs.db
+**/.DS_Store
+**/Thumbs.db
 
 # Dev Container (for production builds)
 .devcontainer/

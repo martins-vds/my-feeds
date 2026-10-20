@@ -166,7 +166,6 @@ module postgres 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.16.1' = 
     authConfig: { activeDirectoryAuth: 'Disabled', passwordAuth: 'Enabled' }
     // App reaches Postgres via the private endpoint; the public endpoint only admits allowedIps.
     publicNetworkAccess: empty(ips) ? 'Disabled' : 'Enabled'
-    firewallRules: [for (ip, i) in ips: { name: 'allowed-${i}', startIpAddress: ip, endIpAddress: ip }]
     privateEndpoints: [
       {
         subnetResourceId: vnet.outputs.subnetResourceIds[1]
@@ -176,6 +175,16 @@ module postgres 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.16.1' = 
       }
     ]
     databases: [{ name: postgresDb }]
+  }
+}
+
+// Outside the AVM module: it writes child resources in parallel and Postgres rejects
+// concurrent operations (ServerIsBusy). These run after it, one at a time.
+module postgresFirewall 'postgres-firewall.bicep' = {
+  scope: rg
+  params: {
+    serverName: postgres.outputs.name
+    ips: ips
   }
 }
 
