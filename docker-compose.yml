@@ -58,9 +58,13 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-myfeeds}
-    # Optional: OAuth keys, Azure Speech, SECRET_KEY, etc. `environment`
-    # values above take precedence over anything in this file.
+    # Optional: OAuth keys, Azure Speech, SECRET_KEY, etc. Loaded in order
+    # (later files win); `environment` values above take precedence over both.
+    # The azd environment (`azd env get-values`) supplies the OAuth client
+    # IDs/secrets and SECRET_KEY; set AZURE_ENV_NAME to pick another azd env.
     env_file:
+      - path: ./.azure/${AZURE_ENV_NAME:-my-feeds-prod}/.env
+        required: false
       - path: ./backend/.env
         required: false
     depends_on:

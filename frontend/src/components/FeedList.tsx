@@ -30,19 +30,17 @@ import {
   Chip,
   Divider,
 } from "@mui/material";
-import {
-  RssFeed as RssFeedIcon,
-  MoreVert as MoreVertIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  LocalOffer as CategoriesIcon,
-  Add as AddIcon,
-  Error as ErrorIcon,
-  Pause as PauseIcon,
-  PlayArrow as PlayArrowIcon,
-  DoneAll as MarkReadIcon,
-  RemoveDone as MarkUnreadIcon,
-} from "@mui/icons-material";
+import RssFeedIcon from "@mui/icons-material/RssFeed";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import DeleteIcon from "@mui/icons-material/Delete";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CategoriesIcon from "@mui/icons-material/LocalOffer";
+import AddIcon from "@mui/icons-material/Add";
+import ErrorIcon from "@mui/icons-material/Error";
+import PauseIcon from "@mui/icons-material/Pause";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import MarkReadIcon from "@mui/icons-material/DoneAll";
+import MarkUnreadIcon from "@mui/icons-material/RemoveDone";
 import type { Category, Feed } from "../types";
 import { ApiError } from "../services/api";
 

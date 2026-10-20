@@ -16,11 +16,9 @@ import {
     useMediaQuery,
     useTheme,
 } from "@mui/material";
-import {
-    Menu as MenuIcon,
-    Refresh as RefreshIcon,
-    ArrowUpward as ArrowUpwardIcon,
-} from "@mui/icons-material";
+import MenuIcon from "@mui/icons-material/Menu";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import PostList from "../../components/PostList";
 import { FeedSidebar } from "../../components/FeedSidebar";
 import {

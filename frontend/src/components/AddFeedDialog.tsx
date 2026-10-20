@@ -15,7 +15,7 @@ import {
     Box,
     Typography,
 } from "@mui/material";
-import { RssFeed as RssFeedIcon } from "@mui/icons-material";
+import RssFeedIcon from "@mui/icons-material/RssFeed";
 
 interface AddFeedDialogProps {
     open: boolean;

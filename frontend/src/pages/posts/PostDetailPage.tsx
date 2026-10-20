@@ -24,13 +24,11 @@ import {
     Paper,
     Tooltip,
 } from "@mui/material";
-import {
-    ArrowBack as ArrowBackIcon,
-    Launch as LaunchIcon,
-    CalendarToday as CalendarIcon,
-    Person as PersonIcon,
-    RssFeed as RssFeedIcon,
-} from "@mui/icons-material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import LaunchIcon from "@mui/icons-material/Launch";
+import CalendarIcon from "@mui/icons-material/CalendarToday";
+import PersonIcon from "@mui/icons-material/Person";
+import RssFeedIcon from "@mui/icons-material/RssFeed";
 import api, { ApiError } from "../../services/api";
 import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";

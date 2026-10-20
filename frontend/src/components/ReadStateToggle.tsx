@@ -8,10 +8,8 @@ import {
     Tooltip,
     CircularProgress,
 } from "@mui/material";
-import {
-    CheckCircle as CheckCircleIcon,
-    CheckCircleOutlined as CheckCircleOutlineIcon,
-} from "@mui/icons-material";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 
 interface ReadStateToggleProps {
     postId: string;

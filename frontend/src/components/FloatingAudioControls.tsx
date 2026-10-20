@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Box, Fab, Stack, Button } from "@mui/material";
-import { PlayArrow as PlayIcon, Pause as PauseIcon } from "@mui/icons-material";
+import PlayIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
 import type { UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { PLAYBACK_SPEEDS } from "../constants/audio";
 

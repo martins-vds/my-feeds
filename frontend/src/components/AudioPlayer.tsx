@@ -10,11 +10,9 @@ import {
     Menu,
     MenuItem,
 } from "@mui/material";
-import {
-    PlayArrow as PlayIcon,
-    Pause as PauseIcon,
-    Replay as RetryIcon,
-} from "@mui/icons-material";
+import PlayIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
+import RetryIcon from "@mui/icons-material/Replay";
 import type { AudioStatus, UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { Waveform } from "./Waveform";
 import { PLAYBACK_SPEEDS } from "../constants/audio";

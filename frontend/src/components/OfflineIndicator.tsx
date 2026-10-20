@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Snackbar, Alert, Button, Box } from "@mui/material";
-import { WifiOff as OfflineIcon, Wifi as OnlineIcon } from "@mui/icons-material";
+import OfflineIcon from "@mui/icons-material/WifiOff";
+import OnlineIcon from "@mui/icons-material/Wifi";
 
 /**
  * OfflineIndicator - Shows connectivity status and SW updates

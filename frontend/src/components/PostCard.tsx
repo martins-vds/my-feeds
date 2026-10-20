@@ -13,12 +13,10 @@ import {
     Chip,
     Tooltip,
 } from "@mui/material";
-import {
-    CheckCircle as ReadIcon,
-    RadioButtonUnchecked as UnreadIcon,
-    VolumeUp as AudioIcon,
-    OpenInNew as ExternalLinkIcon,
-} from "@mui/icons-material";
+import ReadIcon from "@mui/icons-material/CheckCircle";
+import UnreadIcon from "@mui/icons-material/RadioButtonUnchecked";
+import AudioIcon from "@mui/icons-material/VolumeUp";
+import ExternalLinkIcon from "@mui/icons-material/OpenInNew";
 import type { PostSummary } from "../hooks/usePostsData";
 
 interface PostCardProps {

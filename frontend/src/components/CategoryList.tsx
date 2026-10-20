@@ -26,19 +26,17 @@ import {
   Chip,
   Divider,
 } from "@mui/material";
-import {
-  Folder as FolderIcon,
-  FolderOpen as FolderOpenIcon,
-  Add as AddIcon,
-  MoreVert as MoreVertIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
-  ChevronRight as ChevronRightIcon,
-  RssFeed as RssFeedIcon,
-  DoneAll as MarkReadIcon,
-  RemoveDone as MarkUnreadIcon,
-} from "@mui/icons-material";
+import FolderIcon from "@mui/icons-material/Folder";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import AddIcon from "@mui/icons-material/Add";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import RssFeedIcon from "@mui/icons-material/RssFeed";
+import MarkReadIcon from "@mui/icons-material/DoneAll";
+import MarkUnreadIcon from "@mui/icons-material/RemoveDone";
 import type { Category, Feed } from "../types";
 import { CategoryForm } from "./CategoryForm";
 import { FeedList } from "./FeedList";

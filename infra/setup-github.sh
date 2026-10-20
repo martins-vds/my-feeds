@@ -67,13 +67,15 @@ setvar WEB_APP_NAME "$WEB_APP_NAME"
 
 # Microsoft sign-in. The backend uses the /common endpoint: work/school + personal accounts.
 REDIRECT_URI="https://$WEB_APP_NAME.azurewebsites.net/api/auth/microsoft/callback"
+# Local docker compose dev backend (OAUTH_REDIRECT_BASE_URL in docker-compose.override.yml).
+DEV_REDIRECT_URI="http://localhost:${BACKEND_PORT:-5000}/api/auth/microsoft/callback"
 MS_APP_ID=$(az ad app list --display-name "$APP_REG" --query "[0].appId" -o tsv)
 if [ -z "$MS_APP_ID" ]; then
   MS_APP_ID=$(az ad app create --display-name "$APP_REG" \
     --sign-in-audience AzureADandPersonalMicrosoftAccount \
-    --web-redirect-uris "$REDIRECT_URI" --query appId -o tsv)
+    --web-redirect-uris "$REDIRECT_URI" "$DEV_REDIRECT_URI" --query appId -o tsv)
 else
-  az ad app update --id "$MS_APP_ID" --web-redirect-uris "$REDIRECT_URI"
+  az ad app update --id "$MS_APP_ID" --web-redirect-uris "$REDIRECT_URI" "$DEV_REDIRECT_URI"
 fi
 setvar MICROSOFT_CLIENT_ID "$MS_APP_ID"
 # Only mint a client secret once; re-runs keep the existing one.

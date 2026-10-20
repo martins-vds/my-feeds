@@ -16,11 +16,9 @@ import {
   ListItemIcon,
   ListItemText,
 } from "@mui/material";
-import {
-  Logout as LogoutIcon,
-  Settings as SettingsIcon,
-  RssFeed as RssFeedIcon,
-} from "@mui/icons-material";
+import LogoutIcon from "@mui/icons-material/Logout";
+import SettingsIcon from "@mui/icons-material/Settings";
+import RssFeedIcon from "@mui/icons-material/RssFeed";
 import { useAuth } from "../contexts/AuthContext";
 
 export function Header() {

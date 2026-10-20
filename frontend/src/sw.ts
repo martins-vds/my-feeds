@@ -40,10 +40,14 @@ const CACHE_NAMES = {
 
 /**
  * API routes - Network first with cache fallback
- * Cache responses for offline reading
+ * Cache responses for offline reading. Auth endpoints and navigations (OAuth
+ * login redirects) bypass the SW: caching them replays stale redirects/sessions.
  */
 registerRoute(
-    ({ url }) => url.pathname.startsWith("/api/"),
+    ({ url, request }) =>
+        url.pathname.startsWith("/api/") &&
+        !url.pathname.startsWith("/api/auth/") &&
+        request.mode !== "navigate",
     new NetworkFirst({
         cacheName: CACHE_NAMES.api,
         plugins: [

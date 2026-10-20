@@ -11,7 +11,7 @@ import {
     Alert,
     Stack,
 } from "@mui/material";
-import { Refresh as RefreshIcon } from "@mui/icons-material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import PostCard from "./PostCard";
 import { PostListSkeleton } from "./skeletons/PostListSkeleton";
 import type { PostSummary } from "../hooks/usePostsData";

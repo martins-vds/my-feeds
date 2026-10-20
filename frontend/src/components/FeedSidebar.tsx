@@ -16,7 +16,7 @@ import {
     ToggleButtonGroup,
     Divider,
 } from "@mui/material";
-import { Inbox as InboxIcon } from "@mui/icons-material";
+import InboxIcon from "@mui/icons-material/Inbox";
 import { CategoryList } from "./CategoryList";
 import type { Category, Feed } from "../types";
 import type { ReadState } from "../hooks/usePostsData";
