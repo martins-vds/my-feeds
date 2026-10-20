@@ -47,59 +47,65 @@ class TestTimingsPath:
 
 
 class TestTimingsRoundTrip:
-    def test_save_load_exists_delete(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_save_load_exists_delete(self, cache_manager):
         key = _key("cd")
 
-        assert cache_manager.exists_timings(key) is False
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.exists_timings(key) is False
+        assert await cache_manager.load_timings(key) is None
 
-        cache_manager.save_timings(key, VALID_PAYLOAD)
+        await cache_manager.save_timings(key, VALID_PAYLOAD)
 
-        assert cache_manager.exists_timings(key) is True
-        assert cache_manager.load_timings(key) == VALID_PAYLOAD
+        assert await cache_manager.exists_timings(key) is True
+        assert await cache_manager.load_timings(key) == VALID_PAYLOAD
 
-        assert cache_manager.delete_timings(key) is True
-        assert cache_manager.exists_timings(key) is False
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.delete_timings(key) is True
+        assert await cache_manager.exists_timings(key) is False
+        assert await cache_manager.load_timings(key) is None
 
-    def test_delete_missing_returns_false(self, cache_manager):
-        assert cache_manager.delete_timings(_key("ee")) is False
+    @pytest.mark.asyncio
+    async def test_delete_missing_returns_false(self, cache_manager):
+        assert await cache_manager.delete_timings(_key("ee")) is False
 
 
 class TestCorruptTimings:
-    def test_invalid_json_returns_none(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_invalid_json_returns_none(self, cache_manager):
         key = _key("ef")
         path = cache_manager.get_timings_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{ this is not valid json")
 
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.load_timings(key) is None
 
-    def test_wrong_shape_returns_none(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_wrong_shape_returns_none(self, cache_manager):
         key = _key("12")
         path = cache_manager.get_timings_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # Missing required "words"/"schemaVersion".
         path.write_text(json.dumps({"foo": "bar"}))
 
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.load_timings(key) is None
 
-    def test_words_not_a_list_returns_none(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_words_not_a_list_returns_none(self, cache_manager):
         key = _key("13")
         path = cache_manager.get_timings_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"schemaVersion": 1, "words": "nope"}))
 
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.load_timings(key) is None
 
-    def test_non_object_json_returns_none(self, cache_manager):
+    @pytest.mark.asyncio
+    async def test_non_object_json_returns_none(self, cache_manager):
         key = _key("14")
         path = cache_manager.get_timings_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # Well-formed JSON, but a top-level array rather than an object.
         path.write_text(json.dumps([1, 2, 3]))
 
-        assert cache_manager.load_timings(key) is None
+        assert await cache_manager.load_timings(key) is None
 
 
 class TestOrphanReclamation:

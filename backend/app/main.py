@@ -97,6 +97,9 @@ def create_app() -> Quart:
     @app.before_serving
     async def startup():
         """Initialize resources on startup."""
+        from app.config.container import create_cache_manager
+
+        await create_cache_manager().initialize()
         await init_db()
 
         # Background jobs (run separately from feed ingestion; skipped in
@@ -121,6 +124,9 @@ def create_app() -> Quart:
     @app.after_serving
     async def shutdown():
         """Cleanup resources on shutdown."""
+        from app.config.container import create_cache_manager
+
+        await create_cache_manager().close()
         await close_db()
 
     # Health check endpoint

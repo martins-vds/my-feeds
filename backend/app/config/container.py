@@ -16,6 +16,7 @@ from app.infrastructure.persistence.database import get_session_factory
 # =============================================================================
 
 _settings: Settings | None = None
+_cache_manager = None
 
 
 def get_settings_instance() -> Settings:
@@ -243,17 +244,32 @@ def create_cache_manager():
     Returns:
         AudioCacheManager configured from settings
     """
-    from pathlib import Path
     from app.infrastructure.tts.cache_manager import AudioCacheManager
+    from app.infrastructure.tts.cache_provider import AzureBlobCacheProvider
 
+    global _cache_manager
+    if _cache_manager is not None:
+        return _cache_manager
     settings = get_settings_instance()
-    cache_dir = Path(settings.audio_cache_dir)
+    if settings.audio_cache_provider == "azure_blob":
+        provider = AzureBlobCacheProvider(
+            service_url=settings.azure_blob_service_url,
+            container_name=settings.azure_blob_container_name,
+        )
+        _cache_manager = AudioCacheManager(
+            max_size_mb=settings.audio_max_cache_size_mb,
+            cache_version=settings.audio_cache_version,
+            provider=provider,
+        )
+    else:
+        from pathlib import Path
 
-    return AudioCacheManager(
-        cache_dir=cache_dir,
-        max_size_mb=settings.audio_max_cache_size_mb,
-        cache_version=settings.audio_cache_version,
-    )
+        _cache_manager = AudioCacheManager(
+            cache_dir=Path(settings.audio_cache_dir),
+            max_size_mb=settings.audio_max_cache_size_mb,
+            cache_version=settings.audio_cache_version,
+        )
+    return _cache_manager
 
 
 def create_audio_service(session: AsyncSession):

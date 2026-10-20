@@ -217,7 +217,7 @@ class TestPostAudioWordTimings:
         mp3 = cache.get_file_path(cache_key)
         mp3.parent.mkdir(parents=True, exist_ok=True)
         mp3.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 512)
-        cache.save_timings(
+        await cache.save_timings(
             cache_key,
             {"schemaVersion": 1, "voiceId": "en-US-AriaNeural", "words": words},
         )
@@ -240,7 +240,6 @@ class TestPostAudioWordTimings:
         finally:
             await _delete_audio_row(post_id)
             await cache.delete(cache_key)
-            cache.delete_timings(cache_key)
 
     @pytest.mark.asyncio
     async def test_omits_word_timings_when_sidecar_corrupt(

@@ -107,12 +107,12 @@ class TestGenerateForPostBranches:
         # Freshness check: the stored key still matches the current one, so the
         # clip is served as-is rather than regenerated.
         cache.generate_cache_key.return_value = "c" * 64
-        cache.exists.return_value = True
-        cache.exists_timings.return_value = True
-        cache.load_timings.return_value = {
+        cache.exists = AsyncMock(return_value=True)
+        cache.exists_timings = AsyncMock(return_value=True)
+        cache.load_timings = AsyncMock(return_value={
             "schemaVersion": 1,
             "words": [{"text": "Hi", "startMs": 0, "durationMs": 10}],
-        }
+        })
         tts = MagicMock()
         tts.synthesize_with_timings = AsyncMock()
 
@@ -144,21 +144,24 @@ class TestGenerateForPostBranches:
 
         tts = MagicMock()
         tts.voice_id = "en-US-AriaNeural"
-        tts.synthesize_with_timings = AsyncMock(
-            return_value=[WordTiming(text="Title", start_ms=0, duration_ms=100)]
-        )
+        async def synthesize(_text, path):
+            path.write_bytes(b"audio")
+            return [WordTiming(text="Title", start_ms=0, duration_ms=100)]
+
+        tts.synthesize_with_timings = AsyncMock(side_effect=synthesize)
         cache = MagicMock()
         # Current key differs from the stored "c"*64 -> stale -> regenerate.
         cache.generate_cache_key.return_value = "e" * 64
-        cache.get_file_path.return_value = tmp_path / "e.mp3"
-        cache.get_file_size.return_value = 8000
-        cache._cache_dir = tmp_path
-        cache.exists.return_value = True
-        cache.exists_timings.return_value = True
-        cache.load_timings.return_value = {
+        cache.save = AsyncMock()
+        cache.get_file_size = AsyncMock(return_value=8000)
+        cache.get_storage_path.return_value = "ee/" + "e" * 64 + ".mp3"
+        cache.exists = AsyncMock(return_value=True)
+        cache.exists_timings = AsyncMock(return_value=True)
+        cache.save_timings = AsyncMock()
+        cache.load_timings = AsyncMock(return_value={
             "schemaVersion": 1,
             "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
-        }
+        })
 
         service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
         result = await service.generate_for_post(post_id)
@@ -186,18 +189,21 @@ class TestGenerateForPostBranches:
 
         tts = MagicMock()
         tts.voice_id = "en-US-AriaNeural"
-        tts.synthesize_with_timings = AsyncMock(
-            return_value=[WordTiming(text="Title", start_ms=0, duration_ms=100)]
-        )
+        async def synthesize(_text, path):
+            path.write_bytes(b"audio")
+            return [WordTiming(text="Title", start_ms=0, duration_ms=100)]
+
+        tts.synthesize_with_timings = AsyncMock(side_effect=synthesize)
         cache = MagicMock()
         cache.generate_cache_key.return_value = "d" * 64
-        cache.get_file_path.return_value = tmp_path / "d.mp3"
-        cache.get_file_size.return_value = 8000
-        cache._cache_dir = tmp_path
-        cache.load_timings.return_value = {
+        cache.save = AsyncMock()
+        cache.get_file_size = AsyncMock(return_value=8000)
+        cache.get_storage_path.return_value = "dd/" + "d" * 64 + ".mp3"
+        cache.save_timings = AsyncMock()
+        cache.load_timings = AsyncMock(return_value={
             "schemaVersion": 1,
             "words": [{"text": "Title", "startMs": 0, "durationMs": 100}],
-        }
+        })
 
         service = _make_service(tts=tts, cache=cache, audio_repo=audio_repo, post_repo=post_repo)
         result = await service.generate_for_post(post_id)
@@ -223,20 +229,22 @@ class TestLoadWordTimings:
             {"schemaVersion": 1, "words": "nope"},  # words not a list
         ],
     )
-    def test_returns_none_for_unusable_payload(self, payload):
+    @pytest.mark.asyncio
+    async def test_returns_none_for_unusable_payload(self, payload):
         cache = MagicMock()
-        cache.load_timings.return_value = payload
+        cache.load_timings = AsyncMock(return_value=payload)
         service = _make_service(cache=cache)
 
-        assert service._load_word_timings("k" * 64) is None
+        assert await service._load_word_timings("k" * 64) is None
 
-    def test_returns_words_for_valid_payload(self):
+    @pytest.mark.asyncio
+    async def test_returns_words_for_valid_payload(self):
         words = [{"text": "Hi", "startMs": 0, "durationMs": 10}]
         cache = MagicMock()
-        cache.load_timings.return_value = {"schemaVersion": 1, "words": words}
+        cache.load_timings = AsyncMock(return_value={"schemaVersion": 1, "words": words})
         service = _make_service(cache=cache)
 
-        assert service._load_word_timings("k" * 64) == words
+        assert await service._load_word_timings("k" * 64) == words
 
 
 class TestZeroBoundaryProcessing:
@@ -282,7 +290,7 @@ class TestZeroBoundaryProcessing:
         assert first.status == AudioStatus.READY
         created = store[post_id]
         # Sidecar written despite zero boundaries, and the row marked processed.
-        assert cache.exists_timings(created.cache_key) is True
+        assert await cache.exists_timings(created.cache_key) is True
         assert created.has_timings is True
         # Empty timings -> the API omits wordTimings (highlighting disabled).
         assert first.word_timings is None
