@@ -58,9 +58,9 @@ class Settings(BaseSettings):
         description="Public base URL of the frontend, used for post-login redirects in dev.",
     )
 
-    # Azure Text-to-Speech
-    azure_speech_key: str = ""
-    azure_speech_region: str = "eastus"
+    # Text-to-Speech
+    tts_provider: Literal["edge", "azure"] = "edge"
+    azure_speech_endpoint: str = ""
 
     # Audio Cache
     audio_cache_dir: str = "audio_cache"

@@ -221,8 +221,8 @@ def create_audio_repository(session: AsyncSession):
 def create_tts_service():
     """Create TTSService instance.
 
-    Uses edge-tts (Microsoft Edge's online TTS, no API key required) by
-    default, and a mock during tests.
+    Picked by TTS_PROVIDER: "edge" (default, no API key) or "azure"
+    (needs AZURE_SPEECH_ENDPOINT + Entra ID access); a mock during tests.
 
     Returns:
         TTSService implementation
@@ -233,6 +233,11 @@ def create_tts_service():
         from app.infrastructure.tts.mock_tts import MockTTSService
 
         return MockTTSService()
+
+    if settings.tts_provider == "azure":
+        from app.infrastructure.tts.azure_tts import AzureTTSService
+
+        return AzureTTSService(settings.azure_speech_endpoint)
 
     from app.infrastructure.tts.edge_tts_service import EdgeTTSService
 

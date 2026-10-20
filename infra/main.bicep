@@ -218,6 +218,29 @@ module appInsights 'br/public:avm/res/insights/component:0.8.0' = {
   }
 }
 
+var speechName = 'spch-${token}'
+
+// Public endpoint, Entra ID only: the app reaches it over App Service's outbound IPs (no VNet egress).
+module speech 'br/public:avm/res/cognitive-services/account:0.19.1' = {
+  scope: rg
+  params: {
+    name: speechName
+    location: location
+    tags: tags
+    kind: 'SpeechServices'
+    sku: 'S0'
+    customSubDomainName: speechName
+    publicNetworkAccess: 'Enabled'
+    roleAssignments: [
+      {
+        principalId: identity.outputs.principalId
+        principalType: 'ServicePrincipal'
+        roleDefinitionIdOrName: 'Cognitive Services Speech User'
+      }
+    ]
+  }
+}
+
 module plan 'br/public:avm/res/web/serverfarm:0.7.0' = {
   scope: rg
   params: {
@@ -276,6 +299,8 @@ module web 'br/public:avm/res/web/site:0.24.0' = {
           AUDIO_CACHE_PROVIDER: 'azure_blob'
           AZURE_BLOB_SERVICE_URL: storage.outputs.primaryBlobEndpoint
           AZURE_BLOB_CONTAINER_NAME: 'audio-cache'
+          TTS_PROVIDER: 'azure'
+          AZURE_SPEECH_ENDPOINT: speech.outputs.endpoint
           AZURE_CLIENT_ID: identity.outputs.clientId
           GITHUB_CLIENT_ID: githubClientId
           GITHUB_CLIENT_SECRET: githubClientSecret

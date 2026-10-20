@@ -31,7 +31,7 @@ class TestAzureTTSService:
         """Create AzureTTSService instance with mocked config."""
         from app.infrastructure.tts.azure_tts import AzureTTSService
 
-        return AzureTTSService(speech_key="test-key", speech_region="eastus")
+        return AzureTTSService(endpoint="https://test.cognitiveservices.azure.com/")
 
     @pytest.mark.asyncio
     async def test_synthesize_creates_audio_file(self, azure_tts_service, tmp_path):
@@ -94,26 +94,51 @@ class TestAzureTTSService:
 
     def test_default_voice_is_set(self, azure_tts_service):
         """AzureTTSService uses default neural voice."""
-        assert azure_tts_service.voice_id == "en-US-JennyNeural"
+        assert azure_tts_service.voice_id == "en-US-AndrewMultilingualNeural"
 
     def test_output_format_is_mp3(self, azure_tts_service):
         """AzureTTSService outputs MP3 format."""
         assert azure_tts_service.output_format == "mp3"
 
     @pytest.mark.asyncio
-    async def test_synthesize_with_timings_delegates_and_returns_empty(
+    async def test_synthesize_with_timings_returns_word_boundaries(
         self, azure_tts_service, tmp_path
     ):
-        """Azure word-boundary capture is deferred (T009): synthesis still runs,
-        but no timings are returned yet, so keyed Azure deployments play without
-        read-along. Pins the deferred contract until parity is implemented."""
-        output_path = tmp_path / "azure.mp3"
-        azure_tts_service.synthesize = AsyncMock()
+        """Word boundary events become WordTimings; punctuation is dropped."""
+        from datetime import timedelta
 
-        timings = await azure_tts_service.synthesize_with_timings("Hello world", output_path)
+        import azure.cognitiveservices.speech as speechsdk
 
-        assert timings == []
-        azure_tts_service.synthesize.assert_awaited_once_with("Hello world", output_path)
+        def evt(text, offset, kind):
+            return MagicMock(
+                text=text,
+                audio_offset=offset,
+                duration=timedelta(milliseconds=200),
+                boundary_type=kind,
+            )
+
+        with patch("azure.cognitiveservices.speech.SpeechSynthesizer") as mock_synth_class:
+            synth = mock_synth_class.return_value
+
+            def speak(_text):
+                on_word = synth.synthesis_word_boundary.connect.call_args.args[0]
+                on_word(evt("Hello", 0, speechsdk.SpeechSynthesisBoundaryType.Word))
+                on_word(evt(",", 3_000_000, speechsdk.SpeechSynthesisBoundaryType.Punctuation))
+                on_word(evt("world", 5_000_000, speechsdk.SpeechSynthesisBoundaryType.Word))
+                result = MagicMock()
+                result.reason.name = "SynthesizingAudioCompleted"
+                return MagicMock(get=MagicMock(return_value=result))
+
+            synth.speak_text_async.side_effect = speak
+
+            timings = await azure_tts_service.synthesize_with_timings(
+                "Hello, world", tmp_path / "a.mp3"
+            )
+
+        assert [(t.text, t.start_ms, t.duration_ms) for t in timings] == [
+            ("Hello", 0, 200),
+            ("world", 500, 200),
+        ]
 
 
 class TestMockTTSService:
