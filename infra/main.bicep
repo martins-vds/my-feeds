@@ -15,6 +15,12 @@ param allowedIps string = ''
 @description('Web app name (global *.azurewebsites.net). setup-github.sh pins it so the OAuth redirect URI is known before deploy.')
 param webAppName string = ''
 
+@description('Whether the web app already exists (azd: SERVICE_WEB_RESOURCE_EXISTS). When true, provision keeps its current image.')
+param webExists bool = false
+
+@description('Image for a new web app (azd: SERVICE_WEB_IMAGE_NAME). Empty = placeholder until `azd deploy`.')
+param webImageName string = ''
+
 @description('Port the container listens on (PORT for the app, WEBSITES_PORT for App Service).')
 param appPort int = 8000
 
@@ -105,6 +111,9 @@ module registry 'br/public:avm/res/container-registry/registry:0.13.1' = {
     acrSku: 'Basic'
     acrAdminUserEnabled: false
     anonymousPullEnabled: false
+    // App Service pulls with a managed-identity token scoped to ARM; the module
+    // defaults this to 'disabled', which makes the pull fail with Unauthorized.
+    azureADAuthenticationAsArmPolicyStatus: 'enabled'
     roleAssignments: [
       {
         principalId: identity.outputs.principalId
@@ -242,8 +251,7 @@ module web 'br/public:avm/res/web/site:0.24.0' = {
       ipSecurityRestrictionsDefaultAction: 'Deny'
       ipSecurityRestrictions: [for (ip, i) in ips: { name: 'allowed-${i}', ipAddress: '${ip}/32', action: 'Allow', priority: 100 + i }]
       scmIpSecurityRestrictionsUseMain: true
-      // Placeholder until `azd deploy` pushes the real image.
-      linuxFxVersion: 'DOCKER|mcr.microsoft.com/appsvc/staticsite:latest'
+      linuxFxVersion: linuxFxVersion
       acrUseManagedIdentityCreds: true
       acrUserManagedIdentityID: identity.outputs.clientId
       alwaysOn: true
@@ -283,7 +291,19 @@ module web 'br/public:avm/res/web/site:0.24.0' = {
 
 var publicUrl = 'https://${appName}.azurewebsites.net'
 
+// Re-provisioning must not reset the app to the placeholder image: reuse the running image.
+resource existingWebConfig 'Microsoft.Web/sites/config@2024-04-01' existing = if (webExists) {
+  scope: rg
+  name: '${appName}/web'
+}
+var placeholderImage = 'DOCKER|mcr.microsoft.com/appsvc/staticsite:latest'
+var linuxFxVersion = webExists
+  ? existingWebConfig!.properties.linuxFxVersion
+  : (empty(webImageName) ? placeholderImage : 'DOCKER|${webImageName}')
+
 output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
 output SERVICE_WEB_NAME string = web.outputs.name
 output SERVICE_WEB_URI string = publicUrl
+output SERVICE_WEB_RESOURCE_EXISTS bool = true
+output SERVICE_WEB_IMAGE_NAME string = replace(linuxFxVersion, 'DOCKER|', '')
