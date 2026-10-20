@@ -10,6 +10,7 @@ from app.api.routes import register_routes
 from app.config.container import RequestContainer, set_request_container
 from app.config.logging import setup_logging
 from app.config.settings import get_settings
+from app.config.telemetry import setup_telemetry
 from app.infrastructure.persistence.database import close_db, init_db
 
 
@@ -24,6 +25,8 @@ def create_app() -> Quart:
 
     # Create Quart app
     app = Quart(__name__)
+    # After setup_logging: basicConfig(force=True) would drop the Azure Monitor log handler.
+    setup_telemetry(app)
     app.config["FRONTEND_DIST_DIR"] = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
     # Load settings

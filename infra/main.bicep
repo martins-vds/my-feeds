@@ -188,6 +188,27 @@ module postgresFirewall 'postgres-firewall.bicep' = {
   }
 }
 
+module logs 'br/public:avm/res/operational-insights/workspace:0.16.1' = {
+  scope: rg
+  params: {
+    name: 'log-${token}'
+    location: location
+    tags: tags
+    dataRetention: 30
+  }
+}
+
+// ponytail: public ingestion/query endpoints; full isolation needs an Azure Monitor Private Link Scope.
+module appInsights 'br/public:avm/res/insights/component:0.8.0' = {
+  scope: rg
+  params: {
+    name: 'appi-${token}'
+    location: location
+    tags: tags
+    workspaceResourceId: logs.outputs.resourceId
+  }
+}
+
 module plan 'br/public:avm/res/web/serverfarm:0.7.0' = {
   scope: rg
   params: {
@@ -212,7 +233,10 @@ module web 'br/public:avm/res/web/site:0.24.0' = {
     httpsOnly: true
     managedIdentities: { userAssignedResourceIds: [identity.outputs.resourceId] }
     virtualNetworkSubnetResourceId: vnet.outputs.subnetResourceIds[0]
-    outboundVnetRouting: { allTraffic: true }
+    // Only private-IP traffic (Postgres/Blob private endpoints) goes through the VNet; internet
+    // egress (ACR pull, Entra, feeds, OAuth, App Insights) uses App Service's outbound IPs.
+    // ponytail: route-all needs a NAT gateway (~US$35/mo) — the VNet has no internet egress.
+    outboundVnetRouting: { allTraffic: false, imagePullTraffic: false }
     publicNetworkAccess: 'Enabled'
     siteConfig: {
       ipSecurityRestrictionsDefaultAction: 'Deny'
@@ -230,6 +254,8 @@ module web 'br/public:avm/res/web/site:0.24.0' = {
       {
         name: 'appsettings'
         properties: {
+          APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.outputs.connectionString
+          OTEL_SERVICE_NAME: 'my-feeds-web'
           WEBSITES_PORT: string(appPort)
           PORT: string(appPort)
           WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'false'
