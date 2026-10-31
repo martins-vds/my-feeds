@@ -4,6 +4,7 @@
 
 import React, { useId, useMemo, useState } from "react";
 import { Alert, Box, Button, Typography, Checkbox, FormControlLabel } from "@mui/material";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import DOMPurify from "dompurify";
 import { hasReadableContent } from "../utils/readableContent";
 import { usePublisherImages } from "../hooks/usePublisherImages";
@@ -144,11 +145,18 @@ export const PostContent = React.forwardRef<HTMLDivElement, PostContentProps>(fu
         ) : (
           <Alert
             severity="warning"
+            icon={false}
             role="note"
             aria-label="Image security notice"
             sx={{ py: 0.5, "& .MuiAlert-message": { width: "100%", minWidth: 0 } }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 0.5 }}>
+            <Box sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "22px minmax(0, 1fr)", sm: "22px minmax(0, max-content) auto" },
+              alignItems: "center",
+              columnGap: 1.5,
+            }}>
+              <WarningAmberIcon sx={{ fontSize: 22, color: "warning.main" }} />
               <Typography variant="body2">Images disabled for security reasons.</Typography>
               <Button
                 color="inherit"
@@ -156,17 +164,23 @@ export const PostContent = React.forwardRef<HTMLDivElement, PostContentProps>(fu
                 aria-expanded={showImageDetails}
                 aria-controls={showImageDetails ? imagePrivacyId : undefined}
                 onClick={() => setShowImageDetails((shown) => !shown)}
-                sx={{ textTransform: "none", textDecoration: "underline", minHeight: 44 }}
+                sx={{
+                  gridColumn: { xs: 2, sm: "auto" },
+                  justifySelf: "start",
+                  textTransform: "none",
+                  textDecoration: "underline",
+                  minHeight: 44,
+                }}
               >
                 Learn more
               </Button>
+              {showImageDetails && (
+                <Typography id={imagePrivacyId} variant="body2" sx={{ mt: 0.5, gridColumn: "2 / -1" }}>
+                  Loading publisher images shares your IP address and may reveal which article you
+                  are reading to the publisher. Image loading is disabled by this app&apos;s operator.
+                </Typography>
+              )}
             </Box>
-            {showImageDetails && (
-              <Typography id={imagePrivacyId} variant="body2" sx={{ mt: 0.5 }}>
-                Loading publisher images shares your IP address and may reveal which article you
-                are reading to the publisher. Image loading is disabled by this app&apos;s operator.
-              </Typography>
-            )}
           </Alert>
         )}
       </Box>
