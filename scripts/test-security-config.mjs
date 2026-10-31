@@ -7,6 +7,15 @@ import { fileURLToPath } from "node:url";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+test("production ACR builds verify pnpm without BuildKit-only ADD flags", () => {
+  for (const file of ["Dockerfile", "frontend/Dockerfile"]) {
+    const text = read(file);
+    assert.doesNotMatch(text, /ADD --checksum=/);
+    assert.match(text, /fd1eab68a6d403f35cf3259c53780d70b0f14bd74e39da2f917d201f554d8665  \/opt\/pnpm\.tgz/);
+    assert.match(text, /sha256sum -c - && npm install --global \/opt\/pnpm\.tgz/);
+  }
+});
+
 test("every external container and action reference is immutable", () => {
   for (const file of ["Dockerfile", "backend/Dockerfile", "frontend/Dockerfile"]) {
     const text = read(file);

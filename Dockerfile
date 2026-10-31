@@ -4,8 +4,9 @@ FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf
 
 ENV PNPM_HOME=/pnpm \
     PATH="/pnpm:$PATH"
-ADD --checksum=sha256:fd1eab68a6d403f35cf3259c53780d70b0f14bd74e39da2f917d201f554d8665 https://registry.npmjs.org/pnpm/-/pnpm-8.15.0.tgz /opt/pnpm.tgz
-RUN npm install --global /opt/pnpm.tgz && rm /opt/pnpm.tgz
+ADD https://registry.npmjs.org/pnpm/-/pnpm-8.15.0.tgz /opt/pnpm.tgz
+RUN echo "fd1eab68a6d403f35cf3259c53780d70b0f14bd74e39da2f917d201f554d8665  /opt/pnpm.tgz" \
+    | sha256sum -c - && npm install --global /opt/pnpm.tgz && rm /opt/pnpm.tgz
 
 WORKDIR /build
 ARG VITE_ALLOW_EXTERNAL_IMAGES=false
