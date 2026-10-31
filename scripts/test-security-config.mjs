@@ -16,6 +16,70 @@ test("production ACR builds verify pnpm without BuildKit-only ADD flags", () => 
   }
 });
 
+test("azd consumes the web service and deploys only the published immutable image", () => {
+  const script = read("infra/deploy-runtime.sh");
+  const workflow = read(".github/workflows/deploy.yml");
+  assert.match(script, /azd publish web --to "\$registry\/my-feeds:\$GITHUB_SHA" --no-prompt/);
+  assert.match(script, /azd deploy web --from-package "\$RUNTIME_IMAGE" --no-prompt/);
+  assert.doesNotMatch(script, /az acr build|az rest|azd (?:up|provision)|azd env refresh/);
+  assert.match(script, /azd auth login[\s\S]*--federated-credential-provider github/);
+  assert.match(script, /AZD_DEPLOY_WEB_SLOT_NAME production/);
+  assert.match(script, /SERVICE_WEB_NAME "\$WEB_APP_NAME"/);
+  assert.match(workflow, /azd-linux-amd64\.tar\.gz/);
+  assert.match(workflow, /4ad77050ea5f9e465309891b0aa7946cd87f0f590982ff54531c5ecdc1c2efd1/);
+  assert.match(workflow, /sha256sum -c -/);
+  assert.match(workflow, /--env ACTIONS_ID_TOKEN_REQUEST_URL --env ACTIONS_ID_TOKEN_REQUEST_TOKEN/);
+  const config = read("azure.yaml");
+  assert.match(config, /host: appservice/);
+  assert.match(config, /remoteBuild: true/);
+  assert.match(config, /- VITE_ALLOW_EXTERNAL_IMAGES=\$\{ALLOW_EXTERNAL_IMAGES=false\}/);
+});
+
+test("runtime azd deployment orders publish before digest deploy and stops on failures", () => {
+  const shellRoot = process.platform === "win32"
+    ? root.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`)
+    : root;
+  const digest = `sha256:${"a".repeat(64)}`;
+  for (const mode of ["success", "publish-failure", "invalid-digest"]) {
+    const script = `
+set -eu
+cd '${shellRoot.replace(/'/g, "'\\''")}'
+export FEDERATED_TOKEN=synthetic AZURE_CLIENT_ID=client AZURE_TENANT_ID=tenant
+export AZURE_SUBSCRIPTION_ID=subscription AZURE_RESOURCE_GROUP=existing-rg
+export AZURE_CONTAINER_REGISTRY_NAME=existingregistry WEB_APP_NAME=existing-app
+export AZURE_ENV_NAME=existing-env AZURE_LOCATION=canadacentral GITHUB_SHA=${"b".repeat(40)}
+export MODE=${mode}
+az() {
+  case "$*" in
+    "acr show "*) printf '%s\\n' existingregistry.azurecr.io ;;
+    "acr repository show "*) if [ "$MODE" = invalid-digest ]; then echo invalid; else echo '${digest}'; fi ;;
+    *) return 0 ;;
+  esac
+}
+azd() {
+  printf 'AZD %s\\n' "$*"
+  if [ "$1" = publish ] && [ "$MODE" = publish-failure ]; then return 9; fi
+}
+export -f az azd
+bash infra/deploy-runtime.sh
+`;
+    const result = process.platform === "win32"
+      ? spawnSync("wsl", ["-d", process.env.SECURITY_TEST_WSL_DISTRO || "Ubuntu-26.04", "--", "bash", "-s"], { input: script, encoding: "utf8" })
+      : spawnSync("bash", ["-s"], { input: script, encoding: "utf8" });
+    assert.match(result.stdout, /AZD publish web --to existingregistry\.azurecr\.io\/my-feeds:/);
+    if (mode === "success") {
+      assert.equal(result.status, 0, result.stderr);
+      const deploy = `AZD deploy web --from-package existingregistry.azurecr.io/my-feeds@${digest} --no-prompt`;
+      assert.ok(result.stdout.indexOf(deploy) > result.stdout.indexOf("AZD publish web"));
+      assert.match(result.stdout, /AZD env set SERVICE_WEB_NAME existing-app --no-prompt/);
+      assert.match(result.stdout, /AZD env set AZD_DEPLOY_WEB_SLOT_NAME production --no-prompt/);
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.doesNotMatch(result.stdout, /AZD deploy /);
+    }
+  }
+});
+
 test("every external container and action reference is immutable", () => {
   for (const file of ["Dockerfile", "backend/Dockerfile", "frontend/Dockerfile"]) {
     const text = read(file);

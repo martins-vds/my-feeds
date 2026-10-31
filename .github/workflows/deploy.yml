@@ -23,6 +23,8 @@ jobs:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
       WEB_APP_NAME: ${{ vars.WEB_APP_NAME }}
@@ -32,12 +34,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build and update only the runtime image (OIDC)
+      - name: Publish and deploy azure.yaml web service with azd (OIDC)
         shell: bash
         run: |
           set -euo pipefail
           : "${AZURE_CLIENT_ID:?}" "${AZURE_TENANT_ID:?}" "${AZURE_SUBSCRIPTION_ID:?}"
+          : "${AZURE_ENV_NAME:?}" "${AZURE_LOCATION:?}"
           : "${AZURE_RESOURCE_GROUP:?}" "${AZURE_CONTAINER_REGISTRY_NAME:?}" "${WEB_APP_NAME:?}"
+          tools=$(mktemp -d)
+          trap 'rm -rf -- "$tools"' EXIT
+          curl --fail --silent --show-error --location \
+            https://github.com/Azure/azure-dev/releases/download/azure-dev-cli_1.37.2/azd-linux-amd64.tar.gz \
+            --output "$tools/azd.tar.gz"
+          echo "4ad77050ea5f9e465309891b0aa7946cd87f0f590982ff54531c5ecdc1c2efd1  $tools/azd.tar.gz" \
+            | sha256sum -c -
+          tar -xzf "$tools/azd.tar.gz" -C "$tools"
+          chmod +x "$tools/azd-linux-amd64"
           token=$(curl --fail --silent --show-error \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api%3A%2F%2FAzureADTokenExchange" \
@@ -45,9 +57,12 @@ jobs:
           echo "::add-mask::$token"
           # CLI dependencies run in an official immutable image, not the runner's mutable az.
           docker run --rm \
-            --volume "$GITHUB_WORKSPACE:/workspace:ro" --workdir /workspace \
+            --volume "$GITHUB_WORKSPACE:/workspace:rw" --workdir /workspace \
+            --volume "$tools/azd-linux-amd64:/usr/local/bin/azd:ro" \
             --env FEDERATED_TOKEN="$token" \
+            --env ACTIONS_ID_TOKEN_REQUEST_URL --env ACTIONS_ID_TOKEN_REQUEST_TOKEN \
             --env AZURE_CLIENT_ID --env AZURE_TENANT_ID --env AZURE_SUBSCRIPTION_ID \
+            --env AZURE_ENV_NAME --env AZURE_LOCATION \
             --env AZURE_RESOURCE_GROUP --env AZURE_CONTAINER_REGISTRY_NAME --env WEB_APP_NAME \
             --env GITHUB_SHA \
             --env ALLOW_EXTERNAL_IMAGES \

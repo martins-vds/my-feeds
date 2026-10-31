@@ -8,6 +8,7 @@ set -euo pipefail
 : "${AZURE_RESOURCE_GROUP:?Set the already-provisioned application resource group}"
 : "${AZURE_CONTAINER_REGISTRY_NAME:?Set the existing application registry name}"
 : "${WEB_APP_NAME:?Set the existing web app name}"
+: "${AZURE_ENV_NAME:?Set the existing azd environment name}"
 GH_ENV="${GH_ENV:-production}"
 [ "$GH_ENV" = production ] || { echo "deploy.yml admits only the production environment" >&2; exit 2; }
 REVIEWER_TYPE="${REVIEWER_TYPE:-User}"
@@ -89,6 +90,8 @@ setvar() { gh variable set "$1" --env "$GH_ENV" --repo "$REPO" --body "$2"; }
 setvar AZURE_CLIENT_ID "$CLIENT_ID"
 setvar AZURE_TENANT_ID "$TENANT_ID"
 setvar AZURE_SUBSCRIPTION_ID "$SUBSCRIPTION_ID"
+setvar AZURE_ENV_NAME "$AZURE_ENV_NAME"
+setvar AZURE_LOCATION "$LOCATION"
 setvar AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
 setvar AZURE_CONTAINER_REGISTRY_NAME "$AZURE_CONTAINER_REGISTRY_NAME"
 setvar WEB_APP_NAME "$WEB_APP_NAME"

@@ -2,6 +2,7 @@
 set -euo pipefail
 : "${FEDERATED_TOKEN:?}" "${AZURE_CLIENT_ID:?}" "${AZURE_TENANT_ID:?}"
 : "${AZURE_SUBSCRIPTION_ID:?}" "${AZURE_RESOURCE_GROUP:?}"
+: "${AZURE_ENV_NAME:?}" "${AZURE_LOCATION:?}"
 : "${AZURE_CONTAINER_REGISTRY_NAME:?}" "${WEB_APP_NAME:?}" "${GITHUB_SHA:?}"
 [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid source revision" >&2; exit 2; }
 ALLOW_EXTERNAL_IMAGES="${ALLOW_EXTERNAL_IMAGES:-false}"
@@ -15,16 +16,22 @@ unset FEDERATED_TOKEN
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 registry=$(az acr show --name "$AZURE_CONTAINER_REGISTRY_NAME" \
   --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer --output tsv)
-az acr build --registry "$AZURE_CONTAINER_REGISTRY_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
-  --image "my-feeds:$GITHUB_SHA" \
-  --build-arg "VITE_ALLOW_EXTERNAL_IMAGES=$ALLOW_EXTERNAL_IMAGES" --file Dockerfile .
+azd auth login --client-id "$AZURE_CLIENT_ID" --tenant-id "$AZURE_TENANT_ID" \
+  --federated-credential-provider github --no-prompt
+azd env new "$AZURE_ENV_NAME" --subscription "$AZURE_SUBSCRIPTION_ID" \
+  --location "$AZURE_LOCATION" --no-prompt
+azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP" --no-prompt
+azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "$registry" --no-prompt
+azd env set SERVICE_WEB_NAME "$WEB_APP_NAME" --no-prompt
+azd env set AZD_DEPLOY_WEB_SLOT_NAME production --no-prompt
+azd env set ALLOW_EXTERNAL_IMAGES "$ALLOW_EXTERNAL_IMAGES" --no-prompt
+# azure.yaml owns the Dockerfile, remote build and build arguments.
+azd publish web --to "$registry/my-feeds:$GITHUB_SHA" --no-prompt
 digest=$(az acr repository show --name "$AZURE_CONTAINER_REGISTRY_NAME" \
   --image "my-feeds:$GITHUB_SHA" --query digest --output tsv)
 [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid built image digest" >&2; exit 2; }
 export RUNTIME_IMAGE="$registry/my-feeds@$digest"
-body=$(python3 -c 'import json,os; print(json.dumps({"properties":{"linuxFxVersion":"DOCKER|"+os.environ["RUNTIME_IMAGE"]}}))')
-# PATCH only linuxFxVersion; never provision, list application secrets or change IAM.
-az rest --method patch \
-  --url "https://management.azure.com/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.Web/sites/$WEB_APP_NAME/config/web?api-version=2024-04-01" \
-  --body "$body" --output none
+# Reuse the remote image without rebuilding or deploying a mutable tag.
+azd deploy web --from-package "$RUNTIME_IMAGE" --no-prompt
+azd auth logout
 az logout

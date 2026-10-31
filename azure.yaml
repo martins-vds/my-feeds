@@ -8,3 +8,5 @@ services:
     docker:
       path: Dockerfile
       remoteBuild: true
+      buildArgs:
+        - VITE_ALLOW_EXTERNAL_IMAGES=${ALLOW_EXTERNAL_IMAGES=false}
