@@ -2,8 +2,8 @@
  * PostContent component - renders sanitized HTML content from posts
  */
 
-import React, { useMemo } from "react";
-import { Box, Typography, Checkbox, FormControlLabel } from "@mui/material";
+import React, { useId, useMemo, useState } from "react";
+import { Alert, Box, Button, Typography, Checkbox, FormControlLabel } from "@mui/material";
 import DOMPurify from "dompurify";
 import { hasReadableContent } from "../utils/readableContent";
 import { usePublisherImages } from "../hooks/usePublisherImages";
@@ -92,6 +92,8 @@ export const PostContent = React.forwardRef<HTMLDivElement, PostContentProps>(fu
   // Use content if available, fall back to summary
   const displayContent = content || summary;
   const { allowed, setAllowed, canOptIn, operatorAllowed } = usePublisherImages(userId);
+  const [showImageDetails, setShowImageDetails] = useState(false);
+  const imagePrivacyId = useId();
 
   // Posts with no real content (empty, or just a discussion/comments link
   // like Hacker News) are only available on the original site.
@@ -121,22 +123,52 @@ export const PostContent = React.forwardRef<HTMLDivElement, PostContentProps>(fu
   return (
     <>
       <Box sx={{ mb: 2 }}>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={allowed}
-              disabled={!canOptIn}
-              onChange={(_, checked) => setAllowed(checked)}
-              slotProps={{ input: { "aria-describedby": "publisher-image-privacy" } }}
+        {operatorAllowed ? (
+          <>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={allowed}
+                  disabled={!canOptIn}
+                  onChange={(_, checked) => setAllowed(checked)}
+                  slotProps={{ input: { "aria-describedby": imagePrivacyId } }}
+                />
+              }
+              label="Load publisher images for this account"
             />
-          }
-          label="Load publisher images for this account"
-        />
-        <Typography id="publisher-image-privacy" variant="body2" color="text.secondary">
-          {!operatorAllowed ? "Publisher images are disabled by the operator. " : ""}
-          Images are blocked by default. Loading them shares your IP address and may reveal which
-          article you are reading to the publisher. This choice applies only to your account.
-        </Typography>
+            <Typography id={imagePrivacyId} variant="body2" color="text.secondary">
+              Images are blocked by default. Loading them shares your IP address and may reveal which
+              article you are reading to the publisher. This choice applies only to your account.
+            </Typography>
+          </>
+        ) : (
+          <Alert
+            severity="warning"
+            role="note"
+            aria-label="Image security notice"
+            sx={{ py: 0.5, "& .MuiAlert-message": { width: "100%", minWidth: 0 } }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 0.5 }}>
+              <Typography variant="body2">Images disabled for security reasons.</Typography>
+              <Button
+                color="inherit"
+                size="small"
+                aria-expanded={showImageDetails}
+                aria-controls={showImageDetails ? imagePrivacyId : undefined}
+                onClick={() => setShowImageDetails((shown) => !shown)}
+                sx={{ textTransform: "none", textDecoration: "underline", minHeight: 44 }}
+              >
+                Learn more
+              </Button>
+            </Box>
+            {showImageDetails && (
+              <Typography id={imagePrivacyId} variant="body2" sx={{ mt: 0.5 }}>
+                Loading publisher images shares your IP address and may reveal which article you
+                are reading to the publisher. Image loading is disabled by this app&apos;s operator.
+              </Typography>
+            )}
+          </Alert>
+        )}
       </Box>
       <Box
         ref={ref}

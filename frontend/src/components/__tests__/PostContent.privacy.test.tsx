@@ -49,12 +49,34 @@ describe("publisher image consent", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
   });
 
-  it("keeps the control disabled when the operator has not enabled external images", () => {
+  it("replaces an unavailable opt-in with a compact security warning", () => {
     vi.stubEnv("VITE_ALLOW_EXTERNAL_IMAGES", "false");
     localStorage.setItem("almanac:publisher-images:v1:alice", "true");
     const { container } = render(<PostContent content={html} summary={null} userId="alice" />);
-    expect(screen.getByRole("checkbox")).toBeDisabled();
-    expect(screen.getByText(/disabled by the operator/i)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("note", { name: "Image security notice" })).toHaveTextContent(
+      "Images disabled for security reasons."
+    );
+    expect(screen.getByRole("button", { name: "Learn more" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/IP address/i)).not.toBeInTheDocument();
     expect(container.querySelector("[src]")).toBeNull();
+  });
+
+  it("reveals and collapses the privacy explanation without enabling images", () => {
+    vi.stubEnv("VITE_ALLOW_EXTERNAL_IMAGES", "false");
+    const { container } = render(<PostContent content={html} summary={null} userId="alice" />);
+    const learnMore = screen.getByRole("button", { name: "Learn more" });
+    fireEvent.click(learnMore);
+    expect(learnMore).toHaveAttribute("aria-expanded", "true");
+    const explanation = screen.getByText(/IP address/i);
+    expect(explanation).toHaveAttribute("id", learnMore.getAttribute("aria-controls"));
+    expect(explanation).toHaveTextContent(/which article you are reading/i);
+    expect(explanation).toHaveTextContent(/disabled by.*operator/i);
+    expect(container.querySelector("[src]")).toBeNull();
+    fireEvent.click(learnMore);
+    expect(learnMore).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/IP address/i)).not.toBeInTheDocument();
+    expect(container.querySelector("[src]")).toBeNull();
+    expect(localStorage.getItem("almanac:publisher-images:v1:alice")).toBeNull();
   });
 });

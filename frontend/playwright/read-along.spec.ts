@@ -165,7 +165,7 @@ const LONG_TIMINGS = ["Read", "Along", "Test", ...LONG_WORDS].map((text, i) => (
   durationMs: 40,
 }));
 
-async function setupLong(page: Page) {
+async function setupLong(page: Page, wordMs = 40) {
   await mockApi(page, `**/api/posts/${longPost.id}`, longPost);
   await mockApi(page, "**/api/categories", { categories: [] });
   await page.route(`**/api/posts/${longPost.id}/audio`, (route) =>
@@ -176,15 +176,17 @@ async function setupLong(page: Page) {
         postId: longPost.id,
         status: "ready",
         url: "/api/audio/read-along-long-key",
-        durationSeconds: 6,
+        durationSeconds: Math.max(6, (LONG_TIMINGS.length * wordMs) / 1000),
         format: "mp3",
-        wordTimings: LONG_TIMINGS,
+        wordTimings: LONG_TIMINGS.map((timing, i) => ({
+          ...timing, startMs: i * wordMs, durationMs: wordMs,
+        })),
       }),
     })
   );
   // A long clip so playback stays active for the whole test (no accidental
   // restart when the pause test clicks the control).
-  const wav = makeWav(6);
+  const wav = makeWav(Math.max(6, (LONG_TIMINGS.length * wordMs) / 1000));
   await page.route("**/api/audio/**", (route) =>
     route.fulfill({ status: 200, contentType: "audio/wav", body: wav })
   );
@@ -209,6 +211,111 @@ function titleY(page: Page): Promise<number | null> {
 }
 
 test.describe("Read-along auto-scroll", () => {
+  test("mobile inline speed menu stays anchored while audio is playing", async ({ authedPage: page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await setupLong(page, 400);
+    await page.goto(`/posts/${longPost.id}`);
+    await page.getByTestId("listen-button").click();
+    await page.getByTestId("play-pause-button").click();
+    await page.getByTestId("speed-button").click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    const before = await titleY(page);
+    const wordBefore = await activeIndex(page);
+    await expect.poll(() => activeIndex(page), { timeout: 10000 }).toBeGreaterThan(wordBefore + 12);
+    const after = await titleY(page);
+    await page.screenshot({ path: "test-results/mobile-playing-speed-menu.png" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    expect(Math.abs(after! - before!)).toBeLessThan(3);
+    await page.getByRole("menuitem", { name: "2x", exact: true }).click();
+    await expect(page.getByTestId("speed-button")).toHaveText("2x");
+    await expect.poll(() => titleY(page)).toBeLessThan(after! - 50);
+  });
+
+  test("mobile floating speed options suspend auto-scroll until dismissed", async ({ authedPage: page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await setupLong(page, 400);
+    await startLongPlayback(page);
+    await expect.poll(() => titleY(page), { timeout: 10000 }).toBeLessThan(-500);
+    await page.getByTestId("floating-speed-button").click();
+    await expect(page.getByTestId("floating-speed-options")).toBeVisible();
+    const before = await titleY(page);
+    const wordBefore = await activeIndex(page);
+    await expect.poll(() => activeIndex(page), { timeout: 10000 }).toBeGreaterThan(wordBefore + 5);
+    expect(await titleY(page)).toBe(before);
+    await page.getByTestId("floating-speed-button").press("Escape");
+    await expect(page.getByTestId("floating-speed-options")).toBeHidden();
+    await expect.poll(async () => Math.abs((await titleY(page))! - before!)).toBeGreaterThan(50);
+  });
+
+  test("mobile inline speed menu also releases auto-scroll after Escape and an outside tap", async ({ authedPage: page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await setupLong(page, 400);
+    await startLongPlayback(page);
+    for (const dismissal of ["Escape", "outside"]) {
+      await page.getByTestId("speed-button").click();
+      const before = await titleY(page);
+      const wordBefore = await activeIndex(page);
+      await expect.poll(() => activeIndex(page), { timeout: 10000 }).toBeGreaterThan(wordBefore + 3);
+      expect(await titleY(page)).toBe(before);
+      if (dismissal === "Escape") await page.getByRole("menu").press("Escape");
+      else await page.mouse.click(10, 100);
+      await expect(page.getByRole("menu")).toBeHidden();
+      await expect.poll(async () => Math.abs((await titleY(page))! - before!)).toBeGreaterThan(50);
+    }
+  });
+
+  test("mobile paused playback keeps its layout when changing speed", async ({ authedPage: page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await setupLong(page, 400);
+    await startLongPlayback(page);
+    await page.getByTestId("play-pause-button").click();
+    await expect(page.getByTestId("play-pause-button")).toHaveAttribute("aria-label", "Play");
+    const before = await titleY(page);
+    await page.getByTestId("speed-button").click();
+    await page.getByRole("menuitem", { name: "2.5x", exact: true }).click();
+    await expect(page.getByTestId("speed-button")).toHaveText("2.5x");
+    expect(await titleY(page)).toBe(before);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
+
+  test("muted playback keeps highlights and auto-scroll active with synchronized mobile controls", async ({
+    authedPage: page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await setupLong(page);
+    await page.goto(`/posts/${longPost.id}`);
+    await page.getByTestId("listen-button").click();
+    const volume = page.getByRole("slider", { name: "Audio volume" });
+    await volume.focus();
+    await volume.press("Home");
+    await expect(volume).toHaveValue("0");
+    await page.getByRole("button", { name: "Unmute audio" }).click();
+    await expect(volume).toHaveValue("100");
+    await volume.focus();
+    await volume.press("End");
+    await volume.press("ArrowLeft");
+    await expect(volume).toHaveValue("99");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(320);
+    await page.screenshot({ path: "test-results/audio-volume-mobile.png" });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.screenshot({ path: "test-results/audio-volume-desktop.png" });
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.getByRole("button", { name: "Mute audio" }).click();
+    await page.getByTestId("play-pause-button").click();
+    await expect.poll(() => activeIndex(page)).toBeGreaterThan(3);
+    await expect.poll(() => titleY(page)).toBeLessThan(0);
+    const floatingMute = page.getByTestId("floating-mute-button");
+    await expect(floatingMute).toHaveAttribute("aria-label", "Unmute audio");
+    await page.screenshot({ path: "test-results/audio-volume-floating.png" });
+    await floatingMute.click();
+    await expect(floatingMute).toHaveAttribute("aria-label", "Mute audio");
+    await expect(page.getByRole("button", { name: "Mute audio" })).toHaveCount(2);
+    await expect(volume).toHaveValue("99");
+  });
+
   test("scrolls the page down to follow the active word on a long post", async ({
     authedPage: page,
   }) => {

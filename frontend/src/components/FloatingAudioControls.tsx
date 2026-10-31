@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { Box, Fab, Stack, Button } from "@mui/material";
 import PlayIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import type { UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { PLAYBACK_SPEEDS } from "../constants/audio";
 
@@ -12,6 +14,7 @@ export interface FloatingAudioControlsProps {
   anchorRef: RefObject<HTMLElement | null>;
   /** The article footer actions row; hides the controls when it is in view. */
   footerRef?: RefObject<HTMLElement | null>;
+  onSpeedMenuOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -44,6 +47,7 @@ export function FloatingAudioControls({
   player,
   anchorRef,
   footerRef,
+  onSpeedMenuOpenChange,
 }: FloatingAudioControlsProps) {
   const playerOnScreen = useOnScreen(anchorRef, true);
   const footerOnScreen = useOnScreen(footerRef, false);
@@ -54,6 +58,10 @@ export function FloatingAudioControls({
 
   const activeClip = player.isPlaying || player.status === "paused";
   const visible = activeClip && !playerOnScreen && !footerOnScreen;
+  useEffect(() => {
+    onSpeedMenuOpenChange?.(visible && speedOpen);
+    return () => onSpeedMenuOpenChange?.(false);
+  }, [visible, speedOpen, onSpeedMenuOpenChange]);
 
   // Collapse the speed stack whenever the controls hide.
   useEffect(() => {
@@ -170,6 +178,17 @@ export function FloatingAudioControls({
           {player.playbackRate}x
         </Fab>
       </Box>
+      <Fab
+        size="small"
+        color="default"
+        aria-label={player.isMuted ? "Unmute audio" : "Mute audio"}
+        aria-pressed={player.isMuted}
+        data-testid="floating-mute-button"
+        onClick={player.toggleMute}
+        sx={{ width: 44, height: 44 }}
+      >
+        {player.isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+      </Fab>
       <Fab
         color="primary"
         aria-label={player.isPlaying ? "Pause" : "Play"}

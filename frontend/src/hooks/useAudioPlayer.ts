@@ -20,6 +20,10 @@ export interface UseAudioPlayerResult {
   seek: (time: number) => void;
   playbackRate: number;
   setPlaybackRate: (rate: number) => void;
+  volume: number;
+  isMuted: boolean;
+  setVolume: (volume: number) => void;
+  toggleMute: () => void;
   /** Ordered word timings from the READY response; null when omitted/absent. */
   wordTimings: WordTiming[] | null;
   /** Stable accessor for the live <audio> element (no re-render on read). */
@@ -42,10 +46,15 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [playbackRate, setPlaybackRateState] = useState(1);
+  const [volume, setVolumeState] = useState(1);
+  const [muted, setMuted] = useState(false);
   const [wordTimings, setWordTimings] = useState<WordTiming[] | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackRateRef = useRef(1);
+  const volumeRef = useRef(1);
+  const mutedRef = useRef(false);
+  const lastAudibleVolume = useRef(1);
   const resumeAfterValidation = useRef<HTMLAudioElement | null>(null);
   const lifetime = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,6 +110,8 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         const audio = new Audio(audioInfo.url);
         audio.preload = "metadata";
         audio.playbackRate = playbackRateRef.current;
+        audio.volume = volumeRef.current;
+        audio.muted = mutedRef.current;
 
         audio.addEventListener("loadedmetadata", () => {
           if (audio.duration && isFinite(audio.duration)) {
@@ -145,6 +156,8 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
 
               const audio = new Audio(audioInfo.url);
               audio.playbackRate = playbackRateRef.current;
+              audio.volume = volumeRef.current;
+              audio.muted = mutedRef.current;
               audioRef.current = audio;
 
               audio.addEventListener("timeupdate", () => {
@@ -215,6 +228,32 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
     }
   }, []);
 
+  const setVolume = useCallback((value: number) => {
+    if (!Number.isFinite(value)) throw new RangeError("Volume must be finite");
+    const next = Math.max(0, Math.min(1, value));
+    volumeRef.current = next;
+    setVolumeState(next);
+    if (next > 0) {
+      lastAudibleVolume.current = next;
+    }
+    mutedRef.current = next === 0;
+    setMuted(mutedRef.current);
+    if (audioRef.current) {
+      audioRef.current.volume = next;
+      audioRef.current.muted = mutedRef.current;
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (volumeRef.current === 0) {
+      setVolume(lastAudibleVolume.current);
+      return;
+    }
+    mutedRef.current = !mutedRef.current;
+    setMuted(mutedRef.current);
+    if (audioRef.current) audioRef.current.muted = mutedRef.current;
+  }, [setVolume]);
+
   const progress =
     durationSeconds && durationSeconds > 0 ? (currentTime / durationSeconds) * 100 : 0;
 
@@ -234,6 +273,10 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
     seek,
     playbackRate,
     setPlaybackRate,
+    volume,
+    isMuted: muted || volume === 0,
+    setVolume,
+    toggleMute,
     wordTimings,
     getMediaElement,
     isPlaying: status === "playing",

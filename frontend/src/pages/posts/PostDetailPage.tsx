@@ -91,6 +91,8 @@ export const PostDetailPage: React.FC = () => {
   const playerRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const readAlongPrefs = useReadAlongPreferences();
+  const [inlineSpeedOpen, setInlineSpeedOpen] = useState(false);
+  const [floatingSpeedOpen, setFloatingSpeedOpen] = useState(false);
 
   useReadAlong({
     timings: player.wordTimings,
@@ -99,7 +101,7 @@ export const PostDetailPage: React.FC = () => {
     titleRef,
     contentRef,
     highlightEnabled: readAlongPrefs.highlight,
-    autoScrollEnabled: readAlongPrefs.autoScroll,
+    autoScrollEnabled: readAlongPrefs.autoScroll && !inlineSpeedOpen && !floatingSpeedOpen,
     contentVersion: allowPublisherImages,
   });
 
@@ -356,7 +358,7 @@ export const PostDetailPage: React.FC = () => {
         {/* Audio player */}
         {readable && (
           <Box sx={{ my: 2 }} ref={playerRef}>
-            <AudioPlayer player={player} />
+            <AudioPlayer player={player} onSpeedMenuOpenChange={setInlineSpeedOpen} />
             <ReadAlongToggles
               highlight={readAlongPrefs.highlight}
               onHighlightChange={readAlongPrefs.setHighlight}
@@ -398,7 +400,12 @@ export const PostDetailPage: React.FC = () => {
         </Box>
       </Paper>
       {readable && (
-        <FloatingAudioControls player={player} anchorRef={playerRef} footerRef={footerRef} />
+        <FloatingAudioControls
+          player={player}
+          anchorRef={playerRef}
+          footerRef={footerRef}
+          onSpeedMenuOpenChange={setFloatingSpeedOpen}
+        />
       )}
     </Container>
   );

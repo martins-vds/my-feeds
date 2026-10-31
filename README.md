@@ -9,8 +9,17 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Unified Post View**: Browse latest posts across all subscribed feeds
 - **Read State Tracking**: Auto-track and manually toggle read/unread status
 - **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in
+- **Silent read-along**: Mute/unmute from the inline or floating player without
+  stopping playback, word highlighting, or auto-scroll. The inline volume slider
+  adjusts sound from 0-100%; unmuting restores the last nonzero volume. Increasing
+  volume unmutes playback. On mobile browsers that restrict volume adjustment,
+  use the device volume controls; mute remains available in the player.
+  Auto-scroll waits while either playback-speed selector is open and resumes
+  when it closes; playback and highlighting continue during speed selection.
 - **PWA Support**: Install on mobile; public app assets work offline, private articles/audio do not
 - **Privacy Defaults**: Publisher images are blocked until operator permission and per-account consent
+  When disabled by the operator, a compact security warning replaces the image
+  checkbox; **Learn more** expands the privacy explanation without loading images.
 
 ## Tech Stack
 

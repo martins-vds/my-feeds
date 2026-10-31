@@ -9,10 +9,13 @@ import {
   LinearProgress,
   Menu,
   MenuItem,
+  Slider,
 } from "@mui/material";
 import PlayIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import RetryIcon from "@mui/icons-material/Replay";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import type { AudioStatus, UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { Waveform } from "./Waveform";
 import { PLAYBACK_SPEEDS } from "../constants/audio";
@@ -25,6 +28,7 @@ interface AudioPlayerProps {
   audioUrl?: string | null;
   /** Optional initial duration. */
   durationSeconds?: number;
+  onSpeedMenuOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -50,6 +54,7 @@ export function AudioPlayer({
   player,
   audioUrl: initialAudioUrl,
   durationSeconds: initialDuration,
+  onSpeedMenuOpenChange,
 }: AudioPlayerProps) {
   const {
     status,
@@ -63,9 +68,17 @@ export function AudioPlayer({
     seek,
     playbackRate,
     setPlaybackRate,
+    volume,
+    isMuted,
+    setVolume,
+    toggleMute,
   } = player;
 
   const [speedAnchor, setSpeedAnchor] = useState<null | HTMLElement>(null);
+  useEffect(() => {
+    onSpeedMenuOpenChange?.(Boolean(speedAnchor));
+    return () => onSpeedMenuOpenChange?.(false);
+  }, [speedAnchor, onSpeedMenuOpenChange]);
 
   // Count seconds elapsed while audio is being generated so the wait shows
   // visible progress instead of a spinner that looks frozen.
@@ -209,7 +222,11 @@ export function AudioPlayer({
   return (
     <Box
       sx={{
-        display: "flex",
+        display: "grid",
+        gridTemplateColumns: {
+          xs: "44px minmax(0, 1fr) 44px",
+          sm: "44px minmax(80px, 1fr) auto 44px auto",
+        },
         alignItems: "center",
         gap: 1,
         width: "100%",
@@ -220,11 +237,12 @@ export function AudioPlayer({
         aria-label={isPlaying ? "Pause" : "Play"}
         color="primary"
         data-testid="play-pause-button"
+        sx={{ width: 44, height: 44 }}
       >
         {isPlaying ? <PauseIcon /> : <PlayIcon />}
       </IconButton>
 
-      <Box sx={{ flexGrow: 1 }}>
+      <Box sx={{ minWidth: 0, gridColumn: { xs: "2 / 4", sm: "auto" } }}>
         <Waveform audioUrl={effectiveUrl} progress={progress} onSeek={handleSeek} />
       </Box>
 
@@ -233,6 +251,7 @@ export function AudioPlayer({
         sx={{
           color: "text.secondary",
           minWidth: 45,
+          gridColumn: { xs: "1 / 3", sm: "auto" },
         }}
       >
         {effectiveDuration
@@ -265,6 +284,33 @@ export function AudioPlayer({
           </MenuItem>
         ))}
       </Menu>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, gridColumn: { xs: "1 / -1", sm: "auto" } }}>
+        <Tooltip title={isMuted ? "Unmute audio" : "Mute audio"}>
+          <IconButton
+            onClick={toggleMute}
+            aria-label={isMuted ? "Unmute audio" : "Mute audio"}
+            aria-pressed={isMuted}
+            color="primary"
+            sx={{ width: 44, height: 44 }}
+          >
+            {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+          </IconButton>
+        </Tooltip>
+        <Slider
+          aria-label="Audio volume"
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(volume * 100)}
+          onChange={(_, value) => {
+            if (typeof value === "number") setVolume(value / 100);
+          }}
+          getAriaValueText={(value) => `${value}%`}
+          valueLabelDisplay="auto"
+          valueLabelFormat={(value) => `${value}%`}
+          sx={{ width: { xs: "auto", sm: 80 }, flexGrow: { xs: 1, sm: 0 }, mx: 1 }}
+        />
+      </Box>
     </Box>
   );
 }
