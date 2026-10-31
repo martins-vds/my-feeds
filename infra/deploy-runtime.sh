@@ -25,8 +25,11 @@ azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "$registry" --no-prompt
 azd env set SERVICE_WEB_NAME "$WEB_APP_NAME" --no-prompt
 azd env set AZD_DEPLOY_WEB_SLOT_NAME production --no-prompt
 azd env set ALLOW_EXTERNAL_IMAGES "$ALLOW_EXTERNAL_IMAGES" --no-prompt
-# azure.yaml owns the Dockerfile, remote build and build arguments.
-azd publish web --to "$registry/my-feeds:$GITHUB_SHA" --no-prompt
+# Standalone azd publish skips App Service in 1.37.2. Build remotely, then let
+# azure.yaml's App Service target deploy only the resolved immutable artifact.
+az acr build --registry "$AZURE_CONTAINER_REGISTRY_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
+  --image "my-feeds:$GITHUB_SHA" \
+  --build-arg "VITE_ALLOW_EXTERNAL_IMAGES=$ALLOW_EXTERNAL_IMAGES" --file Dockerfile .
 digest=$(az acr repository show --name "$AZURE_CONTAINER_REGISTRY_NAME" \
   --image "my-feeds:$GITHUB_SHA" --query digest --output tsv)
 [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid built image digest" >&2; exit 2; }

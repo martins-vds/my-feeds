@@ -198,7 +198,7 @@ Protect `main`, select actual numeric reviewer IDs, and run operator-only
 new resource-group-scoped runtime-deployment identity. The manual
 `.github/workflows/deploy.yml` deploys only from `main`, uses checksum-pinned azd
 1.37.2 with GitHub OIDC, and consumes the `web` Docker/App Service definition in
-`azure.yaml`. `azd publish web` performs its remote ACR build with the configured
+`azure.yaml`. Azure CLI performs the remote ACR build with the configured
 image-consent build argument; `azd deploy web --from-package` deploys the resolved
 immutable digest to the existing production app. The workflow does not provision or
 receive database/OAuth/session secrets.
@@ -211,8 +211,9 @@ and `.azure/my-feeds-prod/.env` contains its azd state. Keep that directory priv
 do not commit or upload it to CI, because provisioning state can contain secrets.
 The runner creates only local azd environment metadata, with explicit existing
 resource names and production slot selection; it does not refresh infrastructure
-outputs, run `azd up`, migrate the database, or change IAM. The Azure CLI remains
-only for registry discovery/digest resolution. Application settings and registry
+outputs, run `azd up`, migrate the database, or change IAM. Azure CLI handles the
+remote build and registry/digest resolution because azd 1.37.2 skips standalone
+`azd publish` for App Service. Application settings and registry
 pull identity remain operator-provisioned.
 
 **Existing installations need operator cleanup:** inspect/revoke old broad

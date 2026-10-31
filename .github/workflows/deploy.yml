@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Publish and deploy azure.yaml web service with azd (OIDC)
+      - name: Build in ACR and deploy azure.yaml web service with azd (OIDC)
         shell: bash
         run: |
           set -euo pipefail
