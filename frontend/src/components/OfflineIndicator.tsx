@@ -86,7 +86,8 @@ export function OfflineIndicator() {
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="warning" icon={<OfflineIcon />} sx={{ width: "100%" }}>
-          You are offline. Some features may be unavailable.
+          You are offline. To protect your account, articles and audio are not saved offline.
+          Reconnect to load your reader.
         </Alert>
       </Snackbar>
 

@@ -4,9 +4,9 @@
  * pending sign-up users to /signup page.
  */
 
-import { ReactNode } from "react";
+import { Fragment, ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Box, CircularProgress } from "@mui/material";
+import { Box, CircularProgress, Modal } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext";
 
 interface ProtectedRouteProps {
@@ -14,8 +14,44 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, isPendingSignup } = useAuth();
+  const { isAuthenticated, isLoading, isPendingSignup, privateStateKey } = useAuth();
   const location = useLocation();
+
+  if (isAuthenticated) {
+    return (
+      <>
+        <Box
+          inert={isLoading}
+          aria-hidden={isLoading || undefined}
+          sx={{ visibility: isLoading ? "hidden" : "visible" }}
+        >
+          <Fragment key={privateStateKey}>{children}</Fragment>
+        </Box>
+        <Modal
+          open={isLoading}
+          sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+          slotProps={{ backdrop: { sx: { bgcolor: "background.default" } } }}
+        >
+          <Box
+            role="status"
+            aria-label="Checking your session"
+            tabIndex={-1}
+            sx={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              bgcolor: "background.default",
+              outline: "none",
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        </Modal>
+      </>
+    );
+  }
 
   // Show loading while checking auth status
   if (isLoading) {
@@ -43,8 +79,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
-  // Render protected content
-  return <>{children}</>;
+  return null;
 }
 
 export default ProtectedRoute;

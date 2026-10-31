@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useContext } from "react";
 import api from "../services/api";
+import AuthContext from "../contexts/AuthContext";
 import type { AudioInfo, AudioPending, AudioResponse, WordTiming } from "../types";
 
 export type AudioStatus =
@@ -34,6 +35,7 @@ export interface UseAudioPlayerResult {
  * @returns Audio player state and controls
  */
 export function useAudioPlayer(postId: string): UseAudioPlayerResult {
+  const isValidating = useContext(AuthContext)?.isLoading ?? false;
   const [status, setStatus] = useState<AudioStatus>("idle");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
@@ -44,17 +46,36 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackRateRef = useRef(1);
+  const resumeAfterValidation = useRef<HTMLAudioElement | null>(null);
+  const lifetime = useRef(0);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up audio element on unmount
   useEffect(() => {
+    lifetime.current += 1;
     return () => {
+      lifetime.current += 1;
+      if (pollTimer.current !== null) clearTimeout(pollTimer.current);
+      resumeAfterValidation.current = null;
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = "";
         audioRef.current = null;
       }
     };
-  }, []);
+  }, [postId]);
+
+  useEffect(() => {
+    const media = audioRef.current;
+    if (!media) return;
+    if (isValidating && !media.paused) {
+      media.pause();
+      resumeAfterValidation.current = media;
+    } else if (!isValidating && resumeAfterValidation.current === media) {
+      resumeAfterValidation.current = null;
+      void media.play().catch(() => setStatus("paused"));
+    }
+  }, [isValidating]);
 
   // Generate or fetch audio URL
   const generateAudio = useCallback(async () => {
@@ -62,9 +83,12 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
 
     setStatus("loading");
     setError(null);
+    const version = lifetime.current;
+    const isCurrent = () => version === lifetime.current;
 
     try {
       const response = await api.get<AudioResponse>(`/posts/${postId}/audio`);
+      if (!isCurrent()) return;
 
       if (response.status === "ready") {
         const audioInfo = response as AudioInfo;
@@ -108,8 +132,10 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
         const pollInterval = (pending.estimatedSeconds ?? 5) * 200; // Poll 5 times during estimate
 
         const pollForReady = async () => {
+          if (!isCurrent()) return;
           try {
             const pollResponse = await api.get<AudioResponse>(`/posts/${postId}/audio`);
+            if (!isCurrent()) return;
             if (pollResponse.status === "ready") {
               const audioInfo = pollResponse as AudioInfo;
               setAudioUrl(audioInfo.url);
@@ -131,17 +157,19 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
               });
             } else {
               // Still generating, poll again
-              setTimeout(pollForReady, pollInterval);
+              pollTimer.current = setTimeout(pollForReady, pollInterval);
             }
           } catch {
+            if (!isCurrent()) return;
             setError("Failed to check audio status");
             setStatus("error");
           }
         };
 
-        setTimeout(pollForReady, pollInterval);
+        pollTimer.current = setTimeout(pollForReady, pollInterval);
       }
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to generate audio");
       setStatus("error");
     }

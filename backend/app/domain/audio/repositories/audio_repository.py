@@ -11,6 +11,11 @@ class AudioRepository(ABC):
     """Abstract repository for Audio persistence operations."""
 
     @abstractmethod
+    async def get_by_cache_key_for_user(self, cache_key: str, user_id: UUID) -> Optional[Audio]:
+        """Find a cached clip referenced by one of the requesting user's posts."""
+        ...
+
+    @abstractmethod
     async def get_by_id(self, audio_id: UUID) -> Optional[Audio]:
         """Get audio by ID.
         

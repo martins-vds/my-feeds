@@ -2,6 +2,12 @@
  * API client service for backend communication.
  */
 
+import {
+  getPrivateStateVersion,
+  invalidatePrivateState,
+  waitForPrivateStateValidation,
+} from "./privateState";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 /**
@@ -52,22 +58,49 @@ class ApiClient {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      ...(method !== "GET" && method !== "HEAD" ? { "X-Requested-With": "XMLHttpRequest" } : {}),
       ...options?.headers,
     };
 
+    const version = getPrivateStateVersion();
+    const checkSession = () => {
+      if (version !== getPrivateStateVersion()) {
+        throw new ApiError(401, "SESSION_CHANGED", "Session changed. Please sign in again.");
+      }
+    };
+    if (!path.startsWith("/auth/")) await waitForPrivateStateValidation();
+    checkSession();
     const response = await fetch(url, {
       method,
       headers,
       credentials: "include", // Include cookies for session
+      cache: "no-store",
       body: options?.body ? JSON.stringify(options.body) : undefined,
     });
+
+    checkSession();
+
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      invalidatePrivateState();
+      window.dispatchEvent(new Event("almanac:session-expired"));
+    }
 
     // Handle empty responses (204 No Content)
     if (response.status === 204) {
       return undefined as T;
     }
 
-    const data = (await response.json()) as ApiResponse<T>;
+    let data: ApiResponse<T>;
+    try {
+      data = (await response.json()) as ApiResponse<T>;
+    } catch {
+      checkSession();
+      throw new ApiError(
+        response.status,
+        "INVALID_RESPONSE",
+        "Unable to read the server response."
+      );
+    }
 
     if (!response.ok) {
       throw new ApiError(
@@ -78,6 +111,7 @@ class ApiClient {
       );
     }
 
+    checkSession();
     return data as T;
   }
 

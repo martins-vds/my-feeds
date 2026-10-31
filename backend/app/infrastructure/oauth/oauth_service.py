@@ -1,5 +1,7 @@
 """OAuth service for authentication with external providers."""
 
+import base64
+import hashlib
 import secrets
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -38,13 +40,15 @@ class OAuthService:
         provider: Literal["github", "google", "microsoft"],
         redirect_uri: str,
         state: str | None = None,
+        code_verifier: str | None = None,
     ) -> str:
         """Generate OAuth authorization URL.
 
         Args:
             provider: OAuth provider name
             redirect_uri: Callback URL after authorization
-            state: Optional state parameter for CSRF protection
+            state: Browser-bound state issued by SessionManager
+            code_verifier: Server-held PKCE verifier for the OAuth transaction
 
         Returns:
             Authorization URL to redirect user to
@@ -65,6 +69,14 @@ class OAuthService:
             "response_type": "code",
         }
 
+        if code_verifier:
+            params["code_challenge"] = (
+                base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest())
+                .rstrip(b"=")
+                .decode("ascii")
+            )
+            params["code_challenge_method"] = "S256"
+
         # Google requires additional parameters
         if provider == "google":
             params["access_type"] = "offline"
@@ -77,6 +89,7 @@ class OAuthService:
         provider: Literal["github", "google", "microsoft"],
         code: str,
         redirect_uri: str,
+        code_verifier: str | None = None,
     ) -> dict[str, Any]:
         """Exchange OAuth code for user information.
 
@@ -84,6 +97,7 @@ class OAuthService:
             provider: OAuth provider name
             code: Authorization code from callback
             redirect_uri: Same redirect URI used in authorization
+            code_verifier: Verifier resolved from a consumed OAuth transaction
 
         Returns:
             User information dict with provider_id, email, name, avatar_url
@@ -94,23 +108,30 @@ class OAuthService:
         config = get_provider_config(provider)
 
         # Exchange code for access token
-        token_data = await self._fetch_token(config, code, redirect_uri)
-        access_token = token_data.get("access_token")
+        token_data = await self._fetch_token(config, code, redirect_uri, code_verifier)
+        access_token = token_data.get("access_token") if isinstance(token_data, dict) else None
 
-        if not access_token:
+        if not isinstance(access_token, str) or not access_token:
             raise OAuthError("Failed to obtain access token")
 
         # Fetch user info
         user_info = await self._fetch_user_info(config, access_token)
 
         # Normalize user info across providers
-        return self._normalize_user_info(provider, user_info, access_token)
+        normalized = self._normalize_user_info(provider, user_info, access_token)
+        if not isinstance(normalized["email"], str) or any(
+            value is not None and not isinstance(value, str)
+            for value in (normalized["name"], normalized["avatar_url"])
+        ):
+            raise OAuthError("Invalid user info response")
+        return normalized
 
     async def _fetch_token(
         self,
         config: OAuthProviderConfig,
         code: str,
         redirect_uri: str,
+        code_verifier: str | None = None,
     ) -> dict[str, Any]:
         """Fetch access token from OAuth provider."""
         data = {
@@ -121,6 +142,8 @@ class OAuthService:
             "grant_type": "authorization_code",
         }
 
+        if code_verifier:
+            data["code_verifier"] = code_verifier
         headers = {"Accept": "application/json"}
 
         try:
@@ -131,8 +154,8 @@ class OAuthService:
             )
             response.raise_for_status()
             return response.json()
-        except httpx.HTTPError as e:
-            raise OAuthError(f"Token exchange failed: {e}")
+        except (httpx.HTTPError, ValueError):
+            raise OAuthError("Token exchange failed") from None
 
     async def _fetch_user_info(
         self,
@@ -149,6 +172,8 @@ class OAuthService:
             )
             response.raise_for_status()
             user_info = response.json()
+            if not isinstance(user_info, dict):
+                raise OAuthError("Invalid user info response")
 
             # GitHub: fetch email separately if not in user info
             if config.name == "github" and not user_info.get("email"):
@@ -160,8 +185,8 @@ class OAuthService:
                 user_info["email"] = primary_email
 
             return user_info
-        except httpx.HTTPError as e:
-            raise OAuthError(f"User info fetch failed: {e}")
+        except (httpx.HTTPError, ValueError):
+            raise OAuthError("User info fetch failed") from None
 
     async def _fetch_github_emails(self, access_token: str) -> list[dict[str, Any]]:
         """Fetch GitHub user emails."""
@@ -180,9 +205,15 @@ class OAuthService:
         self,
         provider: Literal["github", "google", "microsoft"],
         user_info: dict[str, Any],
-        access_token: str,
+        _access_token: str,
     ) -> dict[str, Any]:
         """Normalize user info from different providers."""
+        if (
+            not isinstance(user_info, dict)
+            or type(user_info.get("id")) not in (str, int)
+            or not str(user_info["id"])
+        ):
+            raise OAuthError("Invalid user info response")
         if provider == "github":
             return {
                 "provider": provider,

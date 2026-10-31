@@ -19,7 +19,7 @@ from app.infrastructure.oauth.session import session_manager
 bp = Blueprint("categories", __name__, url_prefix="/categories")
 
 
-def get_current_user_id() -> UUID:
+async def get_current_user_id() -> UUID:
     """Get the current authenticated user's ID from session.
 
     Returns:
@@ -28,7 +28,7 @@ def get_current_user_id() -> UUID:
     Raises:
         UnauthorizedError: If not authenticated
     """
-    user_id = session_manager.get_current_user_id()
+    user_id = await session_manager.get_current_user_id()
     if user_id is None:
         raise UnauthorizedError("Authentication required")
     return user_id
@@ -43,7 +43,7 @@ async def list_categories():
     Returns:
         JSON array of categories ordered by position
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     async def build():
@@ -66,7 +66,7 @@ async def create_category():
         401: Not authenticated
         409: Category name already exists
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
 
     data = await request.get_json()
     if not data:
@@ -104,7 +104,7 @@ async def get_category(category_id: UUID):
     Returns:
         Category details with feeds array
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
@@ -129,7 +129,7 @@ async def update_category(category_id: UUID):
     Returns:
         Updated category
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
 
     data = await request.get_json()
     if not data:
@@ -173,7 +173,7 @@ async def delete_category(category_id: UUID):
         204: Deleted
         404: Not found
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:

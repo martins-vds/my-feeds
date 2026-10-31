@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.container import create_cache_manager, create_session
@@ -111,24 +111,33 @@ async def cleanup_cache_by_size(
         )
         return 0, 0
 
-    # Get audio records ordered by last access (oldest first)
-    stmt = select(AudioModel).order_by(AudioModel.last_accessed_at.asc())
+    # A shared object remains hot while any owning post is recently accessed.
+    stmt = (
+        select(AudioModel.cache_key)
+        .group_by(AudioModel.cache_key)
+        .order_by(func.max(AudioModel.last_accessed_at).asc())
+    )
     result = await session.execute(stmt)
-    audio_records = result.scalars().all()
+    cache_keys = result.scalars().all()
 
     files_deleted = 0
     bytes_freed = 0
 
-    for audio in audio_records:
+    for cache_key in cache_keys:
         if total_size - bytes_freed <= max_size_bytes:
             break
 
-        entry = entries.get(audio.cache_key)
-        if entry and await cache.delete(audio.cache_key):
+        entry = entries.get(cache_key)
+        if entry:
+            if not await cache.delete(cache_key):
+                logger.warning(
+                    "Audio eviction failed for cache key %s; retaining metadata", cache_key
+                )
+                continue
             bytes_freed += entry.size
             files_deleted += 1
 
-        await session.delete(audio)
+        await session.execute(delete(AudioModel).where(AudioModel.cache_key == cache_key))
 
     await session.commit()
 

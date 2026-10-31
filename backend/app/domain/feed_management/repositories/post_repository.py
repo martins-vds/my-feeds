@@ -19,6 +19,11 @@ class PostRepository(ABC):
     """
 
     @abstractmethod
+    async def get_by_id_for_user(self, post_id: UUID, user_id: UUID) -> Optional[Post]:
+        """Return a post only when its feed belongs to the requesting user."""
+        pass
+
+    @abstractmethod
     async def get_by_id(self, id: UUID) -> Optional[Post]:
         """Get a post by its ID.
 

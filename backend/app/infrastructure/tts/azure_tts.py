@@ -101,7 +101,23 @@ class AzureTTSService(TTSService):
         synthesizer.synthesis_word_boundary.connect(_on_word)
 
         # SDK is blocking; run in a worker thread.
-        result = await asyncio.to_thread(lambda: synthesizer.speak_text_async(clean_text).get())
+        worker = asyncio.create_task(
+            asyncio.to_thread(lambda: synthesizer.speak_text_async(clean_text).get())
+        )
+        try:
+            result = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # Cancelling to_thread alone does not stop the billable SDK operation.
+            try:
+                await asyncio.to_thread(lambda: synthesizer.stop_speaking_async().get())
+            finally:
+                while not worker.done():
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        continue
+                worker.result()
+            raise
 
         if result.reason.name == "Canceled":
             cancellation = result.cancellation_details

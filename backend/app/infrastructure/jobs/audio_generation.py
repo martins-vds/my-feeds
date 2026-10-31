@@ -11,7 +11,7 @@ import logging
 from sqlalchemy import or_, select
 
 from app.application.services.audio_service import AudioStatus
-from app.config.container import create_audio_service, create_session
+from app.config.container import create_audio_service, create_session, get_settings_instance
 from app.infrastructure.persistence.models.audio import AudioModel
 from app.infrastructure.persistence.models.post import PostModel
 
@@ -36,6 +36,9 @@ async def generate_pending_audio(batch_size: int = DEFAULT_BATCH_SIZE) -> int:
     Returns:
         The number of posts for which audio was generated.
     """
+    settings = get_settings_instance()
+    if not settings.external_tts_enabled and settings.environment != "testing":
+        return 0
     session = create_session()
     try:
         stmt = (

@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from app.infrastructure.feed_fetcher.feed_fetcher import FeedFetcher, FeedFetchError
+from app.infrastructure.feed_fetcher.feed_fetcher import (
+    FeedFetcher,
+    FeedFetchError,
+    validate_feed_url,
+)
 
 
 class FeedValidationError(Exception):
@@ -56,6 +60,8 @@ class FeedValidator:
         """
         if not url:
             raise FeedValidationError("URL is required", "missing_url")
+        if not isinstance(url, str):
+            raise FeedValidationError("Feed URL must be a string", "invalid_format")
 
         if len(url) > self.MAX_URL_LENGTH:
             raise FeedValidationError(
@@ -85,6 +91,10 @@ class FeedValidator:
                 "URL must include a domain",
                 "missing_domain",
             )
+        try:
+            validate_feed_url(url)
+        except FeedFetchError as e:
+            raise FeedValidationError(str(e), "unsafe_url") from e
 
     async def validate_url(self, url: str) -> ValidationResult:
         """Validate a URL including format and content type.

@@ -63,6 +63,9 @@ class AudioCacheManager:
     async def load(self, cache_key: str) -> bytes | None:
         return await self._provider.load(cache_key)
 
+    async def load_range(self, cache_key: str, offset: int, length: int | None) -> bytes | None:
+        return await self._provider.load_range(cache_key, offset, length)
+
     async def delete(self, cache_key: str) -> bool:
         return await self._provider.delete(cache_key)
 

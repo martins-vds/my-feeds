@@ -22,6 +22,9 @@ export default defineConfig({
 
   use: {
     baseURL: "http://localhost:5173",
+    // Route-based API mocks must not be bypassed by an installed worker.
+    // The dedicated worker suite opts back into real service workers.
+    serviceWorkers: "block",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },

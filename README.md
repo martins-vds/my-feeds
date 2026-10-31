@@ -8,8 +8,9 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Category Organization**: Group feeds by topic or interest area
 - **Unified Post View**: Browse latest posts across all subscribed feeds
 - **Read State Tracking**: Auto-track and manually toggle read/unread status
-- **Text-to-Speech**: Listen to posts with lazy-generated, cached audio
-- **PWA Support**: Install on mobile, works offline
+- **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in
+- **PWA Support**: Install on mobile; public app assets work offline, private articles/audio do not
+- **Privacy Defaults**: Publisher images are blocked until operator permission and per-account consent
 
 ## Tech Stack
 
@@ -17,15 +18,15 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Python 3.12+** with **Quart** async framework
 - **SQLAlchemy** with **asyncpg** for PostgreSQL
 - **ABC-based dependency injection** (no external DI library)
-- **Authlib** for OAuth2 authentication
+- **OAuth2** with persisted single-use state, PKCE, and opaque server-side sessions
 - **feedparser** for RSS/Atom parsing
 - **Azure Cognitive Services** for TTS
 
 ### Frontend
-- **React 18** with **TypeScript 5**
-- **Vite 5** with PWA plugin
-- **Material UI 5** component library
-- **React Router 6** for navigation
+- **React** with **TypeScript**
+- **Vite** with PWA plugin
+- **Material UI** component library
+- **React Router** for navigation
 
 ### Development
 - **Dev Containers** for consistent environment
@@ -52,21 +53,25 @@ language servers, test runners) and is not required to run the app.
    cd my-feeds
    ```
 
-2. **(Optional) Configure environment**:
+2. **Configure environment**:
    ```bash
-   cp .env.example .env                   # compose ports / postgres credentials
-   cp backend/.env.example backend/.env   # OAuth, Azure Speech, SECRET_KEY
+   cp .env.example .env
    ```
-   Every compose variable has a sensible default, so this is only needed to
-   supply real credentials or change ports.
+   Fill in distinct random `POSTGRES_PASSWORD`, `POSTGRES_RUNTIME_PASSWORD`,
+   and `SECRET_KEY` values. Generate each independently with
+   `python -c "import secrets; print(secrets.token_hex(32))"`. Keep existing
+   administrator names when reusing a database volume. Set `PUBLIC_BASE_URL`
+   explicitly and add OAuth client IDs/secrets to the root `.env`.
+   Compose refuses missing credentials; application secrets are not embedded
+   in images. `backend/.env.example` is for running the backend outside Compose.
 
 3. **Start everything** (development — hot reload):
    ```bash
    docker compose up --build
    ```
-   - Frontend (Vite): http://localhost:5173
+   - Frontend (Vite): http://localhost:5174 (`FRONTEND_DEV_PORT` may override)
    - Backend API (Quart): http://localhost:5000
-   - PostgreSQL: localhost:5432
+   - PostgreSQL: container network only, not published to the host
 
    Migrations run automatically via the one-shot `migrate` service before the
    backend starts. Stop with `Ctrl+C`, or `docker compose down` (add `-v` to
@@ -82,7 +87,23 @@ use only the base file:
 ```bash
 docker compose -f docker-compose.yml up --build
 ```
-The app is then served at http://localhost:8080.
+Nginx listens on loopback port 8080. Production requires a trusted HTTPS
+terminator forwarding the configured `PUBLIC_BASE_URL` to that port.
+Do not expose raw HTTP, the backend, or PostgreSQL publicly. Configure
+production OAuth callbacks on the real HTTPS origin. The development override
+explicitly permits local HTTP; it is not a production fallback.
+
+Authenticated request budgets are per account, not shared by every user behind
+nginx. Anonymous client addresses are accepted only from the configured trusted
+nginx `/32`, which overwrites `X-Real-IP`; other forwarding headers are ignored.
+A separate coarse allowance of 1,200 requests per client address per minute runs
+before session lookups, bounding authentication work even for nonexistent tokens.
+Account limits remain 120 reads and 60 mutations per minute. Shared NAT/ingress
+addresses share the coarse allowance; size ingress controls for the actual traffic.
+If the Docker subnet conflicts with a local/VPN network, change
+`MYFEEDS_NETWORK_SUBNET` and `FRONTEND_PROXY_IP` together. For an additional TLS
+proxy, establish a trusted, sanitized real-client-address boundary deliberately;
+do not allow arbitrary public clients to supply forwarding headers.
 
 ### Dev container (optional)
 
@@ -143,7 +164,7 @@ This project follows the [Constitution](/.specify/memory/constitution.md):
 3. **Test-Driven Development** - Red-Green-Refactor cycle
 4. **Modern Toolchain** - uv, pnpm, Dev Containers
 5. **PWA-First** - Single codebase for all platforms
-6. **Lazy Resource Generation** - TTS on-demand with caching
+6. **Bounded Resource Generation** - TTS requires operator opt-in; API and periodic work share limits
 
 ## License
 
@@ -151,17 +172,45 @@ MIT
 
 ## Deploy to Azure (azd)
 
-Infra lives in `infra/` (Bicep + Azure Verified Modules), all in Canada Central: App Service (Linux B1, container, VNet-integrated), PostgreSQL Flexible Server (free-tier B1ms) and Blob Storage behind private endpoints, VNet + private DNS zones, ACR (Basic). No Azure Speech.
+Infra lives in `infra/` (Bicep + Azure Verified Modules), all in Canada Central:
+App Service, private PostgreSQL/Blob endpoints, VNet/private DNS, and ACR.
+Speech is provisioned only when `EXTERNAL_TTS_ENABLED=true`; otherwise neither
+API calls nor background jobs send articles to a TTS provider.
 
 Network: Storage has no public access. The web app and Postgres are only reachable from the IPs in `ALLOWED_IPS` (comma-separated, empty = none). ACR stays public but Entra-only so ACR Tasks can build the image remotely.
 
-**GitHub Actions** (`.github/workflows/deploy.yml`, manual dispatch):
+Provision infrastructure with a privileged human/operator identity, not the
+GitHub deployment identity. Select the application resource group in the azd
+environment and supply distinct database passwords, a random session secret,
+OAuth credentials, and allowed IPs before provisioning.
 
-```bash
-az login && gh auth login
-./infra/setup-github.sh   # identity + OIDC, GitHub env "production", variables/secrets
-```
+From a host with private database access, run `infra/provision-database.sh`
+with administrator `MIGRATION_DATABASE_URL` (including `ssl=require`), the
+database connection variables, and the runtime password. Apply migrations
+through `f7a1b2c3d4e5` and reapply runtime grants. Only `myfeeds_runtime`
+credentials belong in app settings; runtime startup never migrates.
+Opaque sessions replace legacy cookies, so existing users must sign in again.
+The shared-audio-key migration preserves per-post ownership links; downgrading
+its index requires first resolving any duplicate content keys.
 
-Replace the `placeholder` OAuth values in the `production` environment, then run **Deploy to Azure**.
+Protect `main`, select actual numeric reviewer IDs, and run operator-only
+`infra/setup-github.sh` to configure the reviewed production environment and a
+new resource-group-scoped runtime-deployment identity. The manual
+`.github/workflows/deploy.yml` deploys only from `main`, builds in ACR, and
+updates the web app to an immutable image digest; it does not provision or
+receive database/OAuth/session secrets.
 
-**Locally:** `azd up` (set `ALLOWED_IPS` etc. with `azd env set` first). Port defaults to 8000 (`APP_PORT`); locally the app reads `PORT`. OAuth callbacks: `<SERVICE_WEB_URI>/api/auth/<provider>/callback`.
+**Existing installations need operator cleanup:** inspect/revoke old broad
+subscription IAM assignments and federated credentials, remove unused GitHub
+application secrets, rotate potentially exposed credentials, and verify that
+the new identity has no inherited broad permissions. Repository changes cannot
+alter live IAM, retention, firewall rules, or environment approvals.
+
+Publisher images require `ALLOW_EXTERNAL_IMAGES=true` on backend/nginx and a
+frontend rebuild with `VITE_ALLOW_EXTERNAL_IMAGES=true`; each account still
+starts without consent. External TTS has a separate
+`EXTERNAL_TTS_ENABLED=true` decision. Enabling it permits the periodic job as
+well as interactive generation: assess provider privacy/retention and budgets.
+
+See [the threat model and remediation status](my-feeds-threat-model.md) for
+controls, verification evidence, and residual operator obligations.

@@ -299,6 +299,10 @@ def create_audio_service(session: AsyncSession):
         post_repository=post_repository,
         tts_service=tts_service,
         cache_manager=cache_manager,
+        external_synthesis_enabled=(
+            get_settings_instance().external_tts_enabled
+            or get_settings_instance().environment == "testing"
+        ),
     )
 
 

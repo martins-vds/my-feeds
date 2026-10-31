@@ -4,8 +4,8 @@ These tests verify the API contract matches the OpenAPI specification.
 TDD: Written FIRST - must FAIL until implementation is complete.
 """
 
-import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from http.cookies import SimpleCookie
 from uuid import uuid4
 
 import pytest
@@ -104,11 +104,11 @@ class TestAuthMeEndpoint:
         assert data["error"]["code"] == "UNAUTHORIZED"
 
     @pytest.mark.asyncio
-    async def test_me_with_valid_session_returns_user(self, client: QuartClient):
+    async def test_me_with_valid_session_returns_user(self, client: QuartClient, auth_headers):
         """GET /api/auth/me with valid session should return user data."""
-        # This test requires a mock session - will be implemented with auth
-        # For now, skip until we have session management
-        pytest.skip("Requires session management implementation")
+        response = await client.get("/api/auth/me", headers=auth_headers)
+        assert response.status_code == 200
+        assert (await response.get_json())["id"] == "00000000-0000-4000-a000-000000000001"
 
 
 class TestAuthLogoutEndpoint:
@@ -117,7 +117,7 @@ class TestAuthLogoutEndpoint:
     @pytest.mark.asyncio
     async def test_logout_clears_session(self, client: QuartClient):
         """POST /api/auth/logout should clear session and return 200."""
-        response = await client.post("/api/auth/logout")
+        response = await client.post("/api/auth/logout", headers=_same_origin_headers())
 
         # Should succeed even without session (idempotent)
         assert response.status_code == 200
@@ -125,7 +125,7 @@ class TestAuthLogoutEndpoint:
     @pytest.mark.asyncio
     async def test_logout_returns_success_message(self, client: QuartClient):
         """POST /api/auth/logout should return success message."""
-        response = await client.post("/api/auth/logout")
+        response = await client.post("/api/auth/logout", headers=_same_origin_headers())
 
         assert response.status_code == 200
         data = await response.get_json()
@@ -137,7 +137,7 @@ class TestAuthLogoutEndpoint:
 # =============================================================================
 
 
-def _make_pending_cookie(
+async def _make_pending_cookie(
     provider: str = "github",
     provider_id: str = "new-user-999",
     email: str = "newuser@example.com",
@@ -145,29 +145,51 @@ def _make_pending_cookie(
     avatar_url: str | None = "https://avatars.example.com/999",
     created_at: datetime | None = None,
 ) -> str:
-    """Build a pending sign-up session cookie value."""
-    data = {
-        "provider": provider,
-        "provider_id": provider_id,
-        "email": email,
-        "name": name,
-        "avatar_url": avatar_url,
-        "pending_created_at": (created_at or datetime.utcnow()).isoformat(),
-    }
-    return json.dumps(data)
+    """Issue a real persisted pending credential instead of forging identity."""
+    import hashlib
+
+    from quart import Response
+    from sqlalchemy import update
+
+    from app.infrastructure.oauth.session import session_manager
+    from app.infrastructure.persistence.database import get_session_factory
+    from app.infrastructure.persistence.models.identity_session import IdentitySessionModel
+
+    response = Response()
+    await session_manager.create_pending_session(
+        response,
+        provider,
+        provider_id,
+        email,
+        name,
+        avatar_url,
+    )
+    jar = SimpleCookie()
+    jar.load(response.headers["Set-Cookie"])
+    token = jar[session_manager.COOKIE_NAME].value
+    if created_at:
+        async with get_session_factory()() as session:
+            await session.execute(
+                update(IdentitySessionModel)
+                .where(
+                    IdentitySessionModel.token_hash == hashlib.sha256(token.encode()).hexdigest()
+                )
+                .values(created_at=created_at, expires_at=created_at + timedelta(minutes=15))
+            )
+            await session.commit()
+    return token
 
 
-def _make_full_session_cookie(
-    user_id: str = "00000000-0000-4000-a000-000000000001",
-    provider: str = "github",
-) -> str:
-    """Build a full-session cookie value for an authenticated user."""
-    data = {
-        "user_id": user_id,
-        "provider": provider,
-        "created_at": datetime.utcnow().isoformat(),
+def _same_origin_headers(token: str | None = None) -> dict[str, str]:
+    from app.config.settings import get_settings
+
+    headers = {
+        "Origin": get_settings().frontend_url,
+        "X-Requested-With": "XMLHttpRequest",
     }
-    return json.dumps(data)
+    if token:
+        headers["Cookie"] = f"my_feeds_session={token}"
+    return headers
 
 
 class TestNewUserCallbackContract:
@@ -183,10 +205,10 @@ class TestNewUserCallbackContract:
         # We can't easily simulate a full OAuth exchange in contract tests
         # but we can verify that a valid pending cookie is accepted by /auth/me
         # The actual callback redirection is integration-tested
-        pending_cookie = _make_pending_cookie()
+        pending_cookie = await _make_pending_cookie()
         response = await client.get(
             "/api/auth/me",
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 200
@@ -213,7 +235,7 @@ class TestCompleteSignUpContract:
     async def test_complete_signup_valid_returns_201(self, client: QuartClient):
         """POST /auth/complete-signup with valid data should return 201 AuthStatus."""
         unique_id = f"signup-test-{uuid4().hex[:12]}"
-        pending_cookie = _make_pending_cookie(
+        pending_cookie = await _make_pending_cookie(
             provider="github",
             provider_id=unique_id,
             email=f"{unique_id}@example.com",
@@ -223,7 +245,7 @@ class TestCompleteSignUpContract:
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Jane Doe", "timezone": "America/New_York"},
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 201
@@ -237,12 +259,12 @@ class TestCompleteSignUpContract:
     @pytest.mark.asyncio
     async def test_complete_signup_empty_name_returns_400(self, client: QuartClient):
         """POST /auth/complete-signup with empty name should return 400."""
-        pending_cookie = _make_pending_cookie()
+        pending_cookie = await _make_pending_cookie()
 
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "   ", "timezone": "America/New_York"},
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 400
@@ -252,12 +274,12 @@ class TestCompleteSignUpContract:
     @pytest.mark.asyncio
     async def test_complete_signup_invalid_timezone_returns_400(self, client: QuartClient):
         """POST /auth/complete-signup with invalid timezone should return 400."""
-        pending_cookie = _make_pending_cookie()
+        pending_cookie = await _make_pending_cookie()
 
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Jane", "timezone": "Not/A/Timezone"},
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 400
@@ -270,6 +292,7 @@ class TestCompleteSignUpContract:
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Jane", "timezone": "UTC"},
+            headers=_same_origin_headers(),
         )
 
         assert response.status_code == 401
@@ -279,14 +302,14 @@ class TestCompleteSignUpContract:
     @pytest.mark.asyncio
     async def test_complete_signup_expired_pending_returns_401(self, client: QuartClient):
         """POST /auth/complete-signup with expired pending should return 401."""
-        expired_cookie = _make_pending_cookie(
-            created_at=datetime.utcnow() - timedelta(minutes=16),
+        expired_cookie = await _make_pending_cookie(
+            created_at=datetime.now(UTC) - timedelta(minutes=16),
         )
 
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Jane", "timezone": "UTC"},
-            headers={"Cookie": f"my_feeds_session={expired_cookie}"},
+            headers=_same_origin_headers(expired_cookie),
         )
 
         assert response.status_code == 401
@@ -295,7 +318,7 @@ class TestCompleteSignUpContract:
     async def test_complete_signup_duplicate_returns_409(self, client: QuartClient):
         """POST /auth/complete-signup for existing user should return 409."""
         # Use the test user that's seeded by conftest (provider=github, provider_id=TEST_USER_ID)
-        pending_cookie = _make_pending_cookie(
+        pending_cookie = await _make_pending_cookie(
             provider="github",
             provider_id="00000000-0000-4000-a000-000000000001",
             email="test@example.com",
@@ -304,7 +327,7 @@ class TestCompleteSignUpContract:
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Test User", "timezone": "UTC"},
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 409
@@ -326,7 +349,7 @@ class TestAuthMePendingContract:
     @pytest.mark.asyncio
     async def test_me_with_pending_returns_pending_status(self, client: QuartClient):
         """GET /auth/me with pending cookie should return pending_signup status."""
-        pending_cookie = _make_pending_cookie(
+        pending_cookie = await _make_pending_cookie(
             email="pending@example.com",
             name="Pending User",
             avatar_url="https://avatars.example.com/pending",
@@ -335,7 +358,7 @@ class TestAuthMePendingContract:
 
         response = await client.get(
             "/api/auth/me",
-            headers={"Cookie": f"my_feeds_session={pending_cookie}"},
+            headers=_same_origin_headers(pending_cookie),
         )
 
         assert response.status_code == 200
@@ -363,13 +386,13 @@ class TestAuthMePendingContract:
     @pytest.mark.asyncio
     async def test_me_with_expired_pending_returns_401(self, client: QuartClient):
         """GET /auth/me with expired pending cookie should return 401."""
-        expired_cookie = _make_pending_cookie(
-            created_at=datetime.utcnow() - timedelta(minutes=16),
+        expired_cookie = await _make_pending_cookie(
+            created_at=datetime.now(UTC) - timedelta(minutes=16),
         )
 
         response = await client.get(
             "/api/auth/me",
-            headers={"Cookie": f"my_feeds_session={expired_cookie}"},
+            headers=_same_origin_headers(expired_cookie),
         )
 
         assert response.status_code == 401

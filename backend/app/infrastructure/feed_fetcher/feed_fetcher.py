@@ -1,12 +1,17 @@
 """Feed fetcher service using feedparser."""
 
 import asyncio
+import ipaddress
+import socket
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 import feedparser
+from yarl import URL
 
 
 @dataclass
@@ -39,6 +44,71 @@ class FeedFetchError(Exception):
     pass
 
 
+def _public_address(host: str) -> None:
+    address = ipaddress.ip_address(host)
+    if not address.is_global or address.is_multicast or getattr(address, "ipv4_mapped", None):
+        raise FeedFetchError("Feed destination must be a public IP address")
+    if address.version == 6 and address in ipaddress.ip_network("64:ff9b::/96"):
+        raise FeedFetchError("Feed destination must not use IPv4 translation")
+
+
+def validate_feed_url(url: str) -> None:
+    """Check syntax and literal destinations; DNS is checked at connection time."""
+    try:
+        if not isinstance(url, str) or len(url) > 2048 or any(ord(c) <= 32 for c in url):
+            raise ValueError("Invalid feed URL")
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("Feed URL must include an http or https domain")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("Feed URL must not include userinfo")
+        if parsed.port not in {None, 80, 443}:
+            raise ValueError("Feed URL port must be 80 or 443")
+        # Match aiohttp's IDNA normalization before its literal-IP fast path.
+        host = URL(url).raw_host.rstrip(".").lower()
+        if host == "localhost" or host.endswith(".localhost") or "%" in host:
+            raise ValueError("Feed destination must be public")
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return
+        _public_address(host)
+    except (ValueError, TypeError) as exc:
+        raise FeedFetchError(str(exc)) from exc
+
+
+class SafeFeedResolver(aiohttp.abc.AbstractResolver):
+    """Return only checked addresses directly to aiohttp's connector.
+
+    No second DNS lookup occurs between validation and connection; the original
+    hostname remains on the HTTP request and TLS SNI/certificate verification.
+    """
+
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_UNSPEC):
+        records = await asyncio.get_running_loop().getaddrinfo(
+            host, port, family=family, type=socket.SOCK_STREAM
+        )
+        if not records:
+            raise FeedFetchError("Feed destination has no addresses")
+        result = []
+        for address_family, _, proto, _, sockaddr in records:
+            _public_address(sockaddr[0])
+            result.append(
+                {
+                    "hostname": host,
+                    "host": sockaddr[0],
+                    "port": port,
+                    "family": address_family,
+                    "proto": proto,
+                    "flags": socket.AI_NUMERICHOST,
+                }
+            )
+        return result
+
+    async def close(self) -> None:
+        pass
+
+
 class FeedFetcher:
     """Service for fetching and parsing RSS/Atom feeds.
 
@@ -47,6 +117,10 @@ class FeedFetcher:
 
     DEFAULT_TIMEOUT = 30  # seconds
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB max feed size
+    MAX_REDIRECTS = 5
+    MAX_ENTRIES = 500
+    MAX_POST_CONTENT = 256 * 1024
+    MAX_POST_SUMMARY = 32 * 1024
 
     def __init__(self, timeout: int = DEFAULT_TIMEOUT) -> None:
         """Initialize the feed fetcher.
@@ -108,7 +182,7 @@ class FeedFetcher:
             raise FeedFetchError(f"Invalid feed format: {error}")
 
         posts = []
-        for entry in parsed.entries:
+        for entry in parsed.entries[: self.MAX_ENTRIES]:
             try:
                 post = self._parse_entry(entry)
                 if since is None or post.published_at > since:
@@ -121,35 +195,83 @@ class FeedFetcher:
         posts.sort(key=lambda p: p.published_at, reverse=True)
         return posts
 
-    async def _fetch_url(self, url: str) -> str:
+    async def _fetch_url(self, url: str) -> bytes:
         """Fetch content from a URL.
 
         Args:
             url: URL to fetch
 
         Returns:
-            Raw content as string
+            Raw decoded content as bytes (preserving feed encoding)
 
         Raises:
             FeedFetchError: On network or HTTP errors
         """
+        validate_feed_url(url)
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise FeedFetchError(f"HTTP {response.status}: {response.reason}")
-
-                    # Check content length
-                    content_length = response.content_length
-                    if content_length and content_length > self.MAX_CONTENT_LENGTH:
-                        raise FeedFetchError(f"Feed too large: {content_length} bytes")
-
-                    return await response.text()
+            # Disable automatic decompression: its buffer can grow before the
+            # consumer sees any bytes. Our decoder bounds each expansion.
+            async with (
+                aiohttp.TCPConnector(resolver=SafeFeedResolver(), limit=1) as connector,
+                aiohttp.ClientSession(
+                    timeout=self._timeout,
+                    connector=connector,
+                    auto_decompress=False,
+                    trust_env=False,
+                    headers={"Accept-Encoding": "gzip, deflate"},
+                ) as session,
+            ):
+                for redirect in range(self.MAX_REDIRECTS + 1):
+                    validate_feed_url(url)
+                    async with session.get(url, allow_redirects=False) as response:
+                        if response.status in {301, 302, 303, 307, 308}:
+                            location = response.headers.get("Location")
+                            if not location or redirect == self.MAX_REDIRECTS:
+                                raise FeedFetchError("Invalid or excessive feed redirects")
+                            url = urljoin(url, location)
+                            continue
+                        if response.status != 200:
+                            raise FeedFetchError(f"HTTP {response.status}: {response.reason}")
+                        return await self._read_content(response)
 
         except aiohttp.ClientError as e:
             raise FeedFetchError(f"Network error: {e}") from e
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise FeedFetchError("Request timeout") from None
+        except (OSError, zlib.error) as e:
+            raise FeedFetchError(f"Feed transfer failed: {e}") from e
+        except ValueError as e:
+            raise FeedFetchError(f"Invalid feed redirect: {e}") from e
+
+    async def _read_content(self, response: aiohttp.ClientResponse) -> bytes:
+        encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+        if encoding not in {"identity", "gzip", "deflate"}:
+            raise FeedFetchError("Unsupported feed content encoding")
+        decoder = zlib.decompressobj(31) if encoding == "gzip" else None
+        prefix = b""
+        content = bytearray()
+        wire_size = 0
+        async for chunk in response.content.iter_chunked(64 * 1024):
+            wire_size += len(chunk)
+            if wire_size > self.MAX_CONTENT_LENGTH:
+                raise FeedFetchError("Feed too large")
+            if encoding == "deflate" and decoder is None:
+                prefix += chunk
+                if len(prefix) < 2:
+                    continue
+                has_zlib_header = prefix[0] & 15 == 8 and int.from_bytes(prefix[:2]) % 31 == 0
+                decoder = zlib.decompressobj(15 if has_zlib_header else -15)
+                chunk, prefix = prefix, b""
+            remaining = self.MAX_CONTENT_LENGTH - len(content)
+            decoded = decoder.decompress(chunk, remaining + 1) if decoder else chunk
+            if len(decoded) > remaining:
+                raise FeedFetchError("Feed too large")
+            content.extend(decoded)
+            if decoder and decoder.unused_data:
+                raise FeedFetchError("Unexpected trailing compressed feed data")
+        if encoding != "identity" and (decoder is None or not decoder.eof):
+            raise FeedFetchError("Incomplete compressed feed")
+        return bytes(content)
 
     def _detect_feed_type(self, parsed: Any) -> str:
         """Detect if feed is RSS or Atom.
@@ -257,10 +379,10 @@ class FeedFetcher:
 
         return FeedPost(
             guid=guid,
-            title=title,
-            content=content,
-            summary=summary,
-            author=author,
+            title=title[:1000],
+            content=content[: self.MAX_POST_CONTENT] if content else None,
+            summary=summary[: self.MAX_POST_SUMMARY] if summary else None,
+            author=author[:255] if author else None,
             link=link,
             published_at=published,
         )

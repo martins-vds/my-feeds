@@ -296,7 +296,11 @@ class TestUpdateReadState:
     @pytest.mark.asyncio
     async def test_update_read_state_requires_authentication(self, client, post_id):
         """Should return 401 when not authenticated."""
-        response = await client.put(f"/api/posts/{post_id}/read-state", json={"isRead": True})
+        response = await client.put(
+            f"/api/posts/{post_id}/read-state",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+            json={"isRead": True},
+        )
         assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -371,5 +375,9 @@ class TestBulkReadState:
     @pytest.mark.asyncio
     async def test_requires_authentication(self, client):
         """Should return 401 when not authenticated."""
-        response = await client.put("/api/posts/read-state", json={"isRead": True})
+        response = await client.put(
+            "/api/posts/read-state",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+            json={"isRead": True},
+        )
         assert response.status_code == 401

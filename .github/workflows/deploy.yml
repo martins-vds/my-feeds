@@ -4,45 +4,52 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
+
+concurrency:
+  group: azure-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
     environment: production
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
-      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
-      ALLOWED_IPS: ${{ vars.ALLOWED_IPS }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_CONTAINER_REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
       WEB_APP_NAME: ${{ vars.WEB_APP_NAME }}
-      APP_PORT: ${{ vars.APP_PORT }}
-      GITHUB_CLIENT_ID: ${{ vars.OAUTH_GITHUB_CLIENT_ID }}
-      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-      MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_CLIENT_ID }}
-      GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
-      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      ALLOW_EXTERNAL_IMAGES: ${{ vars.ALLOW_EXTERNAL_IMAGES || 'false' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: Azure/setup-azd@v2
-
-      - name: Log in to Azure (OIDC)
+      - name: Build and update only the runtime image (OIDC)
+        shell: bash
         run: |
-          azd auth login \
-            --client-id "$AZURE_CLIENT_ID" \
-            --tenant-id "$AZURE_TENANT_ID" \
-            --federated-credential-provider github
-
-      - name: Provision infrastructure
-        run: azd provision --no-prompt
-
-      # Image is built in ACR (docker.remoteBuild in azure.yaml); no Docker on the runner.
-      - name: Deploy app
-        run: azd deploy --no-prompt
+          set -euo pipefail
+          : "${AZURE_CLIENT_ID:?}" "${AZURE_TENANT_ID:?}" "${AZURE_SUBSCRIPTION_ID:?}"
+          : "${AZURE_RESOURCE_GROUP:?}" "${AZURE_CONTAINER_REGISTRY_NAME:?}" "${WEB_APP_NAME:?}"
+          token=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api%3A%2F%2FAzureADTokenExchange" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
+          echo "::add-mask::$token"
+          # CLI dependencies run in an official immutable image, not the runner's mutable az.
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" --workdir /workspace \
+            --env FEDERATED_TOKEN="$token" \
+            --env AZURE_CLIENT_ID --env AZURE_TENANT_ID --env AZURE_SUBSCRIPTION_ID \
+            --env AZURE_RESOURCE_GROUP --env AZURE_CONTAINER_REGISTRY_NAME --env WEB_APP_NAME \
+            --env GITHUB_SHA \
+            --env ALLOW_EXTERNAL_IMAGES \
+            mcr.microsoft.com/azure-cli:2.85.0@sha256:7f9ca8e6bf1c72e5fafefb6925546272776d635fb428538455c5c79bb77e2aa7 \
+            bash infra/deploy-runtime.sh

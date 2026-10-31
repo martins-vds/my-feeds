@@ -41,6 +41,16 @@ class SQLAlchemyPostRepository(PostRepository):
             return self._to_entity(model)
         return None
 
+    async def get_by_id_for_user(self, post_id: UUID, user_id: UUID) -> Optional[Post]:
+        result = await self._session.execute(
+            select(PostModel)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .where(PostModel.id == post_id, FeedModel.user_id == user_id)
+            .options(selectinload(PostModel.feed), selectinload(PostModel.audio))
+        )
+        model = result.scalar_one_or_none()
+        return self._to_entity(model) if model else None
+
     async def get_posts_for_user(
         self,
         user_id: UUID,

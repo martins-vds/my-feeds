@@ -1,5 +1,6 @@
 """Storage providers for generated audio and its timing metadata."""
 
+import asyncio
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -40,6 +41,10 @@ class AudioCacheProvider(ABC):
     @abstractmethod
     async def load(self, cache_key: str) -> bytes | None:
         """Read audio bytes, or None if absent."""
+
+    @abstractmethod
+    async def load_range(self, cache_key: str, offset: int, length: int | None) -> bytes | None:
+        """Read only the requested byte span of an audio object."""
 
     @abstractmethod
     async def delete(self, cache_key: str) -> bool:
@@ -108,6 +113,17 @@ class LocalFileCacheProvider(AudioCacheProvider):
     async def load(self, cache_key: str) -> bytes | None:
         path = self.get_file_path(cache_key)
         return path.read_bytes() if path.is_file() else None
+
+    async def load_range(self, cache_key: str, offset: int, length: int | None) -> bytes | None:
+        def read():
+            try:
+                with self.get_file_path(cache_key).open("rb") as audio:
+                    audio.seek(offset)
+                    return audio.read() if length is None else audio.read(length)
+            except FileNotFoundError:
+                return None
+
+        return await asyncio.to_thread(read)
 
     async def delete(self, cache_key: str) -> bool:
         path = self.get_file_path(cache_key)
@@ -243,6 +259,14 @@ class AzureBlobCacheProvider(AudioCacheProvider):
         if not await blob.exists():
             return None
         return await (await blob.download_blob()).readall()
+
+    async def load_range(self, cache_key: str, offset: int, length: int | None) -> bytes | None:
+        try:
+            return await (
+                await self._blob(cache_key).download_blob(offset=offset, length=length)
+            ).readall()
+        except ResourceNotFoundError:
+            return None
 
     async def delete(self, cache_key: str) -> bool:
         blob = self._blob(cache_key)

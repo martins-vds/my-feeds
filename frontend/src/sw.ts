@@ -2,9 +2,8 @@
  * Service Worker for Almanac PWA
  *
  * Implements caching strategies:
- * - Network-first for API calls (with offline fallback)
- * - Cache-first for static assets
- * - Stale-while-revalidate for images
+ * - Network-only, no-store for private API and audio
+ * - Precached public app assets and public icons for offline use
  */
 
 /// <reference lib="webworker" />
@@ -12,9 +11,10 @@
 
 import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
-import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from "workbox-strategies";
+import { StaleWhileRevalidate } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
+import { purgePrivateCaches } from "./services/privateState";
 
 // Service worker global scope
 declare let self: ServiceWorkerGlobalScope & typeof globalThis;
@@ -27,57 +27,10 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Clean up old caches
 cleanupOutdatedCaches();
 
-// Cache names
-const CACHE_NAMES = {
-  api: "api-cache-v1",
-  images: "images-cache-v1",
-  audio: "audio-cache-v1",
-};
-
-/**
- * Audio routes - Cache first
- * Audio files are large, prefer cached versions. Registered before the generic
- * /api/ route because Workbox uses the first matching route.
- */
+// Never replay another user's private response, including auth redirects.
 registerRoute(
-  ({ url }) => url.pathname.startsWith("/api/audio/"),
-  new CacheFirst({
-    cacheName: CACHE_NAMES.audio,
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200, 206],
-      }),
-      new ExpirationPlugin({
-        maxEntries: 20,
-        maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-      }),
-    ],
-  })
-);
-
-/**
- * API routes - Network first with cache fallback
- * Cache responses for offline reading. Auth endpoints and navigations (OAuth
- * login redirects) bypass the SW: caching them replays stale redirects/sessions.
- */
-registerRoute(
-  ({ url, request }) =>
-    url.pathname.startsWith("/api/") &&
-    !url.pathname.startsWith("/api/auth/") &&
-    request.mode !== "navigate",
-  new NetworkFirst({
-    cacheName: CACHE_NAMES.api,
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-      new ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 24, // 1 day
-      }),
-    ],
-    networkTimeoutSeconds: 10,
-  })
+  ({ url }) => url.pathname.startsWith("/api/"),
+  ({ request }) => fetch(request, { cache: "no-store" })
 );
 
 /**
@@ -85,9 +38,12 @@ registerRoute(
  * Serve cached images immediately, update in background
  */
 registerRoute(
-  ({ request }) => request.destination === "image",
+  ({ url, request }) =>
+    request.destination === "image" &&
+    url.origin === sw.location.origin &&
+    url.pathname.startsWith("/icons/"),
   new StaleWhileRevalidate({
-    cacheName: CACHE_NAMES.images,
+    cacheName: "public-images-cache-v2",
     plugins: [
       new CacheableResponsePlugin({
         statuses: [0, 200],
@@ -107,19 +63,23 @@ sw.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     void sw.skipWaiting();
   }
+  if (event.data?.type === "PURGE_PRIVATE_CACHES") {
+    event.waitUntil(purgePrivateCaches());
+  }
 });
 
 /**
  * Handle install
  */
-sw.addEventListener("install", () => {
-  console.log("[SW] Installing service worker");
+sw.addEventListener("install", (event) => {
+  // Replace legacy private-cache workers immediately rather than waiting for
+  // a user to accept an optional offline-app update.
+  event.waitUntil(sw.skipWaiting());
 });
 
 /**
  * Handle activate
  */
 sw.addEventListener("activate", (event) => {
-  console.log("[SW] Activating service worker");
-  event.waitUntil(sw.clients.claim());
+  event.waitUntil(purgePrivateCaches().then(() => sw.clients.claim()));
 });

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from quart import Quart, abort, send_from_directory
+from quart import Quart, abort, request, send_from_directory
 from werkzeug.exceptions import NotFound
 
 from app.api.middleware import register_error_handlers
@@ -11,6 +11,7 @@ from app.config.container import RequestContainer, set_request_container
 from app.config.logging import setup_logging
 from app.config.settings import get_settings
 from app.config.telemetry import setup_telemetry
+from app.infrastructure.oauth.session import session_manager
 from app.infrastructure.persistence.database import close_db, init_db
 
 
@@ -33,15 +34,49 @@ def create_app() -> Quart:
     settings = get_settings()
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["DEBUG"] = settings.debug
+    app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+    from app.api.middleware.request_security import (
+        RequestAdmission,
+        client_address,
+        verify_mutation_origin,
+    )
+
+    admission = RequestAdmission()
+    preauth_admission = RequestAdmission(limit=1200)
+
+    @app.before_request
+    async def enforce_request_security():
+        if request.path.startswith("/api/"):
+            verify_mutation_origin(settings.frontend_url)
+            peer = client_address(
+                request.remote_addr or "127.0.0.1",
+                request.headers.get("X-Real-IP"),
+                settings.trusted_proxy_networks,
+            )
+            preauth_admission.admit(f"peer:{peer}", False)
+            user_id = (
+                await session_manager.get_current_user_id()
+                if request.cookies.get(session_manager.COOKIE_NAME)
+                else None
+            )
+            admission.admit(
+                f"user:{user_id}" if user_id else f"peer:{peer}",
+                request.method not in {"GET", "HEAD", "OPTIONS"},
+            )
 
     # Configure CORS and security headers
     @app.after_request
     async def add_security_headers(response):
+        if request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "private, no-store"
+        if response.status_code == 429:
+            response.headers["Retry-After"] = "60"
         # Security headers (always apply)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
         if settings.is_production:
             # Production: strict CORS
@@ -50,19 +85,23 @@ def create_app() -> Quart:
                 "default-src 'self'; "
                 "script-src 'self'; "
                 "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data: https:; "
+                f"img-src 'self' data:{' https:' if settings.allow_external_images else ''}; "
                 "connect-src 'self'; "
                 "font-src 'self'; "
-                "media-src 'self'"
+                "media-src 'self'; "
+                "object-src 'none'; "
+                "base-uri 'none'; "
+                "frame-ancestors 'none'; "
+                "form-action 'self'"
             )
-        else:
-            # Development: permissive CORS
-            response.headers["Access-Control-Allow-Origin"] = "*"
+        elif request.headers.get("Origin") == settings.frontend_url.rstrip("/"):
+            response.headers["Access-Control-Allow-Origin"] = settings.frontend_url.rstrip("/")
             response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             )
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Requested-With"
             response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Vary"] = "Origin"
         return response
 
     # Register error handlers

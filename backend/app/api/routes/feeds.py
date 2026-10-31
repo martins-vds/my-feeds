@@ -16,13 +16,17 @@ from app.application.services.feed_service import (
 from app.config.container import get_request_container
 from app.domain.feed_management.services.feed_validator import FeedValidationError
 from app.infrastructure.http.response_cache import get_response_cache
-from app.infrastructure.jobs.feed_ingestion import ingest_feed_posts
+from app.infrastructure.jobs.feed_ingestion import (
+    FeedJobAdmissionError,
+    feed_job_gate,
+    ingest_feed_posts,
+)
 from app.infrastructure.oauth.session import session_manager
 
 bp = Blueprint("feeds", __name__)
 
 
-def get_current_user_id() -> UUID:
+async def get_current_user_id() -> UUID:
     """Get the current authenticated user's ID from session.
 
     Returns:
@@ -31,10 +35,29 @@ def get_current_user_id() -> UUID:
     Raises:
         UnauthorizedError: If not authenticated
     """
-    user_id = session_manager.get_current_user_id()
+    user_id = await session_manager.get_current_user_id()
     if user_id is None:
         raise UnauthorizedError("Authentication required")
     return user_id
+
+
+def _admission_response(error: FeedJobAdmissionError):
+    return (
+        jsonify({"error": "feed_busy", "message": str(error)}),
+        error.status_code,
+        {"Retry-After": "30"},
+    )
+
+
+async def _commit_and_ingest(container, user_id: UUID, feed_id: UUID) -> None:
+    reservation = feed_job_gate.reserve(feed_id)
+    try:
+        await container.session.commit()
+        await get_response_cache().invalidate_user(user_id)
+        current_app.add_background_task(ingest_feed_posts, feed_id, reservation)
+    except BaseException:
+        reservation.release()
+        raise
 
 
 def _parse_category_ids(raw: object) -> list[UUID]:
@@ -61,7 +84,7 @@ async def list_feeds_in_category(category_id: UUID):
     Returns:
         JSON array of feeds in the category
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     async def build():
@@ -90,7 +113,7 @@ async def add_feed(category_id: UUID):
         404: Category not found
         409: Feed already subscribed
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
 
     data = await request.get_json()
     if not data:
@@ -105,10 +128,11 @@ async def add_feed(category_id: UUID):
         feed = await container.feed_service.add_feed(user_id, url, [category_id])
         # Commit so the new feed is visible, then ingest its posts in the
         # background instead of blocking the request.
-        await container.session.commit()
-        await get_response_cache().invalidate_user(user_id)
-        current_app.add_background_task(ingest_feed_posts, feed.id)
+        await _commit_and_ingest(container, user_id, feed.id)
         return jsonify(feed.to_dict()), 201
+    except FeedJobAdmissionError as e:
+        await container.session.rollback()
+        return _admission_response(e)
     except FeedLimitError as e:
         raise ValidationError(str(e))
     except FeedConflictError:
@@ -130,7 +154,7 @@ async def list_all_feeds():
     GET /api/feeds
     GET /api/feeds?uncategorized=true  -> only feeds that have no category
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
     uncategorized = request.args.get("uncategorized") == "true"
 
@@ -161,7 +185,7 @@ async def create_feed():
         404: A category was not found
         409: Feed already subscribed
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
 
     data = await request.get_json()
     if not data:
@@ -178,10 +202,11 @@ async def create_feed():
         feed = await container.feed_service.add_feed(user_id, url, category_ids)
         # Commit so the new feed is visible, then ingest its posts in the
         # background instead of blocking the request.
-        await container.session.commit()
-        await get_response_cache().invalidate_user(user_id)
-        current_app.add_background_task(ingest_feed_posts, feed.id)
+        await _commit_and_ingest(container, user_id, feed.id)
         return jsonify(feed.to_dict()), 201
+    except FeedJobAdmissionError as e:
+        await container.session.rollback()
+        return _admission_response(e)
     except FeedLimitError as e:
         raise ValidationError(str(e))
     except FeedConflictError:
@@ -203,7 +228,7 @@ async def get_feed(feed_id: UUID):
     Returns:
         Feed details with posts array
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
@@ -230,7 +255,7 @@ async def update_feed(feed_id: UUID):
     Returns:
         Updated feed
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
 
     data = await request.get_json()
     if not data:
@@ -279,7 +304,7 @@ async def delete_feed(feed_id: UUID):
         204: Deleted
         404: Not found
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
@@ -304,7 +329,7 @@ async def refresh_feed(feed_id: UUID):
     immediately with the current feed. Paused feeds cannot be refreshed
     (resume the feed first) and return 409.
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
@@ -320,8 +345,15 @@ async def refresh_feed(feed_id: UUID):
                 ),
                 409,
             )
-        current_app.add_background_task(ingest_feed_posts, feed_id)
+        reservation = feed_job_gate.reserve(feed_id)
+        try:
+            current_app.add_background_task(ingest_feed_posts, feed_id, reservation)
+        except BaseException:
+            reservation.release()
+            raise
         return jsonify(feed.to_dict())
+    except FeedJobAdmissionError as e:
+        return _admission_response(e)
     except FeedNotFoundError:
         return jsonify({"error": "not_found", "message": "Feed not found"}), 404
     except FeedPermissionError:

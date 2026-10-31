@@ -63,6 +63,7 @@ class TestAddFeed:
 
         response = await client.post(
             f"/api/categories/{category_id}/feeds",
+            headers={"X-Requested-With": "XMLHttpRequest"},
             json={"url": "https://example.com/feed.xml"},
         )
 
@@ -201,6 +202,7 @@ class TestSetFeedCategories:
 
         response = await client.patch(
             f"/api/feeds/{feed_id}",
+            headers={"X-Requested-With": "XMLHttpRequest"},
             json={"categoryId": str(uuid4())},
         )
 
@@ -249,7 +251,9 @@ class TestDeleteFeed:
         """Unauthenticated request should return 401."""
         feed_id = str(uuid4())
 
-        response = await client.delete(f"/api/feeds/{feed_id}")
+        response = await client.delete(
+            f"/api/feeds/{feed_id}", headers={"X-Requested-With": "XMLHttpRequest"}
+        )
 
         assert response.status_code == 401
 

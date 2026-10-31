@@ -1,53 +1,69 @@
-# =============================================================================
-# my-feeds — production-oriented base stack.
-#
-# `docker compose up` also loads docker-compose.override.yml, which switches
-# the backend/frontend to hot-reloading dev servers. To run the production
-# stack as defined here, ignore the override explicitly:
-#
-#     docker compose -f docker-compose.yml up --build
-#
-# Copy .env.example to .env to customise ports/credentials (all optional).
-# =============================================================================
+# Production: run with -f docker-compose.yml (without the development override).
+# An external TLS terminator must proxy to the loopback frontend port.
+# All credentials are required, including in development; use URL-safe random DB passwords.
 name: my-feeds
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    user: postgres
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-myfeeds_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random migration administrator password}
       POSTGRES_DB: ${POSTGRES_DB:-myfeeds}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-myfeeds}" ]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
-      retries: 5
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    networks:
-      - myfeeds
+      retries: 10
+    networks: [myfeeds]
 
-  # One-shot service: applies Alembic migrations, then exits. The backend waits
-  # for this to complete successfully before it starts.
+  # Runs on every stack start, including existing data volumes.
+  db-provision:
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    user: postgres
+    restart: "no"
+    environment:
+      PGHOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-myfeeds_admin}
+      PGUSER: ${POSTGRES_USER:-myfeeds_admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set a random migration administrator password}
+      PGDATABASE: ${POSTGRES_DB:-myfeeds}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Set a distinct random runtime password}
+    command: ["psql", "-X", "--file=/security/init-db.sql"]
+    volumes:
+      - ./init-db.sql:/security/init-db.sql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [myfeeds]
+
   migrate:
     image: my-feeds-backend:prod
     build:
       context: ./backend
       target: prod
-    command: [ "alembic", "upgrade", "head" ]
+    command: ["/app/start.sh", "migrate"]
     restart: "no"
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-myfeeds}
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-myfeeds_admin}:${POSTGRES_PASSWORD:?Set administrator password}@db:5432/${POSTGRES_DB:-myfeeds}
     depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - myfeeds
+      db-provision:
+        condition: service_completed_successfully
+    networks: [myfeeds]
+
+  # Reapply existing-table grants after migrations, excluding Alembic's version table.
+  db-grants:
+    extends:
+      service: db-provision
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   backend:
     image: my-feeds-backend:prod
@@ -56,26 +72,29 @@ services:
       target: prod
     restart: unless-stopped
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-myfeeds}
-    # Optional: OAuth keys, Azure Speech, SECRET_KEY, etc. Loaded in order
-    # (later files win); `environment` values above take precedence over both.
-    # The azd environment (`azd env get-values`) supplies the OAuth client
-    # IDs/secrets and SECRET_KEY; set AZURE_ENV_NAME to pick another azd env.
-    env_file:
-      - path: ./.azure/${AZURE_ENV_NAME:-my-feeds-prod}/.env
-        required: false
-      - path: ./backend/.env
-        required: false
+      ENVIRONMENT: production
+      DEBUG: "false"
+      PORT: "5000"
+      DATABASE_URL: postgresql+asyncpg://myfeeds_runtime:${POSTGRES_RUNTIME_PASSWORD:?Set runtime password}@db:5432/${POSTGRES_DB:-myfeeds}
+      SECRET_KEY: ${SECRET_KEY:?Set a random session secret}
+      OAUTH_REDIRECT_BASE_URL: ${PUBLIC_BASE_URL:?Set the externally terminated HTTPS URL}
+      FRONTEND_URL: ${PUBLIC_BASE_URL:?Set the externally terminated HTTPS URL}
+      AUDIO_CACHE_DIR: /var/cache/my-feeds/audio
+      EXTERNAL_TTS_ENABLED: ${EXTERNAL_TTS_ENABLED:-false}
+      ALLOW_EXTERNAL_IMAGES: ${ALLOW_EXTERNAL_IMAGES:-false}
+      TRUSTED_PROXY_NETWORKS: '["${FRONTEND_PROXY_IP:-172.30.16.2}/32"]'
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
     depends_on:
-      db:
-        condition: service_healthy
-      migrate:
+      db-grants:
         condition: service_completed_successfully
-    ports:
-      - "${BACKEND_PORT:-5000}:5000"
-    networks:
-      - myfeeds
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    networks: [myfeeds]
 
   frontend:
     image: my-feeds-frontend:prod
@@ -84,13 +103,18 @@ services:
       target: prod
       args:
         VITE_API_URL: /api
+        VITE_ALLOW_EXTERNAL_IMAGES: ${ALLOW_EXTERNAL_IMAGES:-false}
     restart: unless-stopped
-    depends_on:
-      - backend
+    environment:
+      ALLOW_EXTERNAL_IMAGES: ${ALLOW_EXTERNAL_IMAGES:-false}
+    depends_on: [backend]
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     networks:
-      - myfeeds
+      myfeeds:
+        ipv4_address: ${FRONTEND_PROXY_IP:-172.30.16.2}
 
 volumes:
   postgres-data:
@@ -98,3 +122,6 @@ volumes:
 networks:
   myfeeds:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${MYFEEDS_NETWORK_SUBNET:-172.30.16.0/24}

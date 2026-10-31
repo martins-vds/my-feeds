@@ -7,8 +7,7 @@ Verifies the end-to-end path:
   4. GET /auth/me returns fully authenticated user
 """
 
-import json
-from datetime import datetime
+from http.cookies import SimpleCookie
 from uuid import uuid4
 
 import pytest
@@ -33,7 +32,7 @@ def client(app: Quart) -> QuartClient:
     return app.test_client()
 
 
-def _make_pending_cookie(
+async def _make_pending_cookie(
     provider: str = "github",
     provider_id: str | None = None,
     email: str | None = None,
@@ -45,15 +44,22 @@ def _make_pending_cookie(
         provider_id = f"integ-{uuid4().hex[:12]}"
     if email is None:
         email = f"{provider_id}@example.com"
-    data = {
-        "provider": provider,
-        "provider_id": provider_id,
-        "email": email,
-        "name": name,
-        "avatar_url": avatar_url,
-        "pending_created_at": datetime.utcnow().isoformat(),
-    }
-    return json.dumps(data)
+    from quart import Response
+
+    from app.infrastructure.oauth.session import session_manager
+
+    response = Response()
+    await session_manager.create_pending_session(
+        response,
+        provider,
+        provider_id,
+        email,
+        name,
+        avatar_url,
+    )
+    jar = SimpleCookie()
+    jar.load(response.headers["Set-Cookie"])
+    return jar[SessionManager.COOKIE_NAME].value
 
 
 class TestFullSignUpFlow:
@@ -64,13 +70,17 @@ class TestFullSignUpFlow:
         """Full flow: pending cookie → /auth/me pending → complete-signup → /auth/me authed."""
         unique_id = f"integ-flow-{uuid4().hex[:8]}"
         email = f"{unique_id}@example.com"
-        pending_cookie = _make_pending_cookie(
+        pending_cookie = await _make_pending_cookie(
             provider="github",
             provider_id=unique_id,
             email=email,
             name="Flow Test",
         )
-        cookie_header = {"Cookie": f"my_feeds_session={pending_cookie}"}
+        cookie_header = {
+            "Cookie": f"my_feeds_session={pending_cookie}",
+            "Origin": "http://localhost",
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
         # Step 1: GET /auth/me should return pending_signup
         response = await client.get("/api/auth/me", headers=cookie_header)
@@ -121,12 +131,16 @@ class TestFullSignUpFlow:
         """Attempting complete-signup twice with same identity returns 409."""
         unique_id = f"integ-dup-{uuid4().hex[:8]}"
         email = f"{unique_id}@example.com"
-        pending_cookie = _make_pending_cookie(
+        pending_cookie = await _make_pending_cookie(
             provider="github",
             provider_id=unique_id,
             email=email,
         )
-        cookie_header = {"Cookie": f"my_feeds_session={pending_cookie}"}
+        cookie_header = {
+            "Cookie": f"my_feeds_session={pending_cookie}",
+            "Origin": "http://localhost",
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
         # First signup: should succeed
         response = await client.post(
@@ -136,10 +150,11 @@ class TestFullSignUpFlow:
         )
         assert response.status_code == 201
 
-        # Second signup with same identity: should get 409
+        # Replaying the consumed pending credential must fail authentication.
+        client = client.app.test_client()
         response = await client.post(
             "/api/auth/complete-signup",
             json={"name": "Second Signup", "timezone": "UTC"},
             headers=cookie_header,
         )
-        assert response.status_code == 409
+        assert response.status_code == 401

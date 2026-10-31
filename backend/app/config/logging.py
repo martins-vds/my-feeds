@@ -5,6 +5,7 @@ import sys
 from typing import Literal
 
 from app.config.settings import get_settings
+from app.config.telemetry import PrivateDataLogFilter
 
 
 def setup_logging(
@@ -28,6 +29,8 @@ def setup_logging(
         stream=sys.stdout,
         force=True,
     )
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(PrivateDataLogFilter())
 
     # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)

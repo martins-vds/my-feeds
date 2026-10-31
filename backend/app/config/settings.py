@@ -1,7 +1,9 @@
 """Environment configuration management using pydantic-settings."""
 
 from functools import lru_cache
+from ipaddress import ip_network
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,7 +21,9 @@ class Settings(BaseSettings):
 
     # Environment
     environment: Literal["development", "testing", "production"] = "development"
-    debug: bool = True
+    debug: bool = False
+    allow_external_images: bool = False
+    trusted_proxy_networks: list[str] = Field(default_factory=list, max_length=16)
 
     # Server
     host: str = "0.0.0.0"
@@ -61,6 +65,7 @@ class Settings(BaseSettings):
     # Text-to-Speech
     tts_provider: Literal["edge", "azure"] = "edge"
     azure_speech_endpoint: str = ""
+    external_tts_enabled: bool = False
 
     # Audio Cache
     audio_cache_dir: str = "audio_cache"
@@ -90,6 +95,35 @@ class Settings(BaseSettings):
         """Require Azure Blob configuration when that provider is selected."""
         if self.audio_cache_provider == "azure_blob" and not self.azure_blob_service_url:
             raise ValueError("AZURE_BLOB_SERVICE_URL is required for azure_blob cache")
+        return self
+
+    @model_validator(mode="after")
+    def validate_trusted_proxies(self) -> "Settings":
+        for value in self.trusted_proxy_networks:
+            network = ip_network(value)
+            if network.prefixlen == 0:
+                raise ValueError("Trusted proxies must not include the entire Internet")
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.is_production:
+            if self.debug:
+                raise ValueError("DEBUG must be false in production")
+            if len(self.secret_key) < 32 or self.secret_key == "change_me_in_production":
+                raise ValueError(
+                    "Production SECRET_KEY must be a random secret of at least 32 characters"
+                )
+            for name in ("oauth_redirect_base_url", "frontend_url"):
+                url = urlsplit(getattr(self, name))
+                if (
+                    url.scheme != "https"
+                    or not url.hostname
+                    or url.username is not None
+                    or url.query
+                    or url.fragment
+                ):
+                    raise ValueError(f"Production {name} must be an absolute HTTPS public URL")
         return self
 
     @property

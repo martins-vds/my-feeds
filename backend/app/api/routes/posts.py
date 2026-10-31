@@ -17,7 +17,7 @@ from app.infrastructure.oauth.session import session_manager
 bp = Blueprint("posts", __name__, url_prefix="/posts")
 
 
-def get_current_user_id() -> UUID:
+async def get_current_user_id() -> UUID:
     """Get the current authenticated user's ID from session.
 
     Returns:
@@ -26,7 +26,7 @@ def get_current_user_id() -> UUID:
     Raises:
         UnauthorizedError: If not authenticated
     """
-    user_id = session_manager.get_current_user_id()
+    user_id = await session_manager.get_current_user_id()
     if user_id is None:
         raise UnauthorizedError("Authentication required")
     return user_id
@@ -48,7 +48,7 @@ async def list_posts():
     Returns:
         JSON object with posts array, hasMore, and nextCursor
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     # Parse query parameters
@@ -129,7 +129,7 @@ async def unread_counts():
             "total": <count>
         }
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     async def build():
@@ -159,7 +159,7 @@ async def bulk_update_read_state():
     The scope is limited to the user's own feeds. Returns the number of posts
     affected.
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     data = await request.get_json()
@@ -211,7 +211,7 @@ async def get_post(post_id: UUID):
     Returns:
         PostDetail with full content
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
@@ -239,7 +239,7 @@ async def update_read_state(post_id: UUID):
     Returns:
         ReadState with updated values
     """
-    user_id = get_current_user_id()
+    user_id = await get_current_user_id()
     container = get_request_container()
 
     data = await request.get_json()

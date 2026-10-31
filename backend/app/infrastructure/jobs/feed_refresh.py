@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.config.container import create_session
-from app.infrastructure.jobs.feed_ingestion import ingest_feed_posts
+from app.infrastructure.jobs.feed_ingestion import FeedJobAdmissionError, ingest_feed_posts
 from app.infrastructure.persistence.models.feed import FeedModel
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,10 @@ async def refresh_active_feeds() -> int:
 
     total = 0
     for feed_id in feed_ids:
-        total += await ingest_feed_posts(feed_id)
+        try:
+            total += await ingest_feed_posts(feed_id)
+        except FeedJobAdmissionError:
+            logger.info("Scheduled refresh deferred for busy feed %s", feed_id)
     return total
 
 

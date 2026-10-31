@@ -12,6 +12,7 @@ import {
   Divider,
   Stack,
   Typography,
+  Alert,
 } from "@mui/material";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import GoogleIcon from "@mui/icons-material/Google";
@@ -33,7 +34,7 @@ function MicrosoftIcon() {
 }
 
 export function SignInPage() {
-  const { login, isLoading } = useAuth();
+  const { login, logout, isLoading, error } = useAuth();
 
   return (
     <Container maxWidth="sm">
@@ -76,6 +77,22 @@ export function SignInPage() {
             </Box>
 
             <Divider sx={{ my: 3 }} />
+
+            {error ? (
+              <Alert
+                severity="warning"
+                sx={{ mb: 3 }}
+                action={
+                  error.includes("server session could not be ended") ? (
+                    <Button color="inherit" onClick={() => void logout()}>
+                      Retry sign out
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {error}
+              </Alert>
+            ) : null}
 
             {/* OAuth Buttons */}
             <Stack spacing={2}>

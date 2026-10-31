@@ -13,20 +13,9 @@ class TestListCategories:
     """Tests for GET /api/categories."""
 
     @pytest.mark.asyncio
-    async def test_list_categories_returns_empty_array_for_new_user(self, client):
+    async def test_list_categories_returns_empty_array_for_new_user(self, client, fresh_auth_headers):
         """New user should have no categories."""
-        # Use a fresh user UUID that has no data at all
-        import json
-        from datetime import datetime
-
-        fresh_session = {
-            "user_id": str(uuid4()),
-            "provider": "github",
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        headers = {"Cookie": f"my_feeds_session={json.dumps(fresh_session)}"}
-
-        response = await client.get("/api/categories", headers=headers)
+        response = await client.get("/api/categories", headers=fresh_auth_headers)
 
         assert response.status_code == 200
         data = await response.get_json()
@@ -106,6 +95,7 @@ class TestCreateCategory:
         """Unauthenticated request should return 401."""
         response = await client.post(
             "/api/categories",
+            headers={"X-Requested-With": "XMLHttpRequest"},
             json={"name": "Technology"},
         )
 

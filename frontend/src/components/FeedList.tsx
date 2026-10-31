@@ -43,6 +43,7 @@ import MarkReadIcon from "@mui/icons-material/DoneAll";
 import MarkUnreadIcon from "@mui/icons-material/RemoveDone";
 import type { Category, Feed } from "../types";
 import { ApiError } from "../services/api";
+import { usePublisherImages } from "../hooks/usePublisherImages";
 
 interface FeedListProps {
   feeds: Feed[];
@@ -71,6 +72,7 @@ export function FeedList({
   onSelectFeed,
   onMarkFeedRead,
 }: FeedListProps) {
+  const { allowed: allowPublisherImages } = usePublisherImages();
   // Local state
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
@@ -251,9 +253,10 @@ export function FeedList({
                 sx={{ opacity: isPaused ? 0.6 : 1, pr: 6 }}
               >
                 <ListItemIcon sx={{ minWidth: 40 }}>
-                  {feed.iconUrl ? (
+                  {allowPublisherImages && feed.iconUrl ? (
                     <Avatar
                       src={feed.iconUrl}
+                      slotProps={{ img: { referrerPolicy: "no-referrer" } }}
                       alt={feed.title || "Feed"}
                       sx={{ width: 24, height: 24 }}
                     />

@@ -112,6 +112,42 @@ afterEach(() => {
 });
 
 describe("useReadAlong active-word tracking", () => {
+  it("re-wraps sanitized article text after publisher-image consent replaces the body DOM", () => {
+    const mediaEl = makeMediaEl({ currentTime: 0.48 });
+    function ContentHarness({ contentVersion }: { contentVersion: boolean }) {
+      const titleRef = useRef<HTMLDivElement>(null);
+      const contentRef = useRef<HTMLDivElement>(null);
+      const getMediaElement = useCallback(() => mediaEl as unknown as HTMLAudioElement, []);
+      useReadAlong({
+        timings: TIMINGS,
+        getMediaElement,
+        isPlaying: true,
+        titleRef,
+        contentRef,
+        highlightEnabled: true,
+        autoScrollEnabled: false,
+        contentVersion,
+      });
+      return h(
+        "div",
+        null,
+        h("div", { ref: titleRef }, "Hello world"),
+        h("div", {
+          ref: contentRef,
+          dangerouslySetInnerHTML: {
+            __html: `<p>foo bar baz</p>${contentVersion ? '<img alt="Illustration">' : ""}`,
+          },
+        })
+      );
+    }
+    const view = render(h(ContentHarness, { contentVersion: false }));
+    expect(document.querySelectorAll(".ra-word")).toHaveLength(5);
+    view.rerender(h(ContentHarness, { contentVersion: true }));
+    expect(document.querySelectorAll(".ra-word")).toHaveLength(5);
+    flushFrame();
+    expect(activeIndex()).toBe(2);
+  });
+
   it("re-wraps and re-enables after highlight is toggled off then on (US3)", () => {
     const mediaEl = makeMediaEl();
     const view = render(h(Harness, { timings: TIMINGS, mediaEl, highlightEnabled: true }));

@@ -38,9 +38,8 @@ class AudioModel(Base):
     cache_key: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
-        unique=True,
         index=True,
-        comment="Unique key for audio file lookup",
+        comment="Content key shared by posts; authorization uses the owning feed",
     )
     file_path: Mapped[str] = mapped_column(
         String(512),

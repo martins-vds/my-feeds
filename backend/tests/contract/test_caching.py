@@ -20,7 +20,7 @@ class TestETagOnReads:
         assert resp.status_code == 200
         etag = resp.headers.get("ETag")
         assert etag and etag.startswith('"') and etag.endswith('"')
-        assert resp.headers.get("Cache-Control") == "private, no-cache"
+        assert resp.headers.get("Cache-Control") == "private, no-store"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("path", READ_ENDPOINTS)

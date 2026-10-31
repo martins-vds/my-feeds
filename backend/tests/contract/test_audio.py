@@ -6,9 +6,20 @@ Tests verify the API contract defined in openapi.yaml for:
 """
 
 from uuid import uuid4
+from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text as sqltext
+
+
+@pytest_asyncio.fixture
+async def private_audio(test_audio, post_id):
+    await _seed_audio_row(post_id, test_audio.cache_key)
+    try:
+        yield test_audio
+    finally:
+        await _delete_audio_row(post_id)
 
 
 class TestGetPostAudio:
@@ -67,10 +78,10 @@ class TestGetPostAudio:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_returns_404_for_other_users_post(self, client, auth_headers, other_user_post):
+    async def test_returns_404_for_other_users_post(self, client, auth_headers, other_user_post_id):
         """GET /posts/{id}/audio returns 404 for post from another user's feed."""
         response = await client.get(
-            f"/api/posts/{other_user_post.id}/audio",
+            f"/api/posts/{other_user_post_id}/audio",
             headers=auth_headers,
         )
 
@@ -81,58 +92,137 @@ class TestStreamAudio:
     """Contract tests for GET /audio/{cacheKey} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_streams_full_audio_file(self, client, test_audio):
+    async def test_streams_full_audio_file(self, client, auth_headers, private_audio):
         """GET /audio/{cacheKey} returns 200 with audio content."""
-        response = await client.get(f"/api/audio/{test_audio.cache_key}")
+        response = await client.get(
+            f"/api/audio/{private_audio.cache_key}", headers=auth_headers
+        )
 
         assert response.status_code == 200
         assert response.content_type == "audio/mpeg"
         data = await response.get_data()
         assert len(data) > 0
+        assert response.headers["Cache-Control"] == "private, no-store"
 
     @pytest.mark.asyncio
-    async def test_supports_range_request(self, client, test_audio):
+    async def test_supports_range_request(self, client, auth_headers, private_audio):
         """GET /audio/{cacheKey} with Range header returns 206 partial content."""
         response = await client.get(
-            f"/api/audio/{test_audio.cache_key}", headers={"Range": "bytes=0-1023"}
+            f"/api/audio/{private_audio.cache_key}",
+            headers={**auth_headers, "Range": "bytes=0-1023"},
         )
 
         assert response.status_code == 206
         assert "Content-Range" in response.headers
         data = await response.get_data()
-        assert len(data) <= 1024
+        assert len(data) == 1024
 
     @pytest.mark.asyncio
-    async def test_returns_404_for_nonexistent_cache_key(self, client):
+    async def test_returns_404_for_nonexistent_cache_key(self, client, auth_headers):
         """GET /audio/{cacheKey} returns 404 for non-existent key."""
-        response = await client.get("/api/audio/nonexistent-cache-key")
+        response = await client.get(
+            "/api/audio/" + "f" * 64, headers=auth_headers
+        )
 
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_rejects_malformed_cache_key(self, client):
+    async def test_rejects_malformed_cache_key(self, client, auth_headers):
         """Non SHA-256-hex keys are rejected with 404 before any filesystem
-        lookup, closing the path-traversal vector on this public route."""
+        lookup, closing the path-traversal vector."""
         # 64 chars but not hex -> fails validation (would otherwise hit the FS).
-        resp = await client.get("/api/audio/" + "g" * 64)
+        resp = await client.get("/api/audio/" + "g" * 64, headers=auth_headers)
         assert resp.status_code == 404
 
         # Encoded traversal attempt never escapes the cache directory.
-        resp2 = await client.get("/api/audio/..%2f..%2f..%2fetc%2fpasswd")
+        resp2 = await client.get(
+            "/api/audio/..%2f..%2f..%2fetc%2fpasswd", headers=auth_headers
+        )
         assert resp2.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_streaming_is_public(self, client, test_audio):
-        """GET /audio/{cacheKey} does not require authentication."""
-        # Audio streaming could be public (security through obscurity of cache key)
-        response = await client.get(f"/api/audio/{test_audio.cache_key}")
+    async def test_streaming_requires_authentication(self, client, private_audio):
+        """Knowing the deterministic cache key does not authorize streaming."""
+        response = await client.get(f"/api/audio/{private_audio.cache_key}")
 
-        assert response.status_code == 200
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_returns_correct_content_length(self, client, test_audio):
+    async def test_other_account_cannot_stream_known_cache_key(
+        self, client, fresh_auth_headers, private_audio
+    ):
+        response = await client.get(
+            f"/api/audio/{private_audio.cache_key}", headers=fresh_auth_headers
+        )
+        assert response.status_code == 404
+        assert response.headers["Cache-Control"] == "private, no-store"
+
+    @pytest.mark.asyncio
+    async def test_shared_cache_key_only_authorizes_accounts_with_linked_posts(
+        self, client, auth_headers, other_auth_headers, private_audio, other_user_post_id
+    ):
+        await _seed_audio_row(other_user_post_id, private_audio.cache_key)
+        try:
+            for headers in (auth_headers, other_auth_headers):
+                response = await client.get(
+                    f"/api/audio/{private_audio.cache_key}",
+                    headers={**headers, "Range": "bytes=-16"},
+                )
+                assert response.status_code == 206
+                assert len(await response.get_data()) == 16
+        finally:
+            await _delete_audio_row(other_user_post_id)
+
+    @pytest.mark.asyncio
+    async def test_shared_audio_eviction_uses_newest_access_and_removes_all_links(
+        self, private_audio, post_id, other_user_post_id, read_post_id
+    ):
+        from app.config.container import create_cache_manager
+        from app.infrastructure.jobs.audio_cleanup import cleanup_cache_by_size
+        from app.infrastructure.persistence.database import get_session_factory
+
+        cache = create_cache_manager()
+        shared_key, old_key = private_audio.cache_key, "e" * 64
+        size = 600 * 1024
+        await cache.save(shared_key, b"s" * size)
+        await cache.save(old_key, b"o" * size)
+        await _seed_audio_row(other_user_post_id, shared_key)
+        await _seed_audio_row(read_post_id, old_key)
+        factory = get_session_factory()
+        now = datetime.now(UTC)
+        try:
+            async with factory() as session:
+                for pid, days in ((post_id, 10), (read_post_id, 5), (other_user_post_id, 0)):
+                    await session.execute(
+                        sqltext("UPDATE audio SET last_accessed_at=:accessed WHERE post_id=:pid"),
+                        {"accessed": now - timedelta(days=days), "pid": pid},
+                    )
+                await session.commit()
+                assert await cleanup_cache_by_size(cache, 1, session) == (1, size)
+                assert await cache.exists(shared_key)
+                assert not await cache.exists(old_key)
+                assert await session.scalar(
+                    sqltext("SELECT COUNT(*) FROM audio WHERE cache_key=:key"), {"key": shared_key}
+                ) == 2
+                assert await session.scalar(
+                    sqltext("SELECT COUNT(*) FROM audio WHERE cache_key=:key"), {"key": old_key}
+                ) == 0
+                assert await cleanup_cache_by_size(cache, 0, session) == (1, size)
+                assert await session.scalar(
+                    sqltext("SELECT COUNT(*) FROM audio WHERE cache_key=:key"), {"key": shared_key}
+                ) == 0
+        finally:
+            await _delete_audio_row(other_user_post_id)
+            await _delete_audio_row(read_post_id)
+            await cache.delete(shared_key)
+            await cache.delete(old_key)
+
+    @pytest.mark.asyncio
+    async def test_returns_correct_content_length(self, client, auth_headers, private_audio):
         """GET /audio/{cacheKey} returns Content-Length header."""
-        response = await client.get(f"/api/audio/{test_audio.cache_key}")
+        response = await client.get(
+            f"/api/audio/{private_audio.cache_key}", headers=auth_headers
+        )
 
         assert response.status_code == 200
         assert "Content-Length" in response.headers

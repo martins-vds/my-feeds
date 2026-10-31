@@ -35,6 +35,7 @@ import { useReadAlong } from "../../hooks/useReadAlong";
 import { useReadAlongPreferences } from "../../hooks/useReadAlongPreferences";
 import { hasReadableContent } from "../../utils/readableContent";
 import { PostDetailSkeleton } from "../../components/skeletons/PostDetailSkeleton";
+import { usePublisherImages } from "../../hooks/usePublisherImages";
 
 interface PostDetailResponse {
   id: string;
@@ -69,6 +70,7 @@ function formatDate(dateString: string): string {
  * PostDetailPage displays full post content
  */
 export const PostDetailPage: React.FC = () => {
+  const { allowed: allowPublisherImages } = usePublisherImages();
   const { id: postId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -98,6 +100,7 @@ export const PostDetailPage: React.FC = () => {
     contentRef,
     highlightEnabled: readAlongPrefs.highlight,
     autoScrollEnabled: readAlongPrefs.autoScroll,
+    contentVersion: allowPublisherImages,
   });
 
   // Fetch post detail
@@ -292,7 +295,8 @@ export const PostDetailPage: React.FC = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {post.feedIconUrl ? (
               <Avatar
-                src={post.feedIconUrl}
+                src={allowPublisherImages ? (post.feedIconUrl ?? undefined) : undefined}
+                slotProps={{ img: { referrerPolicy: "no-referrer" } }}
                 alt={post.feedTitle || "Feed"}
                 sx={{ width: 24, height: 24 }}
               />

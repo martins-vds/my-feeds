@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.audio.entities.audio import Audio
 from app.domain.audio.repositories.audio_repository import AudioRepository
 from app.infrastructure.persistence.models.audio import AudioModel
+from app.infrastructure.persistence.models.feed import FeedModel
+from app.infrastructure.persistence.models.post import PostModel
 
 
 class SQLAlchemyAudioRepository(AudioRepository):
@@ -86,6 +88,17 @@ class SQLAlchemyAudioRepository(AudioRepository):
         """Get audio by cache key."""
         stmt = select(AudioModel).where(AudioModel.cache_key == cache_key)
         result = await self._session.execute(stmt)
+        model = result.scalars().first()
+        return self._to_entity(model) if model else None
+
+    async def get_by_cache_key_for_user(self, cache_key: str, user_id: UUID) -> Optional[Audio]:
+        result = await self._session.execute(
+            select(AudioModel)
+            .join(PostModel, AudioModel.post_id == PostModel.id)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .where(AudioModel.cache_key == cache_key, FeedModel.user_id == user_id)
+            .limit(1)
+        )
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 

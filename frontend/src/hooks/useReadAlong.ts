@@ -27,6 +27,8 @@ export interface UseReadAlongArgs {
   contentRef: RefObject<HTMLElement | null>;
   highlightEnabled: boolean;
   autoScrollEnabled: boolean;
+  /** Changes when sanitized article DOM is replaced (e.g. image consent). */
+  contentVersion?: string | boolean;
 }
 
 export interface UseReadAlongResult {
@@ -65,6 +67,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
     contentRef,
     highlightEnabled,
     autoScrollEnabled,
+    contentVersion,
   } = args;
 
   const [highlightingActive, setHighlightingActive] = useState(false);
@@ -170,7 +173,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
       if (title) unwrapWords(title);
       if (content) unwrapWords(content);
     };
-  }, [timings, highlightEnabled, titleRef, contentRef, clearActive]);
+  }, [timings, highlightEnabled, titleRef, contentRef, clearActive, contentVersion]);
 
   // 2) rAF active-word tracking while playing.
   useEffect(() => {

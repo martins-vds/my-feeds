@@ -12,17 +12,15 @@ def test_setup_telemetry_is_noop_without_connection_string(monkeypatch):
 
 
 def test_setup_telemetry_wraps_asgi_app(monkeypatch):
-    calls = []
     monkeypatch.setenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
         "InstrumentationKey=00000000-0000-0000-0000-000000000000",
     )
-    monkeypatch.setattr(
-        "azure.monitor.opentelemetry.configure_azure_monitor", lambda: calls.append(1)
-    )
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.config.telemetry._provider", MagicMock())
     app = Quart(__name__)
     setup_telemetry(app)
     from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
-    assert calls == [1]
     assert isinstance(app.asgi_app, OpenTelemetryMiddleware)

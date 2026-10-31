@@ -10,7 +10,6 @@ Two-phase seeding:
       ``feed_id``, or ``post_id``.
 """
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,7 +17,25 @@ from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from quart.testing import QuartClient
 from sqlalchemy import text
+from werkzeug.datastructures import Headers
+
+
+class SameOriginContractClient(QuartClient):
+    """Contract mutations represent a legitimate same-origin API client."""
+
+    async def open(self, *args, **kwargs):
+        if kwargs.get("method", "GET") not in {"GET", "HEAD", "OPTIONS"}:
+            headers = Headers(kwargs.get("headers"))
+            headers.setdefault("X-Requested-With", "XMLHttpRequest")
+            kwargs["headers"] = headers
+        return await super().open(*args, **kwargs)
+
+
+@pytest.fixture
+def client(app):
+    return SameOriginContractClient(app)
 
 # ---------------------------------------------------------------------------
 # Fixed IDs — deterministic so ON CONFLICT guards are reliable
@@ -263,19 +280,57 @@ async def _seed_full_data():
 # ---------------------------------------------------------------------------
 
 
-def _make_auth_headers(user_id: UUID) -> dict:
-    session_data = {
-        "user_id": str(user_id),
-        "provider": "github",
-        "created_at": datetime.utcnow().isoformat(),
+async def _make_auth_headers(user_id: UUID) -> dict:
+    from http.cookies import SimpleCookie
+
+    from quart import Response
+
+    from app.infrastructure.oauth.session import session_manager
+
+    response = Response()
+    await session_manager.create_session(response, user_id, "github")
+    jar = SimpleCookie()
+    jar.load(response.headers["Set-Cookie"])
+    return {
+        "Cookie": f"my_feeds_session={jar[session_manager.COOKIE_NAME].value}",
+        "Origin": "http://localhost",
+        "X-Requested-With": "XMLHttpRequest",
     }
-    return {"Cookie": f"my_feeds_session={json.dumps(session_data)}"}
 
 
 @pytest.fixture
-def auth_headers():
+async def auth_headers():
     """HTTP headers authenticating as the main test user (TEST_USER_ID)."""
-    return _make_auth_headers(TEST_USER_ID)
+    return await _make_auth_headers(TEST_USER_ID)
+
+
+@pytest.fixture
+async def other_auth_headers():
+    return await _make_auth_headers(TEST_OTHER_USER_ID)
+
+
+@pytest.fixture
+async def fresh_auth_headers():
+    from app.infrastructure.persistence.database import get_session_factory
+
+    user_id = uuid4()
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(
+            text(
+                "INSERT INTO users (id, provider, provider_id, email, name, timezone, "
+                "notifications_enabled) "
+                "VALUES (:id, 'github', :provider_id, :email, 'Fresh user', 'UTC', false)"
+            ),
+            {"id": user_id, "provider_id": str(user_id), "email": f"{user_id}@example.invalid"},
+        )
+        await session.commit()
+    try:
+        yield await _make_auth_headers(user_id)
+    finally:
+        async with factory() as session:
+            await session.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+            await session.commit()
 
 
 @pytest.fixture

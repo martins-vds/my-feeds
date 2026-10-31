@@ -1,7 +1,5 @@
 """Authentication API routes."""
 
-from typing import Literal
-from uuid import UUID
 from zoneinfo import available_timezones
 
 from quart import Blueprint, jsonify, redirect, request
@@ -49,11 +47,16 @@ async def login(provider: str):
     oauth_service = OAuthService()
     try:
         redirect_uri = get_redirect_uri(provider)
+        response = redirect("/")
+        state, verifier = await session_manager.create_oauth_state(response, provider, redirect_uri)
         auth_url = await oauth_service.get_authorization_url(
             provider,  # type: ignore
             redirect_uri,
+            state=state,
+            code_verifier=verifier,
         )
-        return redirect(auth_url)
+        response.headers["Location"] = auth_url
+        return response
     finally:
         await oauth_service.close()
 
@@ -73,28 +76,33 @@ async def callback(provider: str):
     if provider not in valid_providers:
         raise ValidationError(f"Invalid provider: {provider}")
 
-    # Check for OAuth error
-    error = request.args.get("error")
-    if error:
-        error_description = request.args.get("error_description", "Authorization denied")
-        raise UnauthorizedError(f"OAuth error: {error_description}")
-
     # Get authorization code
     code = request.args.get("code")
-    if not code:
+    if not code and not request.args.get("error"):
         raise ValidationError("Missing authorization code")
+
+    redirect_uri = get_redirect_uri(provider)
+    verifier = await session_manager.consume_oauth_state(
+        request,
+        request.args.get("state"),
+        provider,
+        redirect_uri,
+    )
+    if verifier is None:
+        raise UnauthorizedError("Invalid or expired OAuth state. Please sign in again.")
+    if request.args.get("error"):
+        raise UnauthorizedError("OAuth authorization denied")
 
     container = get_request_container()
     settings = get_settings_instance()
 
     try:
-        redirect_uri = get_redirect_uri(provider)
-
         # Exchange code for user info
         user_info = await container.oauth_service.exchange_code_for_user(
             provider,  # type: ignore
             code,
             redirect_uri,
+            code_verifier=verifier,
         )
 
         # Check if user already exists (no auto-creation)
@@ -104,11 +112,13 @@ async def callback(provider: str):
         )
 
         frontend_url = "/" if settings.is_production else settings.frontend_url
-        response = redirect(frontend_url)
+        landing_path = "/auth/callback" if existing_user else "/signup"
+        response = redirect(frontend_url.rstrip("/") + landing_path)
+        session_manager.clear_oauth_cookie(response)
 
         if existing_user:
             # Returning user — set full session
-            session_manager.create_session(response, existing_user.id, provider)
+            await session_manager.create_session(response, existing_user.id, provider)
         else:
             # New user — set pending sign-up session
             email = user_info.get("email", "")
@@ -117,7 +127,7 @@ async def callback(provider: str):
                     "OAuth provider did not return an email address. "
                     "Please ensure your email is public or use a different provider."
                 )
-            session_manager.create_pending_session(
+            await session_manager.create_pending_session(
                 response=response,
                 provider=user_info["provider"],
                 provider_id=user_info["provider_id"],
@@ -127,8 +137,8 @@ async def callback(provider: str):
             )
 
         return response
-    except OAuthError as e:
-        raise UnauthorizedError(str(e))
+    except (OAuthError, ValueError):
+        raise UnauthorizedError("OAuth authentication failed. Please sign in again.") from None
 
 
 @bp.route("/complete-signup", methods=["POST"])
@@ -137,22 +147,23 @@ async def complete_signup():
 
     POST /api/auth/complete-signup
 
-    Reads pending OAuth data from the session cookie, validates the
+    Resolves server-held pending OAuth data, validates the
     submitted name and timezone, creates the user record, and
     establishes a full session.
     """
-    # Read pending sign-up data from cookie
-    pending = session_manager.get_pending_signup(request)
+    pending = await session_manager.get_pending_signup(request)
     if not pending:
         raise UnauthorizedError("No pending sign-up session. Please sign in again.")
 
     # Parse and validate request body
     body = await request.get_json()
-    if not body:
+    if not isinstance(body, dict) or not body:
         raise ValidationError("Request body is required")
 
     # Validate name
-    name = (body.get("name") or "").strip()
+    if not isinstance(body.get("name"), str):
+        raise ValidationError("Display name is required")
+    name = body["name"].strip()
     if not name:
         raise ValidationError("Display name is required")
     if len(name) > 255:
@@ -160,7 +171,7 @@ async def complete_signup():
 
     # Validate timezone
     timezone = body.get("timezone", "")
-    if not timezone or timezone not in _VALID_TIMEZONES:
+    if not isinstance(timezone, str) or timezone not in _VALID_TIMEZONES:
         raise ValidationError("Invalid timezone")
 
     # Validate pending data has required OAuth fields
@@ -177,6 +188,9 @@ async def complete_signup():
     )
     if existing:
         raise ConflictError("Account already exists. Redirecting to sign-in.")
+
+    if await session_manager.consume_pending_signup(request) is None:
+        raise UnauthorizedError("Pending sign-up session already used. Please sign in again.")
 
     # Create user via repository
     from app.config.container import create_user_repository
@@ -196,7 +210,7 @@ async def complete_signup():
         await container.session.commit()
     except IntegrityError:
         await container.session.rollback()
-        raise ConflictError("Account already exists. Redirecting to sign-in.")
+        raise ConflictError("Account already exists. Redirecting to sign-in.") from None
 
     # Replace pending cookie with full session
     response_data = {
@@ -213,7 +227,7 @@ async def complete_signup():
 
     response = jsonify(response_data)
     response.status_code = 201
-    session_manager.create_session(response, saved_user.id, pending["provider"])
+    await session_manager.create_session(response, saved_user.id, pending["provider"])
 
     return response
 
@@ -230,7 +244,7 @@ async def me():
     - No session: 401
     """
     # Check for pending sign-up first
-    pending = session_manager.get_pending_signup(request)
+    pending = await session_manager.get_pending_signup(request)
     if pending:
         return jsonify(
             {
@@ -245,7 +259,7 @@ async def me():
         )
 
     # Check for fully authenticated session
-    user_id = session_manager.get_user_id(request)
+    user_id = await session_manager.get_user_id(request)
 
     if not user_id:
         raise UnauthorizedError("Not authenticated")
@@ -278,8 +292,8 @@ async def logout():
 
     POST /api/auth/logout
 
-    Clears the session cookie.
+    Revokes server-held session credentials and clears browser cookies.
     """
     response = jsonify({"message": "Logged out successfully"})
-    session_manager.clear_session(response)
+    await session_manager.clear_session(response)
     return response

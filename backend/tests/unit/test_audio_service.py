@@ -23,6 +23,7 @@ def _make_service(*, tts=None, cache=None, audio_repo=None, post_repo=None) -> A
         post_repository=post_repo or AsyncMock(),
         tts_service=tts or MagicMock(),
         cache_manager=cache or MagicMock(),
+        external_synthesis_enabled=True,
     )
 
 
@@ -49,7 +50,7 @@ class TestGenerationFailurePath:
         result = await service.get_or_generate_audio(post_id, user_id)
 
         assert result.status == AudioStatus.ERROR
-        assert result.error == "engine down"
+        assert result.error == "Audio generation failed"
         # No sidecar written and no audio row created on failure.
         cache.save_timings.assert_not_called()
         audio_repo.create.assert_not_called()
@@ -74,7 +75,7 @@ class TestGenerationFailurePath:
         result = await service.generate_for_post(post_id)
 
         assert result.status == AudioStatus.ERROR
-        assert result.error == "engine down"
+        assert result.error == "Audio generation failed"
         cache.save_timings.assert_not_called()
         audio_repo.create.assert_not_called()
 

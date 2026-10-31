@@ -1,5 +1,7 @@
 """Audio application service for TTS operations."""
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -11,6 +13,16 @@ from app.domain.audio.repositories.audio_repository import AudioRepository
 from app.domain.audio.services.tts_service import TTSError, TTSService
 from app.domain.feed_management.repositories.post_repository import PostRepository
 from app.infrastructure.tts.cache_manager import AudioCacheManager
+
+logger = logging.getLogger(__name__)
+
+
+class ExternalProcessingDisabled(PermissionError):
+    """External synthesis requires an explicit deployment policy."""
+
+
+class AudioGenerationBusy(RuntimeError):
+    """Bounded synthesis capacity has already been admitted."""
 
 
 class AudioStatus(StrEnum):
@@ -51,12 +63,20 @@ class AudioService:
     Coordinates TTS generation, caching, and retrieval.
     """
 
+    MAX_SYNTHESIS_CHARACTERS = 20_000
+    MAX_AUDIO_BYTES = 10 * 1024 * 1024
+    MAX_CONCURRENT_GENERATIONS = 2
+    SYNTHESIS_TIMEOUT_SECONDS = 120
+    _generating: set[UUID] = set()
+
     def __init__(
         self,
         audio_repository: AudioRepository,
         post_repository: PostRepository,
         tts_service: TTSService,
         cache_manager: AudioCacheManager,
+        *,
+        external_synthesis_enabled: bool = False,
     ):
         """Initialize audio service.
 
@@ -70,6 +90,7 @@ class AudioService:
         self._post_repo = post_repository
         self._tts = tts_service
         self._cache = cache_manager
+        self._external_synthesis_enabled = external_synthesis_enabled
 
     @staticmethod
     def _synthesis_text(title: str, content: str | None) -> str:
@@ -112,7 +133,7 @@ class AudioService:
             ValueError: If post doesn't exist
         """
         # Verify post exists and user has access
-        post = await self._post_repo.get_by_id(post_id)
+        post = await self._post_repo.get_by_id_for_user(post_id, user_id)
         if not post:
             raise ValueError(f"Post {post_id} not found")
 
@@ -152,11 +173,14 @@ class AudioService:
                 duration_seconds=audio.duration_seconds,
                 word_timings=await self._load_word_timings(audio.cache_key),
             )
-        except TTSError as e:
+        except AudioGenerationBusy:
+            return AudioResult(status=AudioStatus.GENERATING, post_id=post_id, estimated_seconds=5)
+        except TTSError:
+            logger.warning("Audio synthesis failed for post %s", post_id)
             return AudioResult(
                 status=AudioStatus.ERROR,
                 post_id=post_id,
-                error=str(e),
+                error="Audio generation failed",
             )
 
     async def generate_for_post(self, post_id: UUID) -> AudioResult:
@@ -205,11 +229,14 @@ class AudioService:
                 duration_seconds=audio.duration_seconds,
                 word_timings=await self._load_word_timings(audio.cache_key),
             )
-        except TTSError as e:
+        except AudioGenerationBusy:
+            return AudioResult(status=AudioStatus.GENERATING, post_id=post_id, estimated_seconds=5)
+        except TTSError:
+            logger.warning("Background audio synthesis failed for post %s", post_id)
             return AudioResult(
                 status=AudioStatus.ERROR,
                 post_id=post_id,
-                error=str(e),
+                error="Audio generation failed",
             )
 
     async def _generate_audio(
@@ -228,7 +255,24 @@ class AudioService:
         Returns:
             Created Audio entity
         """
-        # Prepare text for synthesis
+        if not self._external_synthesis_enabled:
+            raise ExternalProcessingDisabled("External text-to-speech processing is disabled")
+        if len(self._synthesis_text(title, content)) > self.MAX_SYNTHESIS_CHARACTERS:
+            raise TTSError("Article exceeds the synthesis character limit")
+        if post_id in self._generating:
+            raise AudioGenerationBusy("Audio generation already in progress")
+        if len(self._generating) >= self.MAX_CONCURRENT_GENERATIONS:
+            raise AudioGenerationBusy("Audio generation capacity is full")
+        self._generating.add(post_id)
+        try:
+            async with asyncio.timeout(self.SYNTHESIS_TIMEOUT_SECONDS):
+                return await self._synthesize_and_store(post_id, content, title)
+        except TimeoutError:
+            raise TTSError("Audio synthesis time limit exceeded") from None
+        finally:
+            self._generating.discard(post_id)
+
+    async def _synthesize_and_store(self, post_id: UUID, content: str | None, title: str) -> Audio:
         text_to_synthesize = self._synthesis_text(title, content)
 
         # Generate cache key
@@ -242,6 +286,8 @@ class AudioService:
         with TemporaryDirectory() as staging_dir:
             output_path = Path(staging_dir) / "audio.mp3"
             timings = await self._tts.synthesize_with_timings(text_to_synthesize, output_path)
+            if output_path.stat().st_size > self.MAX_AUDIO_BYTES:
+                raise TTSError("Generated audio exceeds the byte limit")
             await self._cache.save(cache_key, output_path.read_bytes())
 
         # Always persist a sidecar for a freshly generated clip — even when the
@@ -309,7 +355,18 @@ class AudioService:
             return None
         return words
 
-    async def get_audio_stream_data(self, cache_key: str) -> bytes | None:
+    async def get_audio_stream_size(self, cache_key: str, user_id: UUID) -> int | None:
+        audio = await self._audio_repo.get_by_cache_key_for_user(cache_key, user_id)
+        if audio is None:
+            return None
+        size = await self._cache.get_file_size(cache_key)
+        if size is not None and size > self.MAX_AUDIO_BYTES:
+            raise ValueError("Audio exceeds the byte limit")
+        return size
+
+    async def get_audio_stream_data(
+        self, cache_key: str, user_id: UUID, offset: int = 0, length: int | None = None
+    ) -> bytes | None:
         """Load audio bytes for provider-neutral streaming.
 
         Args:
@@ -318,12 +375,20 @@ class AudioService:
         Returns:
             Audio bytes, None if not found
         """
-        audio_data = await self._cache.load(cache_key)
+        audio = await self._audio_repo.get_by_cache_key_for_user(cache_key, user_id)
+        if audio is None:
+            return None
+        size = await self._cache.get_file_size(cache_key)
+        if size is None:
+            return None
+        if size > self.MAX_AUDIO_BYTES:
+            raise ValueError("Audio exceeds the byte limit")
+        if offset < 0 or offset > size or (length is not None and length < 0):
+            raise ValueError("Invalid audio byte range")
+        length = size - offset if length is None else min(length, size - offset)
+        audio_data = await self._cache.load_range(cache_key, offset, length)
         if audio_data is not None:
-            # Record access
-            audio = await self._audio_repo.get_by_cache_key(cache_key)
-            if audio:
-                await self._audio_repo.record_access(audio.id)
+            await self._audio_repo.record_access(audio.id)
         return audio_data
 
     async def delete_audio(self, post_id: UUID) -> bool:
@@ -339,8 +404,7 @@ class AudioService:
         if not audio:
             return False
 
-        # Delete file
-        await self._cache.delete(audio.cache_key)
-
-        # Delete record
-        return await self._audio_repo.delete(audio.id)
+        deleted = await self._audio_repo.delete(audio.id)
+        if deleted and await self._audio_repo.get_by_cache_key(audio.cache_key) is None:
+            await self._cache.delete(audio.cache_key)
+        return deleted

@@ -2,6 +2,7 @@
 
 # Import all models here for Alembic to detect them
 from app.infrastructure.persistence.models.user import UserModel
+from app.infrastructure.persistence.models.identity_session import IdentitySessionModel
 from app.infrastructure.persistence.models.category import CategoryModel
 from app.infrastructure.persistence.models.feed import FeedModel
 from app.infrastructure.persistence.models.feed_category import feed_categories
@@ -13,6 +14,7 @@ from app.infrastructure.persistence.models.push_subscription import (
 )
 
 __all__ = [
+    "IdentitySessionModel",
     "UserModel",
     "CategoryModel",
     "FeedModel",

@@ -18,6 +18,7 @@ import UnreadIcon from "@mui/icons-material/RadioButtonUnchecked";
 import AudioIcon from "@mui/icons-material/VolumeUp";
 import ExternalLinkIcon from "@mui/icons-material/OpenInNew";
 import type { PostSummary } from "../hooks/usePostsData";
+import { usePublisherImages } from "../hooks/usePublisherImages";
 
 interface PostCardProps {
   post: PostSummary;
@@ -55,6 +56,7 @@ function formatDate(dateString: string): string {
  * PostCard displays a single post summary
  */
 export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick }) => {
+  const { allowed: allowPublisherImages } = usePublisherImages();
   const handleReadToggle = useCallback(
     (event: React.MouseEvent) => {
       event.stopPropagation();
@@ -105,10 +107,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick 
                 gap: 1,
               }}
             >
-              {post.feedIconUrl && (
+              {allowPublisherImages && post.feedIconUrl && (
                 <Box
                   component="img"
                   src={post.feedIconUrl}
+                  referrerPolicy="no-referrer"
                   alt=""
                   sx={{
                     width: 16,

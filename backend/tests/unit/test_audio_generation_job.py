@@ -8,6 +8,15 @@ import pytest
 
 from app.application.services.audio_service import AudioStatus
 from app.infrastructure.jobs.audio_generation import generate_pending_audio
+from app.config.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def enable_external_processing(monkeypatch):
+    monkeypatch.setattr(
+        "app.infrastructure.jobs.audio_generation.get_settings_instance",
+        lambda: Settings(_env_file=None, external_tts_enabled=True),
+    )
 
 
 def _session_returning(post_ids):
