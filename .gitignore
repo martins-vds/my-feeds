@@ -80,6 +80,7 @@ pytest_cache/
 frontend/playwright-report/
 frontend/playwright/.cache/
 frontend/test-results/
+backend/mutants/
 
 # OS
 .DS_Store

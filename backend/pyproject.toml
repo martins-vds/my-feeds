@@ -18,7 +18,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
-    "azure-cognitiveservices-speech>=1.35.0",
+    "azure-cognitiveservices-speech>=1.52.0",
     "edge-tts>=7.2.8",
     "nh3>=0.3.6",
     "azure-storage-blob==12.31.0",

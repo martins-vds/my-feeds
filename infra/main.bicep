@@ -66,6 +66,7 @@ var ips = filter(map(split(allowedIps, ','), ip => trim(ip)), ip => !empty(ip))
 var privateDnsZoneNames = [
   'privatelink.blob.${environment().suffixes.storage}'
   'privatelink.postgres.database.azure.com'
+  'privatelink.cognitiveservices.azure.com'
 ]
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' existing = {
@@ -234,7 +235,7 @@ module appInsights 'br/public:avm/res/insights/component@sha256:ab732413f1131a89
 
 var speechName = 'spch-${token}'
 
-// Public endpoint, Entra ID only: the app reaches it over App Service's outbound IPs (no VNet egress).
+// Entra ID only, reached through the existing VNet and custom-hostname private DNS.
 module speech 'br/public:avm/res/cognitive-services/account@sha256:1c384785004d3d4bd691df087149447034122bbbf93264fecf674aa6fb430008' = if (allowExternalTts) {
   scope: rg
   params: {
@@ -245,7 +246,25 @@ module speech 'br/public:avm/res/cognitive-services/account@sha256:1c384785004d3
     sku: 'S0'
     customSubDomainName: speechName
     disableLocalAuth: true
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
+    privateEndpoints: [
+      {
+        name: 'pep-${speechName}'
+        service: 'account'
+        privateLinkServiceConnectionName: 'speech'
+        customNetworkInterfaceName: 'nic-pep-${speechName}'
+        subnetResourceId: vnet.outputs.subnetResourceIds[1]
+        privateDnsZoneGroup: {
+          name: 'default'
+          privateDnsZoneGroupConfigs: [
+            {
+              name: 'speech'
+              privateDnsZoneResourceId: dnsZones[2].outputs.resourceId
+            }
+          ]
+        }
+      }
+    ]
     roleAssignments: [
       {
         principalId: identity.outputs.principalId
@@ -280,7 +299,7 @@ module web 'br/public:avm/res/web/site@sha256:7d528404c437967a069a1635f46c550063
     httpsOnly: true
     managedIdentities: { userAssignedResourceIds: [identity.outputs.resourceId] }
     virtualNetworkSubnetResourceId: vnet.outputs.subnetResourceIds[0]
-    // Only private-IP traffic (Postgres/Blob private endpoints) goes through the VNet; internet
+    // Only private-IP traffic (Postgres/Blob/Speech private endpoints) goes through the VNet; internet
     // egress (ACR pull, Entra, feeds, OAuth, App Insights) uses App Service's outbound IPs.
     // ponytail: route-all needs a NAT gateway (~US$35/mo) — the VNet has no internet egress.
     outboundVnetRouting: { allTraffic: false, imagePullTraffic: false }

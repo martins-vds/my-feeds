@@ -33,6 +33,63 @@ class TestAzureTTSService:
 
         return AzureTTSService(endpoint="https://test.cognitiveservices.azure.com/")
 
+    def test_declared_sdk_rejects_versions_without_token_credentials(self):
+        from importlib.metadata import distribution
+
+        from packaging.requirements import Requirement
+
+        requirements = [
+            Requirement(value)
+            for value in distribution("my-feeds-backend").requires
+        ]
+        speech = next(
+            requirement
+            for requirement in requirements
+            if requirement.name == "azure-cognitiveservices-speech"
+        )
+        assert "1.35.0" not in speech.specifier
+        assert distribution("azure-cognitiveservices-speech").version in speech.specifier
+
+    @pytest.mark.asyncio
+    async def test_native_sdk_uses_token_credentials_with_custom_endpoint(
+        self, azure_tts_service, tmp_path
+    ):
+        import time
+
+        import azure.cognitiveservices.speech as speechsdk
+        from azure.core.credentials import AccessToken
+
+        class Credential:
+            def get_token(self, *_scopes, **_kwargs):
+                return AccessToken("synthetic-unit-test-token", int(time.time()) + 3600)
+
+        credential = Credential()
+        completed = MagicMock(reason=speechsdk.ResultReason.SynthesizingAudioCompleted)
+        future = MagicMock(get=MagicMock(return_value=completed))
+        native_synthesizer = speechsdk.SpeechSynthesizer
+        output_path = tmp_path / "nested" / "audio" / "native.mp3"
+        with (
+            patch("azure.identity.DefaultAzureCredential", return_value=credential),
+            patch.object(native_synthesizer, "speak_text_async", return_value=future),
+            patch(
+                "azure.cognitiveservices.speech.SpeechSynthesizer",
+                wraps=native_synthesizer,
+            ) as factory,
+        ):
+            await azure_tts_service.synthesize_with_timings("Test", output_path)
+
+        config = factory.call_args.kwargs["speech_config"]
+        assert config.token_credential is credential
+        assert config.key_credential is None
+        assert config.get_property(speechsdk.PropertyId.SpeechServiceConnection_Endpoint) == (
+            "https://test.cognitiveservices.azure.com/"
+        )
+        assert config.get_property(speechsdk.PropertyId.SpeechServiceConnection_Key) == ""
+        assert isinstance(
+            factory.call_args.kwargs["audio_config"], speechsdk.audio.AudioOutputConfig
+        )
+        assert output_path.parent.is_dir()
+
     @pytest.mark.asyncio
     async def test_synthesize_creates_audio_file(self, azure_tts_service, tmp_path):
         """synthesize creates MP3 file from text."""
@@ -54,23 +111,24 @@ class TestAzureTTSService:
     @pytest.mark.asyncio
     async def test_synthesize_raises_on_cancellation(self, azure_tts_service, tmp_path):
         """synthesize raises TTSError on synthesis cancellation."""
+        import azure.cognitiveservices.speech as speechsdk
+
         output_path = tmp_path / "test.mp3"
 
         with patch("azure.cognitiveservices.speech.SpeechSynthesizer") as mock_synth_class:
             mock_synthesizer = MagicMock()
             mock_result = MagicMock()
-            mock_result.reason.name = "Canceled"
-            mock_result.cancellation_details = MagicMock()
-            mock_result.cancellation_details.reason = "AuthenticationError"
+            mock_result.reason = speechsdk.ResultReason.Canceled
+            mock_result.cancellation_details = MagicMock(
+                reason=speechsdk.CancellationReason.Error,
+                error_code=speechsdk.CancellationErrorCode.AuthenticationFailure,
+                error_details="Authentication failed",
+            )
             mock_synthesizer.speak_text_async.return_value.get.return_value = mock_result
             mock_synth_class.return_value = mock_synthesizer
 
-            # Import ResultReason for comparison
-            with patch("azure.cognitiveservices.speech.ResultReason") as mock_reason:
-                mock_reason.Canceled = mock_result.reason
-
-                with pytest.raises(TTSError):
-                    await azure_tts_service.synthesize("Test", output_path)
+            with pytest.raises(TTSError, match="Authentication failed"):
+                await azure_tts_service.synthesize("Test", output_path)
 
     @pytest.mark.asyncio
     async def test_synthesize_strips_html_from_content(self, azure_tts_service, tmp_path):

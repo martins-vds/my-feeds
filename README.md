@@ -193,7 +193,26 @@ App Service, private PostgreSQL/Blob endpoints, VNet/private DNS, and ACR.
 Speech is provisioned only when `EXTERNAL_TTS_ENABLED=true`; otherwise neither
 API calls nor background jobs send articles to a TTS provider.
 
-Network: Storage has no public access. The web app and Postgres are only reachable from the IPs in `ALLOWED_IPS` (comma-separated, empty = none). ACR stays public but Entra-only so ACR Tasks can build the image remotely.
+Network: Storage and Speech have no public access. The web app and Postgres are only reachable from the IPs in `ALLOWED_IPS` (comma-separated, empty = none). ACR stays public but Entra-only so ACR Tasks can build the image remotely.
+
+Speech uses the `account` private endpoint in the existing `private-endpoints`
+subnet and the VNet-linked `privatelink.cognitiveservices.azure.com` DNS zone.
+App Service stays integrated with its separate delegated `app` subnet; private
+traffic uses the VNet without routing public feed/OAuth traffic through it.
+Keep `AZURE_SPEECH_ENDPOINT` set to the original custom HTTPS hostname, not a
+private IP, regional endpoint, or `privatelink` hostname. Speech SDK 1.52.0 or
+newer uses `DefaultAzureCredential` with that endpoint and the app's
+`AZURE_CLIENT_ID`; the identity needs **Cognitive Services Speech User** on the
+Speech account. Local/key authentication stays disabled.
+
+For an existing production installation, create the Speech private endpoint,
+DNS zone/link, and endpoint DNS group first. Verify private DNS and TLS from
+App Service before disabling Speech public access, then verify fresh synthesis
+and word timings. Do not reprovision unrelated database/OAuth resources merely
+to repair Speech networking. Persist approved external processing with
+`azd env set EXTERNAL_TTS_ENABLED true --environment my-feeds-prod`, and ensure
+the existing App Service setting is also enabled: runtime-only deployment
+preserves settings but does not add new operator opt-ins.
 
 Provision infrastructure with a privileged human/operator identity, not the
 GitHub deployment identity. Select the application resource group in the azd
