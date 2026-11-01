@@ -64,7 +64,7 @@ class AudioService:
     """
 
     MAX_SYNTHESIS_CHARACTERS = 20_000
-    MAX_AUDIO_BYTES = 10 * 1024 * 1024
+    MAX_AUDIO_BYTES = 20 * 1024 * 1024
     MAX_CONCURRENT_GENERATIONS = 2
     SYNTHESIS_TIMEOUT_SECONDS = 120
     _generating: set[UUID] = set()

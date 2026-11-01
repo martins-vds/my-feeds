@@ -57,6 +57,75 @@ async def test_stream_requires_an_audio_record_owned_by_user(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("size", [11_039_040, 20_971_520])
+async def test_long_audio_can_be_sized_and_streamed_without_regeneration(tmp_path, size):
+    key = "a" * 64
+    cache = AudioCacheManager(tmp_path)
+    path = cache.get_file_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as stream:
+        stream.seek(size - 5)
+        stream.write(b"audio")
+    records = SimpleNamespace(
+        get_by_cache_key_for_user=AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+        record_access=AsyncMock(),
+    )
+    service = AudioService(records, AsyncMock(), AsyncMock(), cache)
+    user_id = uuid4()
+
+    assert await service.get_audio_stream_size(key, user_id) == size
+    assert await service.get_audio_stream_data(key, user_id, size - 5, 5) == b"audio"
+
+
+@pytest.mark.asyncio
+async def test_long_audio_above_twenty_mib_is_rejected_before_streaming(tmp_path):
+    key = "a" * 64
+    cache = AudioCacheManager(tmp_path)
+    path = cache.get_file_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as stream:
+        stream.truncate(20_971_521)
+    records = SimpleNamespace(
+        get_by_cache_key_for_user=AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+        record_access=AsyncMock(),
+    )
+    service = AudioService(records, AsyncMock(), AsyncMock(), cache)
+    user_id = uuid4()
+
+    with pytest.raises(ValueError, match="byte limit"):
+        await service.get_audio_stream_size(key, user_id)
+    with pytest.raises(ValueError, match="byte limit"):
+        await service.get_audio_stream_data(key, user_id, 0, 5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [11_039_040, 20_971_520, 20_971_521])
+async def test_synthesis_output_keeps_the_twenty_mib_boundary(tmp_path, size):
+    tts = AsyncMock()
+    tts.voice_id = "test-voice"
+
+    async def synthesize(_text, path):
+        with path.open("wb") as stream:
+            stream.truncate(size)
+        return []
+
+    tts.synthesize_with_timings.side_effect = synthesize
+    records = AsyncMock()
+    records.create.side_effect = lambda record: record
+    cache = AudioCacheManager(tmp_path)
+    service = AudioService(records, AsyncMock(), tts, cache, external_synthesis_enabled=True)
+    if size > 20_971_520:
+        with pytest.raises(TTSError, match="byte limit"):
+            await service._generate_audio(uuid4(), "Body", "Title")
+        assert await cache.list_audio_files() == []
+    else:
+        audio = await service._generate_audio(uuid4(), "Body", "Title")
+        assert audio.file_size_bytes == size
+        assert await cache.get_file_size(audio.cache_key) == size
+        assert await cache.exists_timings(audio.cache_key)
+
+
+@pytest.mark.asyncio
 async def test_direct_stream_read_rejects_oversized_cached_audio_before_loading():
     cache = SimpleNamespace(
         get_file_size=AsyncMock(return_value=AudioService.MAX_AUDIO_BYTES + 1),

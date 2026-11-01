@@ -8,7 +8,7 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Category Organization**: Group feeds by topic or interest area
 - **Unified Post View**: Browse latest posts across all subscribed feeds
 - **Read State Tracking**: Auto-track and manually toggle read/unread status
-- **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in
+- **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in; generation and playback allow MP3 files up to 20 MiB without reducing audio quality
 - **Highlight modes**: Word by word remains the default. Choose Continuous for
   a smooth highlighter stroke through the current word, keeping earlier words
   and spaces highlighted without filling paragraph gaps. Pausing freezes the
