@@ -63,9 +63,12 @@ function makeWav(seconds = 1.4, sampleRate = 8000): Buffer {
   return buffer;
 }
 
-async function setup(page: Page, opts: { timings?: typeof WORD_TIMINGS | null } = {}) {
+async function setup(page: Page, opts: {
+  timings?: typeof WORD_TIMINGS | null; content?: string; duration?: number;
+} = {}) {
   const timings = opts.timings === undefined ? WORD_TIMINGS : opts.timings;
-  await mockApi(page, `**/api/posts/${post.id}`, post);
+  const duration = opts.duration ?? 2.2;
+  await mockApi(page, `**/api/posts/${post.id}`, { ...post, content: opts.content ?? post.content });
   await mockApi(page, "**/api/categories", { categories: [] });
   await page.route(`**/api/posts/${post.id}/audio`, (route) =>
     route.fulfill({
@@ -75,16 +78,31 @@ async function setup(page: Page, opts: { timings?: typeof WORD_TIMINGS | null } 
         postId: post.id,
         status: "ready",
         url: "/api/audio/read-along-key",
-        durationSeconds: 2.2,
+        durationSeconds: duration,
         format: "mp3",
         ...(timings ? { wordTimings: timings } : {}),
       }),
     })
   );
-  const wav = makeWav(2.2);
-  await page.route("**/api/audio/**", (route) =>
-    route.fulfill({ status: 200, contentType: "audio/wav", body: wav })
-  );
+  const wav = makeWav(duration);
+  await mockWav(page, wav);
+}
+
+async function mockWav(page: Page, wav: Buffer) {
+  await page.route("**/api/audio/**", (route) => {
+    const range = route.request().headers().range?.match(/^bytes=(\d+)-(\d*)$/);
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+    if (start > end) return route.fulfill({ status: 416, headers: { "content-range": `bytes */${wav.length}` } });
+    return route.fulfill({
+      status: range ? 206 : 200, contentType: "audio/wav",
+      headers: {
+        "accept-ranges": "bytes",
+        ...(range ? { "content-range": `bytes ${start}-${end}/${wav.length}` } : {}),
+      },
+      body: wav.subarray(start, end + 1),
+    });
+  });
 }
 
 /** The data-ra-index of the currently active word, or -1 if none. */
@@ -100,6 +118,116 @@ async function startPlayback(page: Page) {
   await page.getByTestId("listen-button").click();
   await page.getByTestId("play-pause-button").click();
 }
+
+async function completedText(page: Page) {
+  return page.evaluate(() => [...CSS.highlights.get("read-along-completed") ?? []]
+    .map((range) => range instanceof Range ? range.toString() : ""));
+}
+
+async function seekFraction(page: Page, fraction: number) {
+  const waveform = page.getByRole("progressbar", { name: "Audio progress" });
+  const box = await waveform.boundingBox();
+  if (!box) throw new Error("Audio progress control is not visible");
+  await waveform.click({ position: { x: box.width * fraction, y: box.height / 2 } });
+}
+
+test.describe("Continuous highlighting", () => {
+  test("muted media drives a smooth sweep within one word before advancing", async ({ authedPage: page }) => {
+    await setup(page, {
+      timings: WORD_TIMINGS.map((timing, index) => ({ ...timing, startMs: index * 2000, durationMs: 2000 })),
+      duration: 16,
+    });
+    await page.goto(`/posts/${post.id}`);
+    await page.getByRole("button", { name: "Continuous", exact: true }).click();
+    await page.getByTestId("listen-button").click();
+    await page.getByRole("button", { name: "Mute audio", exact: true }).click();
+    await page.getByTestId("play-pause-button").click();
+    const progress = () => page.locator(".ra-progress").evaluate((span) =>
+      Number.parseFloat((span as HTMLElement).style.getPropertyValue("--ra-progress")));
+    await expect(page.locator(".ra-progress")).toHaveText("Read");
+    await expect.poll(progress).toBeGreaterThan(10);
+    const earlier = await progress();
+    await expect.poll(progress).toBeGreaterThan(earlier + 10);
+    await expect(page.locator(".ra-progress")).toHaveText("Read");
+    await expect(page.getByTestId("play-pause-button")).toHaveAttribute("aria-label", "Pause");
+    await expect(page.getByRole("button", { name: "Unmute audio", exact: true })).toBeVisible();
+    await expect(page.locator(".ra-progress")).toHaveText("Along");
+    await expect.poll(() => completedText(page)).toEqual(["Read ", ""]);
+  });
+
+  for (const width of [320, 1280]) {
+    test(`connected strokes, paused seeks, completion, and preference at ${width}px`, async ({ authedPage: page }, testInfo) => {
+      await page.setViewportSize({ width, height: 800 });
+      const words = ["Read", "Along", "Test", "Continuous", "highlighting", "connects",
+        "words", "and", "spaces", "across", "lines", "A", "new", "paragraph", "stays", "separate"];
+      await setup(page, {
+        timings: words.map((text, index) => ({ text, startMs: index * 750, durationMs: 750 })),
+        content: "<p>Continuous highlighting <em>connects</em> words and spaces across lines</p><p>A new paragraph stays separate</p>",
+        duration: 12,
+      });
+      await page.goto(`/posts/${post.id}`);
+      await expect(page.getByRole("button", { name: "Word by word", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await page.getByRole("switch", { name: "Auto-scroll while playing" }).click();
+      await page.getByTestId("listen-button").click();
+      const geometry = () => page.locator(".ra-word").evaluateAll((spans) => spans.map((span) => {
+        const { x, y, width, height } = span.getBoundingClientRect();
+        return { x, y, width, height };
+      }));
+      const before = await geometry();
+      const continuous = page.getByRole("button", { name: "Continuous", exact: true });
+      await continuous.focus();
+      await continuous.press("Space");
+      await expect(continuous).toHaveAttribute("aria-pressed", "true");
+      await page.getByTestId("play-pause-button").click();
+      await expect(page.locator(".ra-progress")).toHaveCount(1);
+      await page.getByTestId("play-pause-button").click();
+      await seekFraction(page, 4.125 / 12);
+      await expect(page.locator(".ra-progress")).toHaveText("connects");
+      await expect.poll(() => completedText(page)).toEqual(["Read Along Test", "Continuous highlighting "]);
+      const progress = () => page.locator(".ra-progress").evaluate((span) =>
+        Number.parseFloat((span as HTMLElement).style.getPropertyValue("--ra-progress")));
+      expect(await progress()).toBeGreaterThan(40);
+      expect(await progress()).toBeLessThan(60);
+      const frozen = await progress();
+      await page.waitForTimeout(200);
+      expect(await progress()).toBe(frozen);
+      expect(await geometry()).toEqual(before);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await page.screenshot({ path: testInfo.outputPath(`continuous-partial-${width}.png`), fullPage: true });
+
+      await seekFraction(page, 8 / 12);
+      await expect.poll(() => completedText(page)).toEqual([
+        "Read Along Test", "Continuous highlighting connects words and spaces across ",
+      ]);
+      await page.screenshot({ path: testInfo.outputPath(`continuous-lines-${width}.png`), fullPage: true });
+      await seekFraction(page, 1.125 / 12);
+      await expect.poll(() => completedText(page)).toEqual(["Read ", ""]);
+      await expect(page.locator(".ra-progress")).toHaveText("Along");
+      await seekFraction(page, 0.99);
+      await page.getByTestId("play-pause-button").click();
+      await expect.poll(() => completedText(page)).toEqual([
+        "Read Along Test", "Continuous highlighting connects words and spaces across linesA new paragraph stays separate",
+      ]);
+      await expect(page.locator(".ra-progress")).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`continuous-finished-${width}.png`), fullPage: true });
+      await page.waitForTimeout(200);
+      expect(await completedText(page)).toHaveLength(2);
+      await page.reload();
+      await expect(continuous).toHaveAttribute("aria-pressed", "true");
+    });
+  }
+
+  test("explains unavailable continuous mode and preserves word highlighting on older browsers", async ({ authedPage: page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "Highlight", { value: undefined, configurable: true });
+    });
+    await setup(page);
+    await startPlayback(page);
+    await expect(page.getByRole("button", { name: "Continuous", exact: true })).toBeDisabled();
+    await expect(page.getByText("Continuous highlighting needs a newer browser. Using word by word.")).toBeVisible();
+    await expect(page.locator(".ra-active")).toHaveCount(1);
+  });
+});
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
@@ -187,9 +315,7 @@ async function setupLong(page: Page, wordMs = 40) {
   // A long clip so playback stays active for the whole test (no accidental
   // restart when the pause test clicks the control).
   const wav = makeWav(Math.max(6, (LONG_TIMINGS.length * wordMs) / 1000));
-  await page.route("**/api/audio/**", (route) =>
-    route.fulfill({ status: 200, contentType: "audio/wav", body: wav })
-  );
+  await mockWav(page, wav);
 }
 
 async function startLongPlayback(page: Page) {

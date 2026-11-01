@@ -4,13 +4,16 @@
  * friendly via MUI Switch; on/off state is exposed to assistive tech.
  */
 
-import { Box, FormControlLabel, Switch } from "@mui/material";
+import { Box, FormControlLabel, Switch, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { supportsContinuousHighlight, type HighlightMode } from "../hooks/useReadAlong";
 
 interface ReadAlongTogglesProps {
   highlight: boolean;
   onHighlightChange: (value: boolean) => void;
   autoScroll: boolean;
   onAutoScrollChange: (value: boolean) => void;
+  highlightMode: HighlightMode;
+  onHighlightModeChange: (value: HighlightMode) => void;
 }
 
 export function ReadAlongToggles({
@@ -18,9 +21,12 @@ export function ReadAlongToggles({
   onHighlightChange,
   autoScroll,
   onAutoScrollChange,
+  highlightMode,
+  onHighlightModeChange,
 }: ReadAlongTogglesProps) {
+  const continuousSupported = supportsContinuousHighlight();
   return (
-    <Box data-testid="read-along-toggles" sx={{ display: "flex", flexWrap: "wrap", gap: 2, mt: 1 }}>
+    <Box data-testid="read-along-toggles" sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2, mt: 1 }}>
       <FormControlLabel
         control={
           <Switch
@@ -45,6 +51,23 @@ export function ReadAlongToggles({
         }
         label="Auto-scroll while playing"
       />
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={continuousSupported ? highlightMode : "word"}
+        aria-label="Highlight mode"
+        onChange={(_, value: HighlightMode | null) => {
+          if (value === "word" || value === "continuous") onHighlightModeChange(value);
+        }}
+      >
+        <ToggleButton value="word">Word by word</ToggleButton>
+        <ToggleButton value="continuous" disabled={!continuousSupported}>Continuous</ToggleButton>
+      </ToggleButtonGroup>
+      {!continuousSupported && (
+        <Typography variant="caption" color="text.secondary" sx={{ width: "100%" }}>
+          Continuous highlighting needs a newer browser. Using word by word.
+        </Typography>
+      )}
     </Box>
   );
 }

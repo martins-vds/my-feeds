@@ -87,7 +87,29 @@ export const theme = createTheme({
           boxDecorationBreak: "clone",
           WebkitBoxDecorationBreak: "clone",
         },
+        "::highlight(read-along-completed)": {
+          backgroundColor: "#FDE68A",
+          color: "#1C1917",
+        },
+        ".ra-progress": {
+          "--ra-highlight": "#FDE68A",
+          backgroundImage: "linear-gradient(to right, var(--ra-highlight) var(--ra-progress), transparent var(--ra-progress))",
+          color: "#1C1917",
+          borderRadius: 0,
+          boxDecorationBreak: "slice",
+          WebkitBoxDecorationBreak: "slice",
+        },
+        ".ra-progress:dir(rtl)": {
+          backgroundImage: "linear-gradient(to left, var(--ra-highlight) var(--ra-progress), transparent var(--ra-progress))",
+        },
         "@media (prefers-color-scheme: dark)": {
+          "::highlight(read-along-completed)": {
+            backgroundColor: "#FBBF24",
+            color: "#1C1917",
+          },
+          ".ra-progress": {
+            "--ra-highlight": "#FBBF24",
+          },
           ".ra-active": {
             backgroundColor: "#FBBF24", // amber-400
             color: "#1C1917", // stone-900 on amber-400 → ~10:1 (AA), reads on dark bg

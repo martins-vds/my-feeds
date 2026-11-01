@@ -101,6 +101,7 @@ export const PostDetailPage: React.FC = () => {
     titleRef,
     contentRef,
     highlightEnabled: readAlongPrefs.highlight,
+    highlightMode: readAlongPrefs.highlightMode,
     autoScrollEnabled: readAlongPrefs.autoScroll && !inlineSpeedOpen && !floatingSpeedOpen,
     contentVersion: allowPublisherImages,
   });
@@ -364,6 +365,8 @@ export const PostDetailPage: React.FC = () => {
               onHighlightChange={readAlongPrefs.setHighlight}
               autoScroll={readAlongPrefs.autoScroll}
               onAutoScrollChange={readAlongPrefs.setAutoScroll}
+              highlightMode={readAlongPrefs.highlightMode}
+              onHighlightModeChange={readAlongPrefs.setHighlightMode}
             />
           </Box>
         )}

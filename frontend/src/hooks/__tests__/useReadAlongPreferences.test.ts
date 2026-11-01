@@ -15,6 +15,23 @@ describe("useReadAlongPreferences", () => {
         const { result } = renderHook(() => useReadAlongPreferences());
         expect(result.current.highlight).toBe(true);
         expect(result.current.autoScroll).toBe(true);
+        expect(result.current.highlightMode).toBe("word");
+    });
+
+    it("remembers continuous mode without changing the independent reading toggles", () => {
+        const first = renderHook(() => useReadAlongPreferences());
+        act(() => first.result.current.setHighlightMode("continuous"));
+        expect(first.result.current.highlight).toBe(true);
+        expect(first.result.current.autoScroll).toBe(true);
+        first.unmount();
+        const second = renderHook(() => useReadAlongPreferences());
+        expect(second.result.current.highlightMode).toBe("continuous");
+    });
+
+    it("uses word mode when a stored mode is invalid", () => {
+        localStorage.setItem("readAlong.highlightMode", "invalid");
+        const { result } = renderHook(() => useReadAlongPreferences());
+        expect(result.current.highlightMode).toBe("word");
     });
 
     it("persists the highlight toggle independently", () => {

@@ -9,6 +9,13 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **Unified Post View**: Browse latest posts across all subscribed feeds
 - **Read State Tracking**: Auto-track and manually toggle read/unread status
 - **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in
+- **Highlight modes**: Word by word remains the default. Choose Continuous for
+  a smooth highlighter stroke through the current word, keeping earlier words
+  and spaces highlighted without filling paragraph gaps. Pausing freezes the
+  stroke; seeking moves it forward or backward. Completed highlighting remains
+  until replay or a mode change. The choice is remembered on this device.
+  Continuous mode requires the CSS Custom Highlight API; older browsers keep
+  word-by-word highlighting and show an explanation.
 - **Silent read-along**: Mute/unmute from the inline or floating player without
   stopping playback, word highlighting, or auto-scroll. The inline volume slider
   adjusts sound from 0-100%; unmuting restores the last nonzero volume. Increasing

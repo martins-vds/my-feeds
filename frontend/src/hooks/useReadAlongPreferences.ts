@@ -1,12 +1,22 @@
 /**
- * Two independent, per-device read-along toggles persisted in localStorage.
+ * Per-device read-along preferences persisted in localStorage.
  * Unset keys read as `true` (both default on).
  */
 
 import { useCallback, useState } from "react";
+import type { HighlightMode } from "./useReadAlong";
 
 const HIGHLIGHT_KEY = "readAlong.highlight";
 const AUTO_SCROLL_KEY = "readAlong.autoScroll";
+const MODE_KEY = "readAlong.highlightMode";
+
+function readMode(): HighlightMode {
+    try {
+        return localStorage.getItem(MODE_KEY) === "continuous" ? "continuous" : "word";
+    } catch {
+        return "word";
+    }
+}
 
 function readPref(key: string): boolean {
     try {
@@ -17,7 +27,7 @@ function readPref(key: string): boolean {
     }
 }
 
-function writePref(key: string, value: boolean): void {
+function writePref(key: string, value: boolean | HighlightMode): void {
     try {
         localStorage.setItem(key, String(value));
     } catch {
@@ -30,6 +40,8 @@ export interface ReadAlongPreferences {
     setHighlight: (value: boolean) => void;
     autoScroll: boolean;
     setAutoScroll: (value: boolean) => void;
+    highlightMode: HighlightMode;
+    setHighlightMode: (value: HighlightMode) => void;
 }
 
 export function useReadAlongPreferences(): ReadAlongPreferences {
@@ -37,6 +49,12 @@ export function useReadAlongPreferences(): ReadAlongPreferences {
     const [autoScroll, setAutoScrollState] = useState(() =>
         readPref(AUTO_SCROLL_KEY)
     );
+    const [highlightMode, setHighlightModeState] = useState(readMode);
+
+    const setHighlightMode = useCallback((value: HighlightMode) => {
+        setHighlightModeState(value);
+        writePref(MODE_KEY, value);
+    }, []);
 
     const setHighlight = useCallback((value: boolean) => {
         setHighlightState(value);
@@ -48,5 +66,5 @@ export function useReadAlongPreferences(): ReadAlongPreferences {
         writePref(AUTO_SCROLL_KEY, value);
     }, []);
 
-    return { highlight, setHighlight, autoScroll, setAutoScroll };
+    return { highlight, setHighlight, autoScroll, setAutoScroll, highlightMode, setHighlightMode };
 }
