@@ -162,3 +162,127 @@ test("only the isolated production proxy is trusted to supply client addresses",
   assert.match(read("frontend/nginx.conf"), /proxy_set_header X-Real-IP \$remote_addr;/);
   assert.match(read("docker-compose.override.yml"), /TRUSTED_PROXY_NETWORKS:\s*"\[\]"/);
 });
+
+const bashRoot = process.platform === "win32"
+  ? root.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`)
+  : root;
+const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+const bash = (script) => process.platform === "win32"
+  ? spawnSync("wsl", ["-d", process.env.SECURITY_TEST_WSL_DISTRO || "Ubuntu-26.04", "--", "bash", "-s"], { input: script, encoding: "utf8" })
+  : spawnSync("bash", ["-s"], { input: script, encoding: "utf8" });
+
+const RUNTIME_URL = "postgresql+asyncpg://myfeeds_runtime:runtime-secret@db.example:5432/myfeeds?ssl=require";
+const ADMIN_URL = "postgresql+asyncpg://myfeeds:admin-secret@db.example:5432/myfeeds?ssl=require";
+const SERVE_CALL = "HYPERCORN app.main:app --bind 0.0.0.0:8123 --workers 1";
+const SERVER_ENV = { DATABASE_URL: RUNTIME_URL, ENVIRONMENT: "production" };
+const WATCHED_ENV = "DATABASE_URL|MIGRATION_DATABASE_URL|POSTGRES_PASSWORD|POSTGRES_RUNTIME_PASSWORD|ENVIRONMENT|DEBUG";
+
+// Stand-ins for alembic and hypercorn: they report argv and the security-relevant environment they receive.
+const stubTool = (name, exitLine = "") => `cat > "$stub/${name}" <<'STUB'
+#!/bin/sh
+printf '${name.toUpperCase()} %s\\n' "$*"
+env | grep -E '^(${WATCHED_ENV})=' | sed 's/^/${name.toUpperCase()}_ENV /'
+${exitLine}
+STUB
+chmod +x "$stub/${name}"
+`;
+const stubTools = `
+stub=$(mktemp -d)
+trap 'rm -rf "$stub"' EXIT
+${stubTool("alembic", 'exit "$STUB_ALEMBIC_STATUS"')}${stubTool("hypercorn")}`;
+
+const runStart = (args, env = {}, alembicStatus = 0) => {
+  const assignments = Object.entries(env)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`)
+    .join(" ");
+  const result = bash(`
+set -u
+cd ${shellQuote(bashRoot)}
+${stubTools}
+env -i PATH="$stub:/usr/bin:/bin" STUB_ALEMBIC_STATUS=${alembicStatus} ${assignments} sh backend/start.sh ${args} </dev/null
+echo "EXIT $?"
+`);
+  const lines = result.stdout.split(/\r?\n/);
+  const section = (tool) => Object.fromEntries(lines
+    .filter((line) => line.startsWith(`${tool}_ENV `))
+    .map((line) => line.slice(tool.length + 5))
+    .map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]));
+  const exit = lines.find((line) => line.startsWith("EXIT "));
+  return {
+    status: exit === undefined ? null : Number(exit.slice(5)),
+    stderr: result.stderr,
+    calls: lines.filter((line) => /^(ALEMBIC|HYPERCORN) /.test(line)),
+    alembicEnv: section("ALEMBIC"),
+    serverEnv: section("HYPERCORN"),
+  };
+};
+
+const servingEnv = (extra = {}) => ({
+  DATABASE_URL: RUNTIME_URL,
+  ENVIRONMENT: "production",
+  PORT: "8123",
+  POSTGRES_PASSWORD: "admin-secret",
+  POSTGRES_RUNTIME_PASSWORD: "runtime-secret",
+  ...extra,
+});
+
+test("start.sh migrate runs alembic as the administrator with testing settings", () => {
+  const result = runStart("migrate", { MIGRATION_DATABASE_URL: ADMIN_URL, DATABASE_URL: RUNTIME_URL });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.calls, ["ALEMBIC upgrade head"]);
+  assert.equal(result.alembicEnv.DATABASE_URL, ADMIN_URL);
+  assert.equal(result.alembicEnv.ENVIRONMENT, "testing");
+  assert.equal(result.alembicEnv.DEBUG, "false");
+});
+
+test("start.sh migrate requires the administrator URL and returns alembic's status", () => {
+  let result = runStart("migrate");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /MIGRATION_DATABASE_URL/);
+  assert.deepEqual(result.calls, []);
+  result = runStart("migrate", { MIGRATION_DATABASE_URL: ADMIN_URL }, 3);
+  assert.equal(result.status, 3);
+  assert.deepEqual(result.calls, ["ALEMBIC upgrade head"]);
+});
+
+test("start.sh rejects unknown modes before running anything", () => {
+  const result = runStart("bogus", { MIGRATION_DATABASE_URL: ADMIN_URL, DATABASE_URL: RUNTIME_URL });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Usage: start\.sh \[serve\|migrate\]/);
+  assert.deepEqual(result.calls, []);
+});
+
+test("start.sh serves without migrating unless the administrator URL is set", () => {
+  for (const migrationUrl of [undefined, ""]) {
+    const result = runStart("serve", servingEnv({ MIGRATION_DATABASE_URL: migrationUrl }));
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [SERVE_CALL]);
+    assert.deepEqual(result.serverEnv, SERVER_ENV);
+  }
+});
+
+test("start.sh migrates before serving and keeps administrator credentials from the server", () => {
+  for (const args of ["", "serve"]) {
+    const result = runStart(args, servingEnv({ MIGRATION_DATABASE_URL: ADMIN_URL }));
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ["ALEMBIC upgrade head", SERVE_CALL]);
+    assert.equal(result.alembicEnv.DATABASE_URL, ADMIN_URL);
+    assert.equal(result.alembicEnv.ENVIRONMENT, "testing");
+    assert.equal(result.alembicEnv.DEBUG, "false");
+    assert.deepEqual(result.serverEnv, SERVER_ENV);
+  }
+});
+
+test("start.sh does not serve when the startup migration fails", () => {
+  const result = runStart("serve", servingEnv({ MIGRATION_DATABASE_URL: ADMIN_URL }), 7);
+  assert.equal(result.status, 7);
+  assert.deepEqual(result.calls, ["ALEMBIC upgrade head"]);
+});
+
+test("start.sh requires the runtime URL before migrating on startup", () => {
+  const result = runStart("serve", servingEnv({ DATABASE_URL: undefined, MIGRATION_DATABASE_URL: ADMIN_URL }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DATABASE_URL/);
+  assert.deepEqual(result.calls, []);
+});
