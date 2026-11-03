@@ -91,6 +91,48 @@ class TestListPosts:
             assert post["isRead"] is True
 
     @pytest.mark.asyncio
+    async def test_list_posts_expose_reading_state(self, client, auth_headers, feed_id):
+        """Each post summary exposes the reading progress and whether it was opened."""
+        response = await client.get(f"/api/posts?feedId={feed_id}", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["posts"]
+        for post in data["posts"]:
+            assert isinstance(post["isSeen"], bool)
+            assert 0 <= post["readProgress"] <= 1
+
+    @pytest.mark.asyncio
+    async def test_list_posts_filter_by_in_progress(
+        self, client, auth_headers, feed_id, fresh_unread_post_id
+    ):
+        """Should list only posts that were started but not finished."""
+        started = await client.put(
+            f"/api/posts/{fresh_unread_post_id}/progress",
+            headers=auth_headers,
+            json={"progress": 0.4},
+        )
+        assert started.status_code == 200
+
+        response = await client.get(
+            f"/api/posts?readState=in_progress&feedId={feed_id}", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert str(fresh_unread_post_id) in [post["id"] for post in data["posts"]]
+        for post in data["posts"]:
+            assert post["isRead"] is False
+            assert post["readProgress"] > 0
+
+    @pytest.mark.asyncio
+    async def test_list_posts_rejects_an_unknown_read_state(self, client, auth_headers):
+        """Should reject a readState outside all|unread|in_progress|read."""
+        response = await client.get("/api/posts?readState=started", headers=auth_headers)
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_list_posts_pagination_with_limit(self, client, auth_headers):
         """Should respect limit parameter."""
         response = await client.get("/api/posts?limit=5", headers=auth_headers)
@@ -204,20 +246,47 @@ class TestGetPostDetail:
         assert "isRead" in data
 
     @pytest.mark.asyncio
-    async def test_get_post_auto_marks_as_read(self, client, auth_headers, unread_post_id):
-        """Should auto-mark post as read when viewing."""
-        # First, verify post is unread
-        list_response = await client.get("/api/posts?readState=unread", headers=auth_headers)
-        list_data = await list_response.get_json()
-        unread_ids = [p["id"] for p in list_data["posts"]]
+    async def test_get_post_records_open_without_marking_read(
+        self, client, auth_headers, fresh_unread_post_id
+    ):
+        """Opening a post records that it was seen but does not mark it read."""
+        response = await client.get(f"/api/posts/{fresh_unread_post_id}", headers=auth_headers)
 
-        # View the post
-        response = await client.get(f"/api/posts/{unread_post_id}", headers=auth_headers)
         assert response.status_code == 200
+        data = await response.get_json()
+        assert data["isRead"] is False
+        assert data["isSeen"] is True
+        assert data["readProgress"] == 0
 
-        # Verify it's now marked as read
+    @pytest.mark.asyncio
+    async def test_opened_post_stays_in_the_unread_list(
+        self, client, auth_headers, feed_id, fresh_unread_post_id
+    ):
+        """An opened post still counts as unread: it stays in the Unread filter."""
+        opened = await client.get(f"/api/posts/{fresh_unread_post_id}", headers=auth_headers)
+        assert opened.status_code == 200
+
+        response = await client.get(
+            f"/api/posts?readState=unread&feedId={feed_id}", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        listed = [post for post in data["posts"] if post["id"] == str(fresh_unread_post_id)]
+        assert len(listed) == 1
+        assert listed[0]["isRead"] is False
+        assert listed[0]["isSeen"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_post_keeps_a_read_post_read(self, client, auth_headers, fresh_read_post_id):
+        """Opening an already-read post leaves it read with full progress."""
+        response = await client.get(f"/api/posts/{fresh_read_post_id}", headers=auth_headers)
+
+        assert response.status_code == 200
         data = await response.get_json()
         assert data["isRead"] is True
+        assert data["readProgress"] == 1
+        assert data["isSeen"] is True
 
     @pytest.mark.asyncio
     async def test_get_post_not_found(self, client, auth_headers):
@@ -311,6 +380,172 @@ class TestUpdateReadState:
         )
 
         assert response.status_code == 400
+
+
+class TestUpdateProgress:
+    """Tests for PUT /api/posts/{postId}/progress endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_records_the_reading_progress(self, client, auth_headers, fresh_unread_post_id):
+        """Should store the progress and leave the post unread below the threshold."""
+        response = await client.put(
+            f"/api/posts/{fresh_unread_post_id}/progress",
+            headers=auth_headers,
+            json={"progress": 0.4},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data == {
+            "postId": str(fresh_unread_post_id),
+            "isRead": False,
+            "readProgress": 0.4,
+            "readAt": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_progress_never_moves_backwards(self, client, auth_headers, fresh_unread_post_id):
+        """Should keep the furthest position when a smaller one arrives later."""
+        url = f"/api/posts/{fresh_unread_post_id}/progress"
+        first = await client.put(url, headers=auth_headers, json={"progress": 0.6})
+        assert first.status_code == 200
+
+        response = await client.put(url, headers=auth_headers, json={"progress": 0.2})
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["readProgress"] == 0.6
+        assert data["isRead"] is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("progress", [0.95, 1], ids=["threshold", "integer-one"])
+    async def test_reaching_the_end_marks_the_post_read(
+        self, client, auth_headers, fresh_unread_post_id, progress
+    ):
+        """Should mark the post read at the completion threshold; JSON integers are accepted."""
+        response = await client.put(
+            f"/api/posts/{fresh_unread_post_id}/progress",
+            headers=auth_headers,
+            json={"progress": progress},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["isRead"] is True
+        assert data["readProgress"] == 1
+        assert data["readAt"] is not None
+
+    @pytest.mark.asyncio
+    async def test_a_read_post_stays_read(self, client, auth_headers, fresh_read_post_id):
+        """Should not let a later, smaller position undo a finished article."""
+        response = await client.put(
+            f"/api/posts/{fresh_read_post_id}/progress",
+            headers=auth_headers,
+            json={"progress": 0.1},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["isRead"] is True
+        assert data["readProgress"] == 1
+
+    @pytest.mark.asyncio
+    async def test_marking_unread_resets_the_progress(
+        self, client, auth_headers, fresh_read_post_id
+    ):
+        """Should start again from zero once the post is explicitly marked unread."""
+        unread = await client.put(
+            f"/api/posts/{fresh_read_post_id}/read-state",
+            headers=auth_headers,
+            json={"isRead": False},
+        )
+        assert unread.status_code == 200
+
+        response = await client.put(
+            f"/api/posts/{fresh_read_post_id}/progress",
+            headers=auth_headers,
+            json={"progress": 0.1},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["isRead"] is False
+        assert data["readProgress"] == pytest.approx(0.1)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param({}, id="empty-body"),
+            pytest.param({"progress": None}, id="null"),
+            pytest.param({"progress": True}, id="boolean"),
+            pytest.param({"progress": "0.5"}, id="string"),
+            pytest.param({"progress": [0.5]}, id="list"),
+            pytest.param({"progress": -0.1}, id="negative"),
+            pytest.param({"progress": 1.1}, id="above-one"),
+            pytest.param({"progress": 2}, id="integer-above-one"),
+        ],
+    )
+    async def test_rejects_an_invalid_progress(self, client, fresh_auth_headers, body):
+        """Should answer 400 VALIDATION_ERROR before it looks the post up."""
+        response = await client.put(
+            f"/api/posts/{uuid4()}/progress", headers=fresh_auth_headers, json=body
+        )
+
+        assert response.status_code == 400
+        data = await response.get_json()
+        assert data["error"]["code"] == "VALIDATION_ERROR"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity", "1e999"])
+    async def test_rejects_a_non_finite_progress(self, client, fresh_auth_headers, literal):
+        """Should reject values Python's JSON parser accepts but that are not positions."""
+        response = await client.put(
+            f"/api/posts/{uuid4()}/progress",
+            headers={**fresh_auth_headers, "Content-Type": "application/json"},
+            data=f'{{"progress": {literal}}}',
+        )
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_unknown_post_returns_404(self, client, fresh_auth_headers):
+        """Should answer 404 for a post that does not exist."""
+        response = await client.put(
+            f"/api/posts/{uuid4()}/progress",
+            headers=fresh_auth_headers,
+            json={"progress": 0.5},
+        )
+
+        assert response.status_code == 404
+        data = await response.get_json()
+        assert data["error"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_a_post_the_user_cannot_access_returns_404(
+        self, client, fresh_auth_headers, other_user_post_id
+    ):
+        """Should answer 404 for a post in a feed the user does not own."""
+        response = await client.put(
+            f"/api/posts/{other_user_post_id}/progress",
+            headers=fresh_auth_headers,
+            json={"progress": 0.5},
+        )
+
+        assert response.status_code == 404
+        data = await response.get_json()
+        assert data["error"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_requires_authentication(self, client, post_id):
+        """Should return 401 when not authenticated."""
+        response = await client.put(
+            f"/api/posts/{post_id}/progress",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+            json={"progress": 0.5},
+        )
+
+        assert response.status_code == 401
 
 
 class TestUnreadCounts:

@@ -11,6 +11,7 @@ import {
   Box,
   IconButton,
   Chip,
+  LinearProgress,
   Tooltip,
 } from "@mui/material";
 import ReadIcon from "@mui/icons-material/CheckCircle";
@@ -19,6 +20,7 @@ import AudioIcon from "@mui/icons-material/VolumeUp";
 import ExternalLinkIcon from "@mui/icons-material/OpenInNew";
 import type { PostSummary } from "../hooks/usePostsData";
 import { usePublisherImages } from "../hooks/usePublisherImages";
+import { displayPercent } from "../utils/readingProgress";
 
 interface PostCardProps {
   post: PostSummary;
@@ -76,6 +78,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick 
   const handleClick = useCallback(() => {
     onClick?.(post);
   }, [post, onClick]);
+
+  const inProgress = !post.isRead && post.readProgress > 0;
+  const opened = !post.isRead && post.isSeen && post.readProgress === 0;
+  const percent = displayPercent(post.readProgress);
 
   return (
     <Card
@@ -196,7 +202,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick 
               mt: 1,
             }}
           >
-            <Box sx={{ display: "flex", gap: 0.5 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               {post.hasContent && post.hasAudio && (
                 <Chip
                   icon={<AudioIcon fontSize="small" />}
@@ -205,6 +211,16 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick 
                   variant="outlined"
                   sx={{ fontSize: "0.7rem" }}
                 />
+              )}
+              {inProgress && (
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  {`${percent}%`}
+                </Typography>
+              )}
+              {opened && (
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Opened
+                </Typography>
               )}
             </Box>
             <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -231,6 +247,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onMarkAsRead, onClick 
           </Box>
         </CardContent>
       </CardActionArea>
+      {inProgress && (
+        <LinearProgress
+          variant="determinate"
+          value={percent}
+          aria-label="Reading progress"
+          sx={{ height: 3 }}
+        />
+      )}
     </Card>
   );
 };

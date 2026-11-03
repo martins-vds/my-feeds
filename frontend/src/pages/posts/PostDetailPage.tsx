@@ -29,10 +29,16 @@ import { PostContent } from "../../components/PostContent";
 import { ReadStateToggle } from "../../components/ReadStateToggle";
 import { AudioPlayer } from "../../components/AudioPlayer";
 import { FloatingAudioControls } from "../../components/FloatingAudioControls";
+import { PacerControls } from "../../components/PacerControls";
 import { ReadAlongToggles } from "../../components/ReadAlongToggles";
-import { useAudioPlayer } from "../../hooks/useAudioPlayer";
+import { StartReadingButton } from "../../components/StartReadingButton";
+import { WPM_OPTIONS } from "../../constants/audio";
+import { useAudioPlayer, type AudioStatus } from "../../hooks/useAudioPlayer";
+import { usePacer } from "../../hooks/usePacer";
 import { useReadAlong } from "../../hooks/useReadAlong";
-import { useReadAlongPreferences } from "../../hooks/useReadAlongPreferences";
+import { useReadAlongPreferences, type ReadingMode } from "../../hooks/useReadAlongPreferences";
+import { useReadingProgress } from "../../hooks/useReadingProgress";
+import { displayPercent } from "../../utils/readingProgress";
 import { hasReadableContent } from "../../utils/readableContent";
 import { PostDetailSkeleton } from "../../components/skeletons/PostDetailSkeleton";
 import { usePublisherImages } from "../../hooks/usePublisherImages";
@@ -49,8 +55,19 @@ interface PostDetailResponse {
   link: string;
   publishedAt: string;
   isRead: boolean;
+  readProgress: number;
   hasAudio: boolean;
 }
+
+interface PendingStart {
+  mode: ReadingMode;
+  fraction: number;
+}
+
+// The statuses in which the audio element exists, so its clock means something.
+const TRACKED_AUDIO_STATUSES: readonly AudioStatus[] = ["ready", "playing", "paused"];
+
+const formatWpm = (value: number) => `${value}`;
 
 /**
  * Format date for display
@@ -94,17 +111,73 @@ export const PostDetailPage: React.FC = () => {
   const [inlineSpeedOpen, setInlineSpeedOpen] = useState(false);
   const [floatingSpeedOpen, setFloatingSpeedOpen] = useState(false);
 
-  useReadAlong({
+  // Silent reading is paced by a timer instead of the audio clock. A start request waits in
+  // pendingStart until what it needs exists: the paced timeline, or the loaded clip. The slot
+  // holds one request, and a newer one replaces it.
+  const pacer = usePacer(readAlongPrefs.wpm);
+  const [silentActive, setSilentActive] = useState(false);
+  const [pendingStart, setPendingStart] = useState<PendingStart | null>(null);
+  const {
+    getClock: getPacerClock,
+    setDurationMs,
+    seekToFraction,
+    play: playPacer,
+    stop: stopPacer,
+  } = pacer;
+  const {
+    status: audioStatus,
+    durationSeconds: audioDuration,
+    getMediaElement: getAudioClock,
+    seek: seekAudio,
+    play: playAudio,
+  } = player;
+  const getClock = useCallback(
+    () => (silentActive ? getPacerClock() : getAudioClock()),
+    [silentActive, getPacerClock, getAudioClock]
+  );
+
+  const { pacedDurationMs } = useReadAlong({
     timings: player.wordTimings,
-    getMediaElement: player.getMediaElement,
-    isPlaying: player.isPlaying,
+    getMediaElement: getClock,
+    isPlaying: silentActive ? pacer.isPlaying : player.isPlaying,
     titleRef,
     contentRef,
-    highlightEnabled: readAlongPrefs.highlight,
+    highlightEnabled: readAlongPrefs.highlight || silentActive,
     highlightMode: readAlongPrefs.highlightMode,
     autoScrollEnabled: readAlongPrefs.autoScroll && !inlineSpeedOpen && !floatingSpeedOpen,
     contentVersion: allowPublisherImages,
+    paced: silentActive,
   });
+
+  // The paced timeline exists only once the words are wrapped. Size the pacer from it, and
+  // only then let a waiting silent start run.
+  useEffect(() => {
+    setDurationMs(pacedDurationMs);
+  }, [pacedDurationMs, setDurationMs]);
+
+  useEffect(() => {
+    if (pendingStart?.mode !== "silent" || pacedDurationMs <= 0) return;
+    seekToFraction(pendingStart.fraction);
+    playPacer();
+    setPendingStart(null);
+  }, [pendingStart, pacedDurationMs, seekToFraction, playPacer]);
+
+  useEffect(() => {
+    if (pendingStart?.mode !== "sound" || audioStatus !== "ready") return;
+    setPendingStart(null);
+    if (audioDuration) seekAudio(pendingStart.fraction * audioDuration);
+    playAudio();
+  }, [pendingStart, audioStatus, audioDuration, seekAudio, playAudio]);
+
+  // Moving to another article ends the reading session.
+  useEffect(
+    () => () => {
+      stopPacer();
+      setSilentActive(false);
+      setPendingStart(null);
+    },
+    [postId, stopPacer]
+  );
 
   // Fetch post detail
   useEffect(() => {
@@ -135,9 +208,9 @@ export const PostDetailPage: React.FC = () => {
   }, [postId]);
 
   // If the post already has generated audio, load it right away so the player
-  // shows the controls instead of the "Listen to article" button. Runs once
-  // per post when audio availability is known; generateAudio only fetches the
-  // existing file (it does not re-synthesize).
+  // shows its controls instead of the start button. Runs once per post when
+  // audio availability is known; generateAudio only fetches the existing file
+  // (it does not re-synthesize).
   const audioReady = player.status === "idle";
   useEffect(() => {
     if (post?.hasAudio && audioReady) {
@@ -146,11 +219,34 @@ export const PostDetailPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post?.hasAudio]);
 
-  // Handle read state toggle
-  const handleToggleReadState = useCallback(async (id: string, isRead: boolean) => {
-    await api.put(`/posts/${id}/read-state`, { isRead });
-    setPost((prev) => (prev ? { ...prev, isRead } : null));
-  }, []);
+  // Progress follows whichever clock is driving the article: the pacer while
+  // reading silently, the audio element otherwise.
+  const trackedPost = post?.id === postId ? post : null;
+  const { reset: resetProgress } = useReadingProgress({
+    postId: postId ?? "",
+    initialProgress: trackedPost?.readProgress ?? 0,
+    enabled:
+      trackedPost !== null &&
+      !trackedPost.isRead &&
+      (silentActive || TRACKED_AUDIO_STATUSES.includes(audioStatus)),
+    clockKey: silentActive ? "silent" : "audio",
+    getClock,
+    getDurationSeconds: () => (silentActive ? pacedDurationMs / 1000 : (audioDuration ?? 0)),
+    onUpdate: (report) =>
+      setPost((prev) =>
+        prev ? { ...prev, readProgress: report.readProgress, isRead: report.isRead } : prev
+      ),
+  });
+
+  // Handle read state toggle. The reader's choice wins over any save still in flight.
+  const handleToggleReadState = useCallback(
+    async (id: string, isRead: boolean) => {
+      await api.put(`/posts/${id}/read-state`, { isRead });
+      setPost((prev) => (prev ? { ...prev, isRead, readProgress: isRead ? 1 : 0 } : null));
+      resetProgress(isRead ? 1 : 0);
+    },
+    [resetProgress]
+  );
 
   // Handle back navigation. Prefer a real history pop so the reader restores
   // its previous scroll position and in-memory post list; only fall back to an
@@ -223,6 +319,63 @@ export const PostDetailPage: React.FC = () => {
   // Posts with no readable body (empty, or just a comments link) can't be
   // read here or synthesized to audio.
   const readable = hasReadableContent(post.content || post.summary);
+
+  // A finished article starts over; any other starts where the reader left off.
+  const storedFraction = post.isRead ? 0 : post.readProgress;
+
+  const startSilent = (fraction: number) => {
+    setPendingStart({ mode: "silent", fraction });
+    setSilentActive(true);
+  };
+
+  const startSound = (fraction: number) => {
+    if (audioStatus === "ready" || audioStatus === "paused") {
+      if (audioDuration) seekAudio(fraction * audioDuration);
+      playAudio();
+      return;
+    }
+    setPendingStart({ mode: "sound", fraction });
+    // The player ignores this while a load is already under way.
+    void player.generateAudio();
+  };
+
+  const handleStart = (mode: ReadingMode) => {
+    readAlongPrefs.setReadingMode(mode);
+    if (mode === "silent") startSilent(storedFraction);
+    else startSound(storedFraction);
+  };
+
+  const stopSilent = () => {
+    stopPacer();
+    setSilentActive(false);
+  };
+
+  // Each switch carries the reader's place over to the other clock.
+  const switchToSilent = () => {
+    const place =
+      player.currentTime > 0 && audioDuration ? player.currentTime / audioDuration : storedFraction;
+    player.pause();
+    readAlongPrefs.setReadingMode("silent");
+    startSilent(place);
+  };
+
+  const switchToSound = () => {
+    const place = pacer.fraction;
+    stopSilent();
+    readAlongPrefs.setReadingMode("sound");
+    startSound(place);
+  };
+
+  // The pacer speaks the audio controls' language so the floating bar can drive either.
+  const silentPlayer = {
+    isPlaying: pacer.isPlaying,
+    status: pacer.status,
+    toggle: pacer.toggle,
+    playbackRate: readAlongPrefs.wpm,
+    setPlaybackRate: readAlongPrefs.setWpm,
+    isMuted: false,
+    toggleMute: () => {},
+  };
 
   return (
     <Container maxWidth="md" sx={{ py: 3 }}>
@@ -349,17 +502,48 @@ export const PostDetailPage: React.FC = () => {
 
           {/* Read state chip */}
           <Chip
-            label={post.isRead ? "Read" : "Unread"}
+            data-testid="read-state-chip"
+            label={
+              post.isRead
+                ? "Read"
+                : post.readProgress > 0
+                  ? `In progress · ${displayPercent(post.readProgress)}%`
+                  : "Unread"
+            }
             size="small"
             color={post.isRead ? "default" : "primary"}
             variant="outlined"
           />
         </Box>
 
-        {/* Audio player */}
+        {/* Reading controls: the pacer, the start button or the audio player */}
         {readable && (
           <Box sx={{ my: 2 }} ref={playerRef}>
-            <AudioPlayer player={player} onSpeedMenuOpenChange={setInlineSpeedOpen} />
+            {silentActive ? (
+              <PacerControls
+                isPlaying={pacer.isPlaying}
+                fraction={pacer.fraction}
+                wpm={readAlongPrefs.wpm}
+                onToggle={pacer.toggle}
+                onSeek={seekToFraction}
+                onWpmChange={readAlongPrefs.setWpm}
+                onStop={stopSilent}
+                onSpeedMenuOpenChange={setInlineSpeedOpen}
+              />
+            ) : audioStatus === "idle" ? (
+              <StartReadingButton
+                progress={post.readProgress}
+                isRead={post.isRead}
+                mode={readAlongPrefs.readingMode}
+                onStart={handleStart}
+              />
+            ) : (
+              <AudioPlayer
+                player={player}
+                onSpeedMenuOpenChange={setInlineSpeedOpen}
+                onReadSilently={switchToSilent}
+              />
+            )}
             <ReadAlongToggles
               highlight={readAlongPrefs.highlight}
               onHighlightChange={readAlongPrefs.setHighlight}
@@ -367,7 +551,19 @@ export const PostDetailPage: React.FC = () => {
               onAutoScrollChange={readAlongPrefs.setAutoScroll}
               highlightMode={readAlongPrefs.highlightMode}
               onHighlightModeChange={readAlongPrefs.setHighlightMode}
+              highlightLocked={silentActive}
             />
+            {(silentActive || (audioStatus !== "idle" && audioStatus !== "error")) && (
+              <Box sx={{ mt: 0.5 }}>
+                <Button
+                  size="small"
+                  onClick={silentActive ? switchToSound : switchToSilent}
+                  data-testid="read-mode-switch"
+                >
+                  {silentActive ? "Listen instead" : "Read silently"}
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
 
@@ -402,7 +598,19 @@ export const PostDetailPage: React.FC = () => {
           </Button>
         </Box>
       </Paper>
-      {readable && (
+      {readable && silentActive && (
+        <FloatingAudioControls
+          player={silentPlayer}
+          anchorRef={playerRef}
+          footerRef={footerRef}
+          onSpeedMenuOpenChange={setFloatingSpeedOpen}
+          speeds={WPM_OPTIONS}
+          formatSpeed={formatWpm}
+          speedLabel="Reading speed"
+          hideMute
+        />
+      )}
+      {readable && !silentActive && (
         <FloatingAudioControls
           player={player}
           anchorRef={playerRef}

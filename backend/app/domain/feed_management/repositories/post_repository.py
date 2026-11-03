@@ -6,9 +6,10 @@ from typing import List, Literal, Optional
 from uuid import UUID
 
 from app.domain.feed_management.entities.post import Post
+from app.domain.feed_management.entities.user_post_state import UserPostState
 
 
-ReadState = Literal["all", "unread", "read"]
+ReadState = Literal["all", "unread", "in_progress", "read"]
 
 
 class PostRepository(ABC):
@@ -53,13 +54,14 @@ class PostRepository(ABC):
             user_id: User UUID (for filtering to their subscribed feeds)
             category_id: Optional category filter
             feed_id: Optional feed filter
-            read_state: Filter by read state ("all", "unread", "read")
+            read_state: Filter by read state ("all", "unread", "in_progress", "read");
+                "in_progress" means not read yet but with some reading progress
             before: Cursor for pagination (posts older than this)
             limit: Maximum posts to return
             uncategorized: If True, only posts from feeds with no categories
 
         Returns:
-            List of Post entities with is_read and has_audio populated
+            List of Post entities with is_read, read_progress, is_seen and has_audio populated
         """
         pass
 
@@ -148,7 +150,8 @@ class PostRepository(ABC):
     async def mark_as_read(self, user_id: UUID, post_id: UUID, is_read: bool = True) -> None:
         """Mark a post as read/unread for a user.
 
-        Creates UserPost record if it doesn't exist.
+        Creates UserPost record if it doesn't exist. Marking read sets the progress to
+        1.0; marking unread resets it to 0.0. ``opened_at`` is left alone either way.
 
         Args:
             user_id: User UUID
@@ -167,6 +170,52 @@ class PostRepository(ABC):
 
         Returns:
             Tuple of (is_read, read_at timestamp)
+        """
+        pass
+
+    @abstractmethod
+    async def record_opened(self, user_id: UUID, post_id: UUID) -> None:
+        """Remember that the user opened a post.
+
+        Creates the UserPost row when it is missing and sets ``opened_at`` only
+        while it is still NULL. Never changes the read state or the progress.
+
+        Args:
+            user_id: User UUID
+            post_id: Post UUID
+        """
+        pass
+
+    @abstractmethod
+    async def record_progress(
+        self, user_id: UUID, post_id: UUID, progress: float, *, completed: bool
+    ) -> UserPostState:
+        """Record reading progress for a post and return the resulting state.
+
+        Progress only ever moves forward (a monotonic maximum). ``completed``
+        flips the post to read at 100%. A post that is already read stays read
+        and keeps its ``read_at``. ``opened_at`` is set while it is still NULL.
+
+        Args:
+            user_id: User UUID
+            post_id: Post UUID
+            progress: Reading position from 0.0 to 1.0
+            completed: Whether this report crosses the completion threshold
+
+        Returns:
+            The user's state for the post after the write
+        """
+        pass
+
+    @abstractmethod
+    async def get_user_post_state(self, user_id: UUID, post_id: UUID) -> UserPostState:
+        """Get a user's read state, progress and opened time for a post.
+
+        Returns the untouched default state when the user has no row for it.
+
+        Args:
+            user_id: User UUID
+            post_id: Post UUID
         """
         pass
 

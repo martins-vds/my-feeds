@@ -29,6 +29,8 @@ interface AudioPlayerProps {
   /** Optional initial duration. */
   durationSeconds?: number;
   onSpeedMenuOpenChange?: (open: boolean) => void;
+  /** When given, the error state offers a way out to silent reading. */
+  onReadSilently?: () => void;
 }
 
 /**
@@ -44,17 +46,18 @@ function formatTime(seconds: number): string {
  * Audio player component for TTS playback.
  *
  * Controlled/presentational: all player state and handlers come from the
- * `player` prop (the parent owns `useAudioPlayer`). Supports:
- * - Lazy audio generation on first listen
+ * `player` prop (the parent owns `useAudioPlayer`). Renders nothing while idle,
+ * because `StartReadingButton` owns the idle state. Supports:
  * - Play/pause toggle
  * - Progress bar with current time
- * - Error handling with retry
+ * - Error handling with retry, and a way out to silent reading
  */
 export function AudioPlayer({
   player,
   audioUrl: initialAudioUrl,
   durationSeconds: initialDuration,
   onSpeedMenuOpenChange,
+  onReadSilently,
 }: AudioPlayerProps) {
   const {
     status,
@@ -100,10 +103,6 @@ export function AudioPlayer({
   const effectiveDuration = durationSeconds ?? initialDuration;
   const effectiveStatus: AudioStatus = effectiveUrl && status === "idle" ? "ready" : status;
 
-  const handleListenClick = () => {
-    generateAudio();
-  };
-
   const handleRetryClick = () => {
     generateAudio();
   };
@@ -114,21 +113,9 @@ export function AudioPlayer({
     }
   };
 
-  // Idle state - show listen button
+  // Idle state - nothing to show; StartReadingButton owns it
   if (effectiveStatus === "idle" || (!effectiveUrl && status === "idle")) {
-    return (
-      <Button
-        onClick={handleListenClick}
-        aria-label="Listen to article"
-        color="primary"
-        variant="outlined"
-        size="small"
-        startIcon={<PlayIcon />}
-        data-testid="listen-button"
-      >
-        Listen to article
-      </Button>
-    );
+    return null;
   }
 
   // Loading state (brief: fetching audio status or an existing file)
@@ -212,6 +199,16 @@ export function AudioPlayer({
             <RetryIcon />
           </IconButton>
         </Tooltip>
+        {onReadSilently && (
+          <Button
+            onClick={onReadSilently}
+            size="small"
+            variant="outlined"
+            data-testid="audio-read-silently"
+          >
+            Read silently
+          </Button>
+        )}
       </Box>
     );
   }

@@ -189,11 +189,9 @@ export function useAudioPlayer(postId: string): UseAudioPlayerResult {
   }, [postId, status]);
 
   const play = useCallback(() => {
-    if (audioRef.current && status === "ready") {
-      audioRef.current.play();
-      setStatus("playing");
-    } else if (audioRef.current && status === "paused") {
-      audioRef.current.play();
+    if (audioRef.current && (status === "ready" || status === "paused")) {
+      // A browser may refuse audio that no click started directly (autoplay policy).
+      Promise.resolve(audioRef.current.play()).catch(() => setStatus("paused"));
       setStatus("playing");
     }
   }, [status]);

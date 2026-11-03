@@ -53,6 +53,7 @@ class ApiClient {
     options?: {
       body?: unknown;
       headers?: Record<string, string>;
+      keepalive?: boolean;
     }
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
@@ -76,6 +77,7 @@ class ApiClient {
       credentials: "include", // Include cookies for session
       cache: "no-store",
       body: options?.body ? JSON.stringify(options.body) : undefined,
+      ...(options?.keepalive ? { keepalive: true } : {}),
     });
 
     checkSession();
@@ -123,8 +125,8 @@ class ApiClient {
     return this.request<T>("POST", path, { body });
   }
 
-  async put<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>("PUT", path, { body });
+  async put<T>(path: string, body?: unknown, options?: { keepalive?: boolean }): Promise<T> {
+    return this.request<T>("PUT", path, { body, keepalive: options?.keepalive });
   }
 
   async patch<T>(path: string, body?: unknown): Promise<T> {

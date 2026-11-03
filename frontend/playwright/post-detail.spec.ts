@@ -163,8 +163,8 @@ test.describe("Post Detail - no readable content", () => {
     await expect(page.getByTestId("post-content")).toContainText(
       "This article is only available on the original site"
     );
-    // No audio affordances for a post with no readable content.
-    await expect(page.getByTestId("listen-button")).toHaveCount(0);
+    // No reading or audio affordances for a post with no readable content.
+    await expect(page.getByTestId("start-reading-button")).toHaveCount(0);
     await expect(page.getByTestId("play-pause-button")).toHaveCount(0);
     // But the original article is still reachable.
     await expect(page.getByRole("link", { name: /read original/i })).toBeVisible();

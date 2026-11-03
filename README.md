@@ -7,7 +7,17 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
 - **OAuth Authentication**: Sign in with GitHub, Google, or Microsoft
 - **Category Organization**: Group feeds by topic or interest area
 - **Unified Post View**: Browse latest posts across all subscribed feeds
-- **Read State Tracking**: Auto-track and manually toggle read/unread status
+- **Read State Tracking**: Opening an article only marks it *opened*; it stays
+  unread until you read it. Mark an article read or unread manually at any time.
+- **Reading progress**: **Start reading** follows the article with the
+  read-along highlight. The arrow beside it chooses *Read with sound*
+  (generated audio, when the operator allows it) or *Read silently* (a
+  highlight that moves at 150-400 words per minute with no audio; silent is the
+  default); playing the article's audio counts as reading too. Progress only
+  moves forward, and an article becomes read at 95%. Marking an article read or
+  unread sets its progress to 100% or 0%. In-progress articles show a progress
+  bar and percentage, unread articles you have opened show an *Opened* caption,
+  and the sidebar filter offers All, Unread, In progress and Read.
 - **Text-to-Speech**: Owner-authenticated audio, enabled only by operator opt-in; generation and playback allow MP3 files up to 20 MiB without reducing audio quality
 - **Highlight modes**: Word by word remains the default. Choose Continuous for
   a smooth highlighter stroke through the current word, keeping earlier words
@@ -23,6 +33,8 @@ RSS Feed Reader Progressive Web App with OAuth authentication, category-based fe
   use the device volume controls; mute remains available in the player.
   Auto-scroll waits while either playback-speed selector is open and resumes
   when it closes; playback and highlighting continue during speed selection.
+  Muting keeps the generated audio playing, so the article still needs its
+  audio; **Read silently** (see Reading progress) needs no audio at all.
 - **PWA Support**: Install on mobile; public app assets work offline, private articles/audio do not
 - **Privacy Defaults**: Publisher images are blocked until operator permission and per-account consent
   When disabled by the operator, a compact security warning replaces the image
@@ -222,11 +234,15 @@ OAuth credentials, and allowed IPs before provisioning.
 From a host with private database access, run `infra/provision-database.sh`
 with administrator `MIGRATION_DATABASE_URL` (including `ssl=require`), the
 database connection variables, and the runtime password. Apply migrations
-through `f7a1b2c3d4e5` and reapply runtime grants. Only `myfeeds_runtime`
+through `b8e4a1c7d903` and reapply runtime grants. Only `myfeeds_runtime`
 credentials belong in app settings; runtime startup never migrates.
 Opaque sessions replace legacy cookies, so existing users must sign in again.
 The shared-audio-key migration preserves per-post ownership links; downgrading
 its index requires first resolving any duplicate content keys.
+The reading-progress migration removes duplicate `(user_id, post_id)` read-state
+rows (keeping one per pair, preferring a read row) and marks existing read rows
+as 100% read before it adds a unique constraint; downgrading cannot restore the
+removed duplicates.
 
 Protect `main`, select actual numeric reviewer IDs, and run operator-only
 `infra/setup-github.sh` to configure the reviewed production environment and a

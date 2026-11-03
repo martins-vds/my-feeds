@@ -8,14 +8,36 @@ import type { UseAudioPlayerResult } from "../hooks/useAudioPlayer";
 import { PLAYBACK_SPEEDS } from "../constants/audio";
 
 export interface FloatingAudioControlsProps {
-  /** The same player object the inline AudioPlayer receives. */
-  player: UseAudioPlayerResult;
+  /**
+   * What the inline controls drive: the audio player, or for silent reading an adapter over the
+   * pacer. Only the fields the controls read are required.
+   */
+  player: Pick<
+    UseAudioPlayerResult,
+    | "isPlaying"
+    | "status"
+    | "toggle"
+    | "playbackRate"
+    | "setPlaybackRate"
+    | "isMuted"
+    | "toggleMute"
+  >;
   /** The inline player's container; observed for on-screen visibility. */
   anchorRef: RefObject<HTMLElement | null>;
   /** The article footer actions row; hides the controls when it is in view. */
   footerRef?: RefObject<HTMLElement | null>;
   onSpeedMenuOpenChange?: (open: boolean) => void;
+  /** The speeds the menu offers. Defaults to the audio playback rates. */
+  speeds?: readonly number[];
+  /** How a speed reads on its button. Defaults to "1.5x". */
+  formatSpeed?: (speed: number) => string;
+  /** Names the speed control for assistive technology. Defaults to "Playback speed". */
+  speedLabel?: string;
+  /** Leaves the mute button out, for a surface that makes no sound. */
+  hideMute?: boolean;
 }
+
+const formatRate = (speed: number) => `${speed}x`;
 
 /**
  * Track whether `ref.current` currently intersects the viewport (threshold 0).
@@ -39,15 +61,19 @@ function useOnScreen(ref: RefObject<HTMLElement | null> | undefined, initial: bo
 
 /**
  * Floating play/resume + speed circles shown in the lower-right when the inline
- * audio player is scrolled off-screen and a clip is active. Drives the same
- * player element, so read-along and auto-scroll respond exactly as they do for
- * the inline controls.
+ * controls are scrolled off-screen and a clip is active. Drives the same player
+ * (or, for silent reading, the pacer), so read-along and auto-scroll respond
+ * exactly as they do for the inline controls.
  */
 export function FloatingAudioControls({
   player,
   anchorRef,
   footerRef,
   onSpeedMenuOpenChange,
+  speeds = PLAYBACK_SPEEDS,
+  formatSpeed = formatRate,
+  speedLabel = "Playback speed",
+  hideMute = false,
 }: FloatingAudioControlsProps) {
   const playerOnScreen = useOnScreen(anchorRef, true);
   const footerOnScreen = useOnScreen(footerRef, false);
@@ -123,14 +149,14 @@ export function FloatingAudioControls({
           <Stack
             id="floating-speed-options"
             role="group"
-            aria-label="Playback speed options"
+            aria-label={`${speedLabel} options`}
             spacing={0.5}
             data-testid="floating-speed-options"
             sx={{
               alignItems: "center",
             }}
           >
-            {PLAYBACK_SPEEDS.map((speed) => {
+            {speeds.map((speed) => {
               const selected = speed === player.playbackRate;
               return (
                 <Button
@@ -138,7 +164,7 @@ export function FloatingAudioControls({
                   size="small"
                   variant={selected ? "contained" : "text"}
                   aria-pressed={selected}
-                  aria-label={`Set speed ${speed}x`}
+                  aria-label={`Set speed ${formatSpeed(speed)}`}
                   onClick={() => {
                     player.setPlaybackRate(speed);
                     closeSpeed();
@@ -158,7 +184,7 @@ export function FloatingAudioControls({
                     },
                   }}
                 >
-                  {speed}x
+                  {formatSpeed(speed)}
                 </Button>
               );
             })}
@@ -168,27 +194,29 @@ export function FloatingAudioControls({
           ref={speedFabRef}
           size="small"
           color="default"
-          aria-label="Playback speed"
+          aria-label={speedLabel}
           aria-haspopup="true"
           aria-expanded={speedOpen}
           aria-controls={speedOpen ? "floating-speed-options" : undefined}
           data-testid="floating-speed-button"
           onClick={() => setSpeedOpen((o) => !o)}
         >
-          {player.playbackRate}x
+          {formatSpeed(player.playbackRate)}
         </Fab>
       </Box>
-      <Fab
-        size="small"
-        color="default"
-        aria-label={player.isMuted ? "Unmute audio" : "Mute audio"}
-        aria-pressed={player.isMuted}
-        data-testid="floating-mute-button"
-        onClick={player.toggleMute}
-        sx={{ width: 44, height: 44 }}
-      >
-        {player.isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
-      </Fab>
+      {!hideMute && (
+        <Fab
+          size="small"
+          color="default"
+          aria-label={player.isMuted ? "Unmute audio" : "Mute audio"}
+          aria-pressed={player.isMuted}
+          data-testid="floating-mute-button"
+          onClick={player.toggleMute}
+          sx={{ width: 44, height: 44 }}
+        >
+          {player.isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+        </Fab>
+      )}
       <Fab
         color="primary"
         aria-label={player.isPlaying ? "Pause" : "Play"}

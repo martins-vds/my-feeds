@@ -4,6 +4,7 @@
  * friendly via MUI Switch; on/off state is exposed to assistive tech.
  */
 
+import { useId } from "react";
 import { Box, FormControlLabel, Switch, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { supportsContinuousHighlight, type HighlightMode } from "../hooks/useReadAlong";
 
@@ -14,6 +15,8 @@ interface ReadAlongTogglesProps {
   onAutoScrollChange: (value: boolean) => void;
   highlightMode: HighlightMode;
   onHighlightModeChange: (value: HighlightMode) => void;
+  /** Keeps the highlight switch on and unchangeable, as while reading silently. */
+  highlightLocked?: boolean;
 }
 
 export function ReadAlongToggles({
@@ -23,17 +26,25 @@ export function ReadAlongToggles({
   onAutoScrollChange,
   highlightMode,
   onHighlightModeChange,
+  highlightLocked = false,
 }: ReadAlongTogglesProps) {
+  const lockedNoteId = useId();
   const continuousSupported = supportsContinuousHighlight();
   return (
     <Box data-testid="read-along-toggles" sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2, mt: 1 }}>
       <FormControlLabel
         control={
           <Switch
-            checked={highlight}
+            checked={highlight || highlightLocked}
+            disabled={highlightLocked}
             onChange={(e) => onHighlightChange(e.target.checked)}
             size="small"
-            slotProps={{ input: { "aria-label": "Highlight while playing" } }}
+            slotProps={{
+              input: {
+                "aria-label": "Highlight while playing",
+                "aria-describedby": highlightLocked ? lockedNoteId : undefined,
+              },
+            }}
             data-testid="toggle-highlight"
           />
         }
@@ -66,6 +77,11 @@ export function ReadAlongToggles({
       {!continuousSupported && (
         <Typography variant="caption" color="text.secondary" sx={{ width: "100%" }}>
           Continuous highlighting needs a newer browser. Using word by word.
+        </Typography>
+      )}
+      {highlightLocked && (
+        <Typography id={lockedNoteId} variant="caption" color="text.secondary" sx={{ width: "100%" }}>
+          Highlighting stays on while you read silently.
         </Typography>
       )}
     </Box>

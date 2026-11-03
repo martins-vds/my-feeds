@@ -107,12 +107,16 @@ export function FeedSidebar({
           value={readState}
           exclusive
           size="small"
-          fullWidth
           onChange={(_e, value: ReadState | null) => value && onReadStateChange(value)}
           aria-label="read state filter"
+          sx={{
+            display: "flex",
+            "& .MuiToggleButton-root": { flex: "1 1 auto", px: 1, whiteSpace: "nowrap" },
+          }}
         >
           <ToggleButton value="all">All</ToggleButton>
           <ToggleButton value="unread">Unread</ToggleButton>
+          <ToggleButton value="in_progress">In progress</ToggleButton>
           <ToggleButton value="read">Read</ToggleButton>
         </ToggleButtonGroup>
       </Box>

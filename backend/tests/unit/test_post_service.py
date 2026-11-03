@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+from app.domain.feed_management.entities.post import Post
+from app.domain.feed_management.entities.user_post_state import UserPostState
+
 
 class TestPostServiceListPosts:
     """Tests for PostService.list_posts method."""
@@ -132,6 +135,26 @@ class TestPostServiceListPosts:
         # Repository should be called with read state filter
         call_kwargs = mock_post_repository.get_posts_for_user.call_args[1]
         assert call_kwargs.get("read_state") == "unread"
+
+    @pytest.mark.asyncio
+    async def test_list_posts_passes_the_in_progress_filter_through(
+        self, mock_post_repository, mock_category_repository, mock_feed_repository
+    ):
+        """Should hand the in-progress filter to the repository unchanged."""
+        from app.application.services.post_service import PostService
+
+        mock_post_repository.get_posts_for_user.return_value = []
+
+        service = PostService(
+            post_repository=mock_post_repository,
+            category_repository=mock_category_repository,
+            feed_repository=mock_feed_repository,
+        )
+
+        await service.list_posts(user_id=uuid4(), read_state="in_progress", limit=50)
+
+        call_kwargs = mock_post_repository.get_posts_for_user.call_args[1]
+        assert call_kwargs.get("read_state") == "in_progress"
 
     @pytest.mark.asyncio
     async def test_list_posts_paginates_with_cursor(
@@ -355,53 +378,180 @@ class TestPostServiceReadState:
         with pytest.raises(PostPermissionError):
             await service.mark_as_read(user_id, post_id, True)
 
-    @pytest.mark.asyncio
-    async def test_auto_mark_read_only_marks_unread_posts(
-        self, mock_post_repository, mock_category_repository, mock_feed_repository
-    ):
-        """Should only mark as read if post is currently unread."""
-        from app.application.services.post_service import PostService
 
-        user_id = uuid4()
-        post_id = uuid4()
+class TestPostServiceReadingProgress:
+    """Opening a post only records that it was seen; progress is reported separately."""
 
-        # Post is already read
-        mock_post_repository.get_read_state.return_value = (True, datetime.now(timezone.utc))
+    @pytest.fixture
+    def user_id(self):
+        return uuid4()
 
-        service = PostService(
-            post_repository=mock_post_repository,
-            category_repository=mock_category_repository,
-            feed_repository=mock_feed_repository,
+    @pytest.fixture
+    def post(self):
+        return Post.create(
+            feed_id=uuid4(),
+            guid="guid-1",
+            title="Title",
+            link="https://example.com/1",
+            published_at=datetime.now(timezone.utc),
         )
 
-        await service.auto_mark_read(user_id, post_id)
+    @pytest.fixture
+    def repo(self, post):
+        repo = AsyncMock()
+        repo.get_by_id.return_value = post
+        repo.get_user_post_state.return_value = UserPostState()
+        return repo
 
-        # Should NOT call mark_as_read since already read
-        mock_post_repository.mark_as_read.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_auto_mark_read_marks_unread_post(
-        self, mock_post_repository, mock_category_repository, mock_feed_repository
-    ):
-        """Should mark as read if post is currently unread."""
+    @pytest.fixture
+    def service(self, repo, post, user_id):
         from app.application.services.post_service import PostService
 
-        user_id = uuid4()
-        post_id = uuid4()
-
-        # Post is unread
-        mock_post_repository.get_read_state.return_value = (False, None)
-
-        service = PostService(
-            post_repository=mock_post_repository,
-            category_repository=mock_category_repository,
-            feed_repository=mock_feed_repository,
+        feeds = AsyncMock()
+        feeds.get_by_id.return_value = MagicMock(id=post.feed_id, user_id=user_id)
+        return PostService(
+            post_repository=repo, category_repository=AsyncMock(), feed_repository=feeds
         )
 
-        await service.auto_mark_read(user_id, post_id)
+    @pytest.mark.asyncio
+    async def test_get_post_includes_the_users_reading_state(self, service, repo, post, user_id):
+        repo.get_user_post_state.return_value = UserPostState(
+            read_progress=0.4, opened_at=datetime.now(timezone.utc)
+        )
 
-        # Should call mark_as_read
-        mock_post_repository.mark_as_read.assert_called_once_with(user_id, post_id, True)
+        result = await service.get_post(user_id, post.id)
+
+        assert result.is_read is False
+        assert result.read_progress == 0.4
+        assert result.is_seen is True
+
+    @pytest.mark.asyncio
+    async def test_get_post_looks_up_the_post_and_the_users_state_by_id(
+        self, service, repo, post, user_id
+    ):
+        await service.get_post(user_id, post.id)
+
+        repo.get_by_id.assert_awaited_once_with(post.id)
+        repo.get_user_post_state.assert_awaited_once_with(user_id, post.id)
+
+    @pytest.mark.asyncio
+    async def test_open_post_and_record_progress_look_up_the_requested_post(
+        self, service, repo, post, user_id
+    ):
+        repo.record_progress.return_value = UserPostState()
+
+        await service.open_post(user_id, post.id)
+        repo.get_by_id.assert_awaited_once_with(post.id)
+
+        repo.get_by_id.reset_mock()
+        await service.record_progress(user_id, post.id, 0.5)
+        repo.get_by_id.assert_awaited_once_with(post.id)
+
+    @pytest.mark.asyncio
+    async def test_open_post_records_the_first_open_without_marking_read(
+        self, service, repo, post, user_id
+    ):
+        result = await service.open_post(user_id, post.id)
+
+        repo.record_opened.assert_awaited_once_with(user_id, post.id)
+        repo.mark_as_read.assert_not_called()
+        assert result.is_seen is True
+        assert result.is_read is False
+
+    @pytest.mark.asyncio
+    async def test_open_post_does_not_write_for_an_already_seen_post(
+        self, service, repo, post, user_id
+    ):
+        repo.get_user_post_state.return_value = UserPostState(
+            read_progress=0.6, opened_at=datetime.now(timezone.utc)
+        )
+
+        result = await service.open_post(user_id, post.id)
+
+        repo.record_opened.assert_not_called()
+        assert result.read_progress == 0.6
+        assert result.is_seen is True
+
+    @pytest.mark.asyncio
+    async def test_open_post_records_the_open_of_a_post_marked_read_by_hand(
+        self, service, repo, post, user_id
+    ):
+        repo.get_user_post_state.return_value = UserPostState(
+            is_read=True, read_at=datetime.now(timezone.utc), read_progress=1.0
+        )
+
+        result = await service.open_post(user_id, post.id)
+
+        repo.record_opened.assert_awaited_once_with(user_id, post.id)
+        assert result.is_read is True
+        assert result.is_seen is True
+
+    @pytest.mark.asyncio
+    async def test_open_post_rejects_another_users_post(self, service, repo, post):
+        from app.application.services.post_service import PostPermissionError
+
+        with pytest.raises(PostPermissionError):
+            await service.open_post(uuid4(), post.id)
+
+        repo.record_opened.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_open_post_raises_for_a_missing_post(self, service, repo, user_id):
+        from app.application.services.post_service import PostNotFoundError
+
+        repo.get_by_id.return_value = None
+
+        with pytest.raises(PostNotFoundError):
+            await service.open_post(user_id, uuid4())
+
+        repo.record_opened.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("progress", "completed"),
+        [(0.0, False), (0.949, False), (0.95, True), (1.0, True)],
+    )
+    async def test_record_progress_completes_at_the_threshold(
+        self, service, repo, post, user_id, progress, completed
+    ):
+        repo.record_progress.return_value = UserPostState()
+
+        await service.record_progress(user_id, post.id, progress)
+
+        repo.record_progress.assert_awaited_once_with(
+            user_id, post.id, progress, completed=completed
+        )
+
+    @pytest.mark.asyncio
+    async def test_record_progress_returns_the_stored_state(self, service, repo, post, user_id):
+        read_at = datetime.now(timezone.utc)
+        repo.record_progress.return_value = UserPostState(
+            is_read=True, read_at=read_at, read_progress=1.0
+        )
+
+        result = await service.record_progress(user_id, post.id, 0.97)
+
+        assert result == (True, 1.0, read_at)
+
+    @pytest.mark.asyncio
+    async def test_record_progress_rejects_another_users_post(self, service, repo, post):
+        from app.application.services.post_service import PostPermissionError
+
+        with pytest.raises(PostPermissionError):
+            await service.record_progress(uuid4(), post.id, 0.5)
+
+        repo.record_progress.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_record_progress_raises_for_a_missing_post(self, service, repo, user_id):
+        from app.application.services.post_service import PostNotFoundError
+
+        repo.get_by_id.return_value = None
+
+        with pytest.raises(PostNotFoundError):
+            await service.record_progress(user_id, uuid4(), 0.5)
+
+        repo.record_progress.assert_not_called()
 
 
 class TestPostServiceUnreadCounts:

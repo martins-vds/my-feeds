@@ -16,6 +16,10 @@ export interface PostSummary {
     link: string;
     publishedAt: string;
     isRead: boolean;
+    // How far the user got, 0..1 (1 once read). Opening a post does not move it.
+    readProgress: number;
+    // True once the user has opened the post, even if they never read it.
+    isSeen: boolean;
     hasAudio: boolean;
     hasContent: boolean;
 }
@@ -30,7 +34,14 @@ interface PostsResponse {
     nextCursor: string | null;
 }
 
-export type ReadState = "all" | "unread" | "read";
+export type ReadState = "all" | "unread" | "in_progress" | "read";
+
+const READ_STATES: readonly ReadState[] = ["all", "unread", "in_progress", "read"];
+
+/** Parses the `?read=` URL parameter; anything unrecognised means "all". */
+export function parseReadState(value: string | null): ReadState {
+    return READ_STATES.find((state) => state === value) ?? "all";
+}
 
 interface UsePostsDataState {
     posts: PostSummary[];
@@ -85,7 +96,8 @@ const POLL_INTERVAL_MS = 30000;
  */
 export function usePostsData(
     initialCategoryId?: string,
-    initialFeedId?: string
+    initialFeedId?: string,
+    initialReadState: ReadState = "all"
 ): UsePostsDataReturn {
     const [state, setState] = useState<UsePostsDataState>({
         posts: [],
@@ -97,7 +109,7 @@ export function usePostsData(
         newPostsCount: 0,
         categoryId: initialCategoryId || null,
         feedId: initialFeedId || null,
-        readState: "all",
+        readState: initialReadState,
     });
 
     // Track if a fetch is in progress to avoid duplicate requests
@@ -231,7 +243,9 @@ export function usePostsData(
                 setState((prev) => ({
                     ...prev,
                     posts: prev.posts.map((post) =>
-                        post.id === postId ? { ...post, isRead } : post
+                        post.id === postId
+                            ? { ...post, isRead, readProgress: isRead ? 1 : 0 }
+                            : post
                     ),
                 }));
             } catch (err) {

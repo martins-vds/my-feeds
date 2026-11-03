@@ -2,15 +2,14 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from app.domain.feed_management.entities.post import Post
+from app.domain.feed_management.entities.user_post_state import READ_COMPLETION_THRESHOLD
 from app.domain.feed_management.repositories.category_repository import CategoryRepository
 from app.domain.feed_management.repositories.feed_repository import FeedRepository
-from app.domain.feed_management.repositories.post_repository import PostRepository
-
-ReadState = Literal["all", "unread", "read"]
+from app.domain.feed_management.repositories.post_repository import PostRepository, ReadState
 
 
 class PostNotFoundError(Exception):
@@ -134,7 +133,7 @@ class PostService:
             post_id: Post UUID
 
         Returns:
-            Post with full content
+            Post with full content and the user's reading state
 
         Raises:
             PostNotFoundError: If post doesn't exist
@@ -152,9 +151,10 @@ class PostService:
         if feed.user_id != user_id:
             raise PostPermissionError("You don't have access to this post")
 
-        # Get read state
-        is_read, _ = await self._post_repository.get_read_state(user_id, post_id)
-        post.is_read = is_read
+        state = await self._post_repository.get_user_post_state(user_id, post_id)
+        post.is_read = state.is_read
+        post.read_progress = state.read_progress
+        post.is_seen = state.is_seen
 
         return post
 
@@ -184,17 +184,57 @@ class PostService:
         # Return updated state
         return await self._post_repository.get_read_state(user_id, post_id)
 
-    async def auto_mark_read(self, user_id: UUID, post_id: UUID) -> None:
-        """Auto-mark a post as read when viewing.
+    async def open_post(self, user_id: UUID, post_id: UUID) -> Post:
+        """Open a post: record that the user has seen it, without marking it read.
+
+        Reading is credited separately through record_progress.
 
         Args:
             user_id: User UUID
             post_id: Post UUID
+
+        Returns:
+            Post with full content and the user's reading state
+
+        Raises:
+            PostNotFoundError: If post doesn't exist
+            PostPermissionError: If user doesn't have access
         """
-        # Only mark if not already read
-        is_read, _ = await self._post_repository.get_read_state(user_id, post_id)
-        if not is_read:
-            await self._post_repository.mark_as_read(user_id, post_id, True)
+        post = await self.get_post(user_id, post_id)
+        if not post.is_seen:
+            await self._post_repository.record_opened(user_id, post_id)
+            post.is_seen = True
+        return post
+
+    async def record_progress(
+        self, user_id: UUID, post_id: UUID, progress: float
+    ) -> tuple[bool, float, Optional[datetime]]:
+        """Record the furthest reading position the user has reached.
+
+        Progress only moves forward. A position at or beyond
+        READ_COMPLETION_THRESHOLD marks the post read.
+
+        Args:
+            user_id: User UUID
+            post_id: Post UUID
+            progress: Reading position from 0.0 to 1.0 (range-checked by the API layer)
+
+        Returns:
+            Tuple of (is_read, read_progress, read_at)
+
+        Raises:
+            PostNotFoundError: If post doesn't exist
+            PostPermissionError: If user doesn't have access
+        """
+        await self.get_post(user_id, post_id)
+
+        state = await self._post_repository.record_progress(
+            user_id,
+            post_id,
+            progress,
+            completed=progress >= READ_COMPLETION_THRESHOLD,
+        )
+        return (state.is_read, state.read_progress, state.read_at)
 
     async def get_unread_counts(self, user_id: UUID) -> UnreadCounts:
         """Get unread post counts (per feed, per category, uncategorized, total).

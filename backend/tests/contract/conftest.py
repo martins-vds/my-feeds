@@ -262,12 +262,13 @@ async def _seed_full_data():
             {"id": TEST_OTHER_POST_ID, "fid": TEST_OTHER_FEED_ID, "pub": now},
         )
 
-        # Mark post2 as read
+        # Mark post2 as read. No conflict target: either the primary key or the
+        # (user_id, post_id) unique constraint may already hold the row.
         await session.execute(
             text(
-                "INSERT INTO user_posts (id, user_id, post_id, is_read, read_at) "
-                "VALUES (:id, :uid, :pid, true, :at) "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO user_posts (id, user_id, post_id, is_read, read_progress, read_at) "
+                "VALUES (:id, :uid, :pid, true, 1, :at) "
+                "ON CONFLICT DO NOTHING"
             ),
             {"id": TEST_USERPOST_ID, "uid": TEST_USER_ID, "pid": TEST_POST2_ID, "at": now},
         )
@@ -370,6 +371,45 @@ async def unread_post_id():
 @pytest.fixture
 async def read_post_id():
     await _seed_full_data()
+    return TEST_POST2_ID
+
+
+@pytest.fixture
+async def fresh_unread_post_id():
+    """TEST_POST1_ID with the reading state cleared: unread, never opened, no progress."""
+    await _seed_full_data()
+
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(
+            text("DELETE FROM user_posts WHERE user_id = :uid AND post_id = :pid"),
+            {"uid": TEST_USER_ID, "pid": TEST_POST1_ID},
+        )
+        await session.commit()
+    return TEST_POST1_ID
+
+
+@pytest.fixture
+async def fresh_read_post_id():
+    """TEST_POST2_ID read with full progress and not yet opened."""
+    await _seed_full_data()
+
+    from app.infrastructure.persistence.database import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(
+            text(
+                "INSERT INTO user_posts (id, user_id, post_id, is_read, read_progress, read_at) "
+                "VALUES (:id, :uid, :pid, true, 1, now()) "
+                "ON CONFLICT (user_id, post_id) DO UPDATE SET "
+                "is_read = true, read_progress = 1, read_at = now(), opened_at = NULL"
+            ),
+            {"id": uuid4(), "uid": TEST_USER_ID, "pid": TEST_POST2_ID},
+        )
+        await session.commit()
     return TEST_POST2_ID
 
 

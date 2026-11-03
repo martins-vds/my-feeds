@@ -4,6 +4,10 @@
  * A timing-backed post is mocked: the audio endpoint returns wordTimings and
  * the stream returns a real (silent) WAV so the audio element actually plays
  * and the highlighter advances from media time.
+ *
+ * The seeded posts are flagged hasAudio, so the clip preloads (paused) when a
+ * post opens and the player appears without choosing "Read with sound", which
+ * would autoplay.
  */
 
 import { test, expect, mockApi, makePostDetail } from "./fixtures";
@@ -22,7 +26,7 @@ const post = makePostDetail("feed-1", {
   content: "<p>one two three four five</p>",
   feedTitle: "Read Along Feed",
   isRead: true,
-  hasAudio: false,
+  hasAudio: true,
 });
 
 // Title words (Read/Along/Test = indices 0..2) then body words
@@ -113,9 +117,14 @@ function activeIndex(page: Page): Promise<number> {
   });
 }
 
+/** Waits for the preloaded clip's player (the seeds are flagged hasAudio). */
+async function waitForPlayer(page: Page) {
+  await expect(page.getByTestId("play-pause-button")).toBeVisible();
+}
+
 async function startPlayback(page: Page) {
   await page.goto(`/posts/${post.id}`);
-  await page.getByTestId("listen-button").click();
+  await waitForPlayer(page);
   await page.getByTestId("play-pause-button").click();
 }
 
@@ -139,7 +148,7 @@ test.describe("Continuous highlighting", () => {
     });
     await page.goto(`/posts/${post.id}`);
     await page.getByRole("button", { name: "Continuous", exact: true }).click();
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByRole("button", { name: "Mute audio", exact: true }).click();
     await page.getByTestId("play-pause-button").click();
     const progress = () => page.locator(".ra-progress").evaluate((span) =>
@@ -168,7 +177,7 @@ test.describe("Continuous highlighting", () => {
       await page.goto(`/posts/${post.id}`);
       await expect(page.getByRole("button", { name: "Word by word", exact: true })).toHaveAttribute("aria-pressed", "true");
       await page.getByRole("switch", { name: "Auto-scroll while playing" }).click();
-      await page.getByTestId("listen-button").click();
+      await waitForPlayer(page);
       const geometry = () => page.locator(".ra-word").evaluateAll((spans) => spans.map((span) => {
         const { x, y, width, height } = span.getBoundingClientRect();
         return { x, y, width, height };
@@ -284,7 +293,7 @@ const longPost = makePostDetail("feed-1", {
   content: LONG_WORDS.map((w) => `<p>${w}</p>`).join(""),
   feedTitle: "Read Along Feed",
   isRead: true,
-  hasAudio: false,
+  hasAudio: true,
 });
 
 const LONG_TIMINGS = ["Read", "Along", "Test", ...LONG_WORDS].map((text, i) => ({
@@ -320,7 +329,7 @@ async function setupLong(page: Page, wordMs = 40) {
 
 async function startLongPlayback(page: Page) {
   await page.goto(`/posts/${longPost.id}`);
-  await page.getByTestId("listen-button").click();
+  await waitForPlayer(page);
   await page.getByTestId("play-pause-button").click();
 }
 
@@ -341,7 +350,7 @@ test.describe("Read-along auto-scroll", () => {
     await page.setViewportSize({ width: 320, height: 700 });
     await setupLong(page, 400);
     await page.goto(`/posts/${longPost.id}`);
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByTestId("play-pause-button").click();
     await page.getByTestId("speed-button").click();
     await expect(page.getByRole("menu")).toBeVisible();
@@ -412,7 +421,7 @@ test.describe("Read-along auto-scroll", () => {
     await page.setViewportSize({ width: 320, height: 700 });
     await setupLong(page);
     await page.goto(`/posts/${longPost.id}`);
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     const volume = page.getByRole("slider", { name: "Audio volume" });
     await volume.focus();
     await volume.press("Home");
@@ -499,7 +508,7 @@ test.describe("Read-along toggles", () => {
     await page.goto(`/posts/${post.id}`);
     await page.getByRole("switch", { name: "Highlight while playing" }).click(); // off
 
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByTestId("play-pause-button").click();
 
     await page.waitForTimeout(1500);
@@ -512,7 +521,7 @@ test.describe("Read-along toggles", () => {
     await page.goto(`/posts/${longPost.id}`);
     await page.getByRole("switch", { name: "Auto-scroll while playing" }).click(); // off
 
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByTestId("play-pause-button").click();
 
     // Highlighting still works.
@@ -551,7 +560,7 @@ test.describe("Read-along fallback", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
 
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByTestId("play-pause-button").click();
     await page.waitForTimeout(1200);
 
@@ -586,7 +595,7 @@ const floatingPost = makePostDetail("feed-1", {
   content: floatingBody,
   feedTitle: "Read Along Feed",
   isRead: true,
-  hasAudio: false,
+  hasAudio: true,
 });
 
 async function setupFloating(page: Page) {
@@ -616,7 +625,7 @@ test.describe("Floating audio controls", () => {
   test("appear off-screen and drive play/pause + speed", async ({ authedPage: page }) => {
     await setupFloating(page);
     await page.goto(`/posts/${floatingPost.id}`);
-    await page.getByTestId("listen-button").click();
+    await waitForPlayer(page);
     await page.getByTestId("play-pause-button").click();
 
     // Hidden while the inline player is on-screen.

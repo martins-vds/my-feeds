@@ -41,7 +41,7 @@ async def list_posts():
     Query parameters:
         categoryId: Filter by category (UUID)
         feedId: Filter by feed (UUID)
-        readState: Filter by read state (all|unread|read, default: all)
+        readState: Filter by read state (all|unread|in_progress|read, default: all)
         limit: Maximum posts to return (1-100, default: 50)
         before: Cursor for pagination (ISO 8601 timestamp)
 
@@ -77,8 +77,8 @@ async def list_posts():
         except ValueError:
             raise ValidationError("Invalid feedId format")
 
-    if read_state not in ("all", "unread", "read"):
-        raise ValidationError("readState must be one of: all, unread, read")
+    if read_state not in ("all", "unread", "in_progress", "read"):
+        raise ValidationError("readState must be one of: all, unread, in_progress, read")
 
     try:
         limit = int(limit_str)
@@ -206,21 +206,17 @@ async def get_post(post_id: UUID):
 
     GET /api/posts/{postId}
 
-    Auto-marks the post as read.
+    Records that the user opened the post. It stays unread until the user reads
+    it (see PUT /api/posts/{postId}/progress) or marks it read.
 
     Returns:
-        PostDetail with full content
+        PostDetail with full content and the user's reading state
     """
     user_id = await get_current_user_id()
     container = get_request_container()
 
     try:
-        # Get post
-        post = await container.post_service.get_post(user_id, post_id)
-
-        # Auto-mark as read
-        await container.post_service.auto_mark_read(user_id, post_id)
-        post.is_read = True
+        post = await container.post_service.open_post(user_id, post_id)
 
         return jsonify(post.to_detail_dict())
     except PostNotFoundError:
@@ -268,3 +264,49 @@ async def update_read_state(post_id: UUID):
         return jsonify({"error": "not_found", "message": "Post not found"}), 404
     except PostPermissionError:
         return jsonify({"error": "not_found", "message": "Post not found"}), 404
+
+
+@bp.route("/<uuid:post_id>/progress", methods=["PUT"])
+async def update_progress(post_id: UUID):
+    """Record how far the user has read a post.
+
+    PUT /api/posts/{postId}/progress
+    Body: { "progress": 0.0-1.0 }
+
+    Progress only moves forward, and reaching the end (95% or more) marks the
+    post read. Use PUT /api/posts/{postId}/read-state to start over.
+
+    Returns:
+        { postId, isRead, readProgress, readAt }
+    """
+    user_id = await get_current_user_id()
+    container = get_request_container()
+
+    data = await request.get_json()
+    if not isinstance(data, dict) or not data:
+        raise ValidationError("Request body is required")
+
+    progress = data.get("progress")
+    if progress is None:
+        raise ValidationError("progress is required")
+    if isinstance(progress, bool) or not isinstance(progress, (int, float)):
+        raise ValidationError("progress must be a number")
+    # NaN and the infinities, which Python's JSON parser accepts, fail both comparisons.
+    if not 0 <= progress <= 1:
+        raise ValidationError("progress must be between 0 and 1")
+
+    try:
+        is_read, read_progress, read_at = await container.post_service.record_progress(
+            user_id, post_id, float(progress)
+        )
+    except (PostNotFoundError, PostPermissionError):
+        return jsonify({"error": "not_found", "message": "Post not found"}), 404
+
+    return jsonify(
+        {
+            "postId": str(post_id),
+            "isRead": is_read,
+            "readProgress": read_progress,
+            "readAt": read_at.isoformat() if read_at else None,
+        }
+    )

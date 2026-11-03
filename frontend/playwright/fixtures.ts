@@ -72,6 +72,8 @@ export function makePost(feedId: string, overrides: Record<string, unknown> = {}
     link: `https://example.com/post-${n}`,
     publishedAt: new Date(2026, 0, 15, 12, 0, 0).toISOString(),
     isRead: false,
+    readProgress: 0,
+    isSeen: false,
     hasAudio: false,
     hasContent: true,
     ...overrides,
@@ -179,6 +181,17 @@ export async function setupReaderApi(
       body: JSON.stringify(inCategory),
     });
   });
+}
+
+// ── Reading helpers ────────────────────────────────────────────────────
+
+/**
+ * Start reading with sound from the post detail page: open the split button's
+ * menu and pick "Read with sound". The clip autoplays once it is ready.
+ */
+export async function startListening(page: Page) {
+  await page.getByTestId("start-reading-menu").click();
+  await page.getByTestId("read-with-sound").click();
 }
 
 // ── Custom fixtures ────────────────────────────────────────────────────

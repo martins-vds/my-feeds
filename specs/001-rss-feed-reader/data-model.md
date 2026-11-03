@@ -40,14 +40,17 @@
        │                │              └─────────────┘
        │                │
        │                ▼ N:M (via junction)
-       │         ┌─────────────┐
-       └─────────│  UserPost   │ (Read State)
-           N:M   ├─────────────┤
-                 │ user_id(FK) │
-                 │ post_id(FK) │
-                 │ is_read     │
-                 │ read_at     │
-                 └─────────────┘
+       │         ┌───────────────┐
+       └─────────│   UserPost    │ (Read State)
+           N:M   ├───────────────┤
+                 │ id (PK)       │
+                 │ user_id(FK)   │
+                 │ post_id(FK)   │
+                 │ is_read       │
+                 │ read_at       │
+                 │ opened_at     │
+                 │ read_progress │
+                 └───────────────┘
 ```
 
 ---
@@ -165,23 +168,29 @@
 
 ### UserPost (Read State Junction)
 
-**Description**: Tracks per-user read state for posts.
+**Description**: Tracks per-user read state and reading progress for posts.
 
-| Field     | Type      | Constraints                      | Description         |
-| --------- | --------- | -------------------------------- | ------------------- |
-| `user_id` | UUID      | PK, FK → User, ON DELETE CASCADE | User                |
-| `post_id` | UUID      | PK, FK → Post, ON DELETE CASCADE | Post                |
-| `is_read` | BOOLEAN   | NOT NULL, DEFAULT FALSE          | Read status         |
-| `read_at` | TIMESTAMP | NULL                             | When marked as read |
+| Field           | Type      | Constraints                       | Description                         |
+| --------------- | --------- | --------------------------------- | ----------------------------------- |
+| `id`            | UUID      | PK                                | Unique identifier                   |
+| `user_id`       | UUID      | FK → User, ON DELETE CASCADE      | User                                |
+| `post_id`       | UUID      | FK → Post, ON DELETE CASCADE      | Post                                |
+| `is_read`       | BOOLEAN   | NOT NULL, DEFAULT FALSE           | Read status                         |
+| `read_at`       | TIMESTAMP | NULL                              | When marked as read                 |
+| `opened_at`     | TIMESTAMP | NULL                              | When the user first opened the post |
+| `read_progress` | FLOAT     | NOT NULL, DEFAULT 0, CHECK 0 to 1 | Furthest point read, from 0 to 1    |
 
 **Validation Rules**:
-- Composite PK on (`user_id`, `post_id`)
-- `read_at` should be set when `is_read` = TRUE
+- UNIQUE on (`user_id`, `post_id`), so a progress write can insert or update the row in one statement
+- `read_progress` stays within 0 to 1 (`ck_user_posts_read_progress_range`) and only moves forward
+- A read post has `is_read` = TRUE, `read_progress` = 1 and `read_at` set
+- Reaching 95% (`READ_COMPLETION_THRESHOLD`) makes a post read; marking it read sets progress to 1; marking it unread sets progress to 0 and clears `read_at`, but keeps `opened_at`
+- Unread means not read and no progress; in progress means not read and progress above 0; opened (`opened_at` set) is independent of the state
 
 **Indexes**:
-- `idx_userpost_user_unread` on (`user_id`, `is_read`) WHERE `is_read` = FALSE - Unread filter
+- `uq_user_posts_user_id_post_id` UNIQUE on (`user_id`, `post_id`) - One row per user and post
 
-**Note**: UserPost records are created on-demand when a user opens a post (auto-mark read) or toggles read state.
+**Note**: UserPost rows are created on demand, when a user opens a post (only `opened_at` is set; the post is not marked read), reports reading progress or toggles read state. The reading-progress migration backfilled existing read rows with `read_progress` = 1 and `opened_at` = `read_at`.
 
 ---
 
@@ -228,15 +237,21 @@ Daily notification feature was removed from scope. Push subscription entity is n
 ### Post Read State
 
 ```
-                     ┌─────────────────────┐
-                     │                     │
-                     ▼                     │
-┌─────────┐    User opens    ┌─────────┐   │   Manual toggle
-│ Unread  │ ───────────────► │  Read   │ ──┘
-│         │                  │         │
-│(default)│ ◄─────────────── │         │
-└─────────┘   Manual toggle  └─────────┘
+┌─────────┐ progress credited ┌─────────────┐ reaches 95% ┌─────────┐
+│ Unread  │ ────────────────► │ In progress │ ──────────► │  Read   │
+│(default)│                   │             │             │ (sticky)│
+└─────────┘                   └─────────────┘             └─────────┘
+     ▲                               │                         │
+     └─────────── Mark unread ───────┴─────────────────────────┘
 ```
+
+Transitions the diagram does not draw:
+
+- A single progress report of 95% or more takes an Unread post straight to Read.
+- Mark read, from Unread or In progress: the post becomes Read and its progress becomes 100%.
+- Mark unread, from In progress or Read: the post becomes Unread and its progress becomes 0%. Its `opened_at` is kept.
+- Read is sticky: a progress report never demotes a read post.
+- Opened is an independent flag, not a state. The first open sets it, and nothing above clears it.
 
 ### Feed Fetch State
 

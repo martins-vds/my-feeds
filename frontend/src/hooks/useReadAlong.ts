@@ -12,11 +12,18 @@
  *     Continuous mode instead retains completed text in scoped CSS highlights
  *     and fills the current word with a media-time gradient, including paused
  *     seeks and completed playback. Auto-scroll follows active-word changes.
+ *
+ * With `paced`, there is no audio: every displayed token gets a timing from
+ * `buildPacedTimings`, so the same highlighting follows a PacerClock instead
+ * (silent reading). The alignment gate is skipped because the timeline is
+ * built from the displayed words themselves.
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { WordTiming } from "../types";
 import { alignSpokenToDisplay, normalizeToken } from "../utils/alignTimings";
+import type { MediaClock, MediaClockEvent } from "../utils/mediaClock";
+import { BASE_WPM, buildPacedTimings } from "../utils/pacedTimings";
 import { collectWords, unwrapWords, wrapWords } from "../utils/wrapWords";
 
 export type HighlightMode = "word" | "continuous";
@@ -27,13 +34,19 @@ export function supportsContinuousHighlight(): boolean {
 
 export interface UseReadAlongArgs {
   timings: WordTiming[] | null;
-  getMediaElement: () => HTMLAudioElement | null;
+  /** The clock the highlight follows: the audio element, or a PacerClock when `paced`. */
+  getMediaElement: () => MediaClock | null;
   isPlaying: boolean;
   titleRef: RefObject<HTMLElement | null>;
   contentRef: RefObject<HTMLElement | null>;
   highlightEnabled: boolean;
   autoScrollEnabled: boolean;
   highlightMode?: HighlightMode;
+  /**
+   * Pace the displayed words with a built-in timeline instead of `timings`
+   * (silent reading). `getMediaElement` must then return the pacer's clock.
+   */
+  paced?: boolean;
   /** Changes when sanitized article DOM is replaced (e.g. image consent). */
   contentVersion?: string | boolean;
 }
@@ -41,6 +54,14 @@ export interface UseReadAlongArgs {
 export interface UseReadAlongResult {
   /** True when highlighting is eligible and active for this post. */
   highlightingActive: boolean;
+  /** Length of the paced timeline in ms; 0 unless `paced` is on and there are words to pace. */
+  pacedDurationMs: number;
+}
+
+/** When the last word finishes, in ms (0 for no timeline). */
+function timelineEndMs(timings: WordTiming[] | null): number {
+  const last = timings?.[timings.length - 1];
+  return last ? last.startMs + last.durationMs : 0;
 }
 
 /** Greatest index whose start <= mediaMs; -1 before the first / after the last ends. */
@@ -67,7 +88,7 @@ function activeTimingIndex(timings: WordTiming[], mediaMs: number): number {
 
 export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
   const {
-    timings,
+    timings: audioTimings,
     getMediaElement,
     isPlaying,
     titleRef,
@@ -76,9 +97,16 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
     autoScrollEnabled,
     contentVersion,
     highlightMode = "word",
+    paced = false,
   } = args;
 
   const [highlightingActive, setHighlightingActive] = useState(false);
+  // Built from the displayed words once they are wrapped (effect 1).
+  const [paceTimings, setPaceTimings] = useState<WordTiming[] | null>(null);
+  // Audio timings never apply to a paced timeline, so they must not re-wrap it.
+  const timingsToAlign = paced ? null : audioTimings;
+  // The timeline the painting effect follows.
+  const timings = paced ? paceTimings : audioTimings;
 
   // Ordered display spans, timing→display map, and the current active index.
   const spansRef = useRef<HTMLElement[]>([]);
@@ -142,6 +170,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
     spansRef.current = [];
     mapRef.current = null;
     setHighlightingActive(false);
+    setPaceTimings(null);
 
     const title = titleRef.current;
     const content = contentRef.current;
@@ -153,17 +182,21 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
     if (title) unwrapWords(title);
     if (content) unwrapWords(content);
 
-    if (!highlightEnabled || !timings || timings.length === 0) return;
+    if (!highlightEnabled || (!paced && !timingsToAlign?.length)) return;
     if (!title && !content) return;
 
-    const spoken = timings.map((t) => normalizeToken(t.text));
-    const displayWords = [
-      ...(title ? collectWords(title) : []),
-      ...(content ? collectWords(content) : []),
-    ].map(normalizeToken);
+    let timingToDisplay: Int32Array | null = null;
+    if (timingsToAlign) {
+      const spoken = timingsToAlign.map((t) => normalizeToken(t.text));
+      const displayWords = [
+        ...(title ? collectWords(title) : []),
+        ...(content ? collectWords(content) : []),
+      ].map(normalizeToken);
 
-    const alignment = alignSpokenToDisplay(spoken, displayWords);
-    if (!alignment.enabled) return;
+      const alignment = alignSpokenToDisplay(spoken, displayWords);
+      if (!alignment.enabled) return;
+      timingToDisplay = alignment.timingToDisplay;
+    }
 
     const spans: HTMLElement[] = [];
     let start = 0;
@@ -176,8 +209,16 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
       spans.push(...wrapWords(content, start).elements);
     }
 
+    if (paced) {
+      // Every displayed token is its own timing, so timing i is span i.
+      const words = spans.map((span) => span.textContent ?? "");
+      if (words.length === 0) return;
+      timingToDisplay = Int32Array.from(words, (_, index) => index);
+      setPaceTimings(buildPacedTimings(words, BASE_WPM));
+    }
+
     spansRef.current = spans;
-    mapRef.current = alignment.timingToDisplay;
+    mapRef.current = timingToDisplay;
     setHighlightingActive(true);
 
     return () => {
@@ -187,7 +228,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
       if (title) unwrapWords(title);
       if (content) unwrapWords(content);
     };
-  }, [timings, highlightEnabled, titleRef, contentRef, clearActive, contentVersion]);
+  }, [timingsToAlign, paced, highlightEnabled, titleRef, contentRef, clearActive, contentVersion]);
 
   // 2) Media-clock painting. Ranges connect spaces and nested inline markup
   // without adding layout boxes or painting the controls between title/body.
@@ -278,7 +319,7 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
       frame = requestAnimationFrame(loop);
     };
     const el = getMediaElement();
-    const events = ["seeking", "seeked", "timeupdate", "ended", "play"];
+    const events: MediaClockEvent[] = ["seeking", "seeked", "timeupdate", "ended", "play"];
     if (continuous) {
       clearActive();
       paint();
@@ -320,5 +361,5 @@ export function useReadAlong(args: UseReadAlongArgs): UseReadAlongResult {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
-  return { highlightingActive };
+  return { highlightingActive, pacedDurationMs: paced ? timelineEndMs(paceTimings) : 0 };
 }

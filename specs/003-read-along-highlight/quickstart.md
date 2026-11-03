@@ -57,7 +57,7 @@ docker compose exec -T frontend pnpm playwright
 Map to user stories (US) and success criteria (SC). Open a post with readable content on the Post Detail page.
 
 ### V1 — Word-level highlight follows the voice (US1 · SC-001/002/010)
-1. Wait until "Listen to article" generates audio, then press play.
+1. Open the arrow next to **Start reading** and choose **Read with sound**. It generates the audio and starts playing when it is ready. (An article whose audio is already loaded only needs **Play**.)
 2. **Expect**: exactly one word highlights at a time, starting in the **title**, moving through the **body**, matching the spoken word (within ~150 ms at 1x).
 3. Pause → highlight **holds** on the current word. Resume → continues. Let it finish → highlight **clears**.
 4. During a pause/silence between words, the most recently started word **stays** highlighted (never blanks).

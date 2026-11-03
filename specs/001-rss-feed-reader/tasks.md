@@ -183,9 +183,9 @@
 
 ## Phase 6: User Story 4 - Read Post Content (Priority: P4)
 
-**Goal**: Users can read full post content with auto-mark-read and manual toggle
+**Goal**: Users can read full post content and toggle read state manually (since 2026-11-02, opening a post no longer marks it read; see `docs/superpowers/specs/2026-11-02-reading-progress-design.md`)
 
-**Independent Test**: Click post, verify content displays, verify read state updates
+**Independent Test**: Click post, verify content displays and the post stays unread (it is only marked opened); verify read state updates when the post is read with Start reading or toggled manually
 
 ### Tests for User Story 4 (TDD - Write First, Must Fail)
 
@@ -201,7 +201,7 @@
 - [X] T100 [US4] Create ReadStateRepository ABC in backend/app/domain/feed_management/repositories/read_state_repository.py (integrated in PostRepository)
 - [X] T101 [US4] Implement SQLAlchemyReadStateRepository in backend/app/infrastructure/persistence/repositories/post_repository.py (integrated)
 - [X] T102 [US4] Create ReadStateService in backend/app/application/services/post_service.py (integrated into PostService)
-- [X] T103 [US4] Implement post detail route (auto-marks read) in backend/app/api/routes/posts.py
+- [X] T103 [US4] Implement post detail route in backend/app/api/routes/posts.py (originally it marked the post read; since 2026-11-02 it only records that the post was opened)
 - [X] T104 [US4] Implement read state toggle route in backend/app/api/routes/posts.py
 - [X] T105 [P] [US4] Create PostDetailPage in frontend/src/pages/posts/PostDetailPage.tsx
 - [X] T106 [P] [US4] Create PostContent renderer in frontend/src/components/PostContent.tsx

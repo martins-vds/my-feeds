@@ -27,9 +27,9 @@ vi.mock("../../services/api", () => ({
 }));
 
 import api from "../../services/api";
-import { usePostsData, type PostSummary } from "../usePostsData";
+import { usePostsData, parseReadState, type PostSummary } from "../usePostsData";
 
-function makePost(id: string): PostSummary {
+function makePost(id: string, overrides: Partial<PostSummary> = {}): PostSummary {
     return {
         id,
         feedId: "feed-1",
@@ -41,8 +41,11 @@ function makePost(id: string): PostSummary {
         link: `https://example.com/${id}`,
         publishedAt: "2026-01-01T00:00:00Z",
         isRead: false,
+        readProgress: 0,
+        isSeen: false,
         hasAudio: false,
         hasContent: true,
+        ...overrides,
     };
 }
 
@@ -109,5 +112,85 @@ describe("usePostsData new-posts indicator", () => {
 
         expect(result.current.newPostsCount).toBe(0);
         expect(result.current.posts).toHaveLength(2);
+    });
+});
+
+describe("parseReadState", () => {
+    it.each(["all", "unread", "in_progress", "read"] as const)("keeps %s", (value) => {
+        expect(parseReadState(value)).toBe(value);
+    });
+
+    it.each([null, "", "started", "IN_PROGRESS", "in-progress"])(
+        "falls back to all for %j",
+        (value) => {
+            expect(parseReadState(value)).toBe("all");
+        }
+    );
+});
+
+describe("usePostsData initial read state", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("loads the list once, already filtered by the read state it starts on", async () => {
+        vi.mocked(api.get).mockResolvedValue(response([makePost("a", { readProgress: 0.4 })]));
+
+        const { result } = renderHook(() => usePostsData(undefined, undefined, "in_progress"));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.readState).toBe("in_progress");
+        expect(api.get).toHaveBeenCalledTimes(1);
+        expect(api.get).toHaveBeenCalledWith(expect.stringContaining("readState=in_progress"));
+    });
+
+    it("starts on all, with no read state in the request, when none is given", async () => {
+        vi.mocked(api.get).mockResolvedValue(response([makePost("a")]));
+
+        const { result } = renderHook(() => usePostsData());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.readState).toBe("all");
+        expect(api.get).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(api.get).mock.calls[0][0]).not.toContain("readState");
+    });
+});
+
+describe("usePostsData reading progress", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("marking a post read moves its progress to 1", async () => {
+        vi.mocked(api.get).mockResolvedValue(
+            response([makePost("a", { readProgress: 0.4, isSeen: true })])
+        );
+        vi.mocked(api.put).mockResolvedValue({});
+
+        const { result } = renderHook(() => usePostsData());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.markAsRead("a", true);
+        });
+
+        expect(api.put).toHaveBeenCalledWith("/posts/a/read-state", { isRead: true });
+        expect(result.current.posts[0]).toMatchObject({ isRead: true, readProgress: 1 });
+    });
+
+    it("marking a post unread resets its progress to 0", async () => {
+        vi.mocked(api.get).mockResolvedValue(
+            response([makePost("a", { isRead: true, readProgress: 1, isSeen: true })])
+        );
+        vi.mocked(api.put).mockResolvedValue({});
+
+        const { result } = renderHook(() => usePostsData());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.markAsRead("a", false);
+        });
+
+        expect(result.current.posts[0]).toMatchObject({ isRead: false, readProgress: 0 });
     });
 });

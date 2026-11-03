@@ -4,12 +4,12 @@
  * These tests mock the post detail API and audio endpoints to exercise
  * the full AudioPlayer component lifecycle.
  *
- * The player starts idle and generates on demand when the user clicks
- * "Listen". A post that already has audio (hasAudio) auto-loads its
- * controls on open, without a click.
+ * The page starts with a "Start reading" button and generates audio on demand
+ * when the reader picks "Read with sound". A post that already has audio
+ * (hasAudio) auto-loads its controls on open, without a click.
  */
 
-import { test, expect, mockApi, makePostDetail } from "./fixtures";
+import { test, expect, mockApi, makePostDetail, startListening } from "./fixtures";
 
 // ── Seed data ──────────────────────────────────────────────────────────
 
@@ -35,18 +35,18 @@ async function setupAudioPage(page: import("@playwright/test").Page) {
 // ── Tests ──────────────────────────────────────────────────────────────
 
 test.describe("TTS Audio Playback", () => {
-  test("displays listen button on post detail page", async ({ authedPage: page }) => {
+  test("displays the start reading button on post detail page", async ({ authedPage: page }) => {
     await setupAudioPage(page);
-    // AudioPlayer starts in idle state → shows listen button immediately (no API call)
+    // The page starts idle → shows the start reading button immediately (no API call)
 
     await page.goto(`/posts/${postWithAudio.id}`);
-    await expect(page.getByTestId("listen-button")).toBeVisible();
+    await expect(page.getByTestId("start-reading-button")).toBeVisible();
   });
 
   test("shows generating state when audio is requested", async ({ authedPage: page }) => {
     await setupAudioPage(page);
 
-    // After clicking Listen, the hook calls GET /posts/{id}/audio.
+    // After choosing Read with sound, the hook calls GET /posts/{id}/audio.
     // Return 202 "generating" for all calls (including any polls).
     await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) => {
       return route.fulfill({
@@ -61,7 +61,7 @@ test.describe("TTS Audio Playback", () => {
     });
 
     await page.goto(`/posts/${postWithAudio.id}`);
-    await page.getByTestId("listen-button").click();
+    await startListening(page);
 
     await expect(page.getByText(/generating/i)).toBeVisible({ timeout: 5000 });
   });
@@ -100,7 +100,7 @@ test.describe("TTS Audio Playback", () => {
     });
 
     await page.goto(`/posts/${postWithAudio.id}`);
-    await page.getByTestId("listen-button").click();
+    await startListening(page);
 
     await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
   });
@@ -136,7 +136,7 @@ test.describe("TTS Audio Playback", () => {
     });
 
     await page.goto(`/posts/${postWithAudio.id}`);
-    await page.getByTestId("listen-button").click();
+    await startListening(page);
 
     // Should show duration formatted as 2:05
     await expect(page.getByText(/2:05/)).toBeVisible({ timeout: 5000 });
@@ -186,11 +186,12 @@ test.describe("TTS Audio Playback", () => {
     });
 
     await page.goto(`/posts/${postWithAudio.id}`);
-    await page.getByTestId("listen-button").click();
+    await startListening(page);
 
     // Should show error state with retry button
     await expect(page.getByText(/failed|error/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole("button", { name: /retry/i })).toBeVisible();
+    await expect(page.getByTestId("audio-read-silently")).toBeVisible();
 
     // Retry
     await page.getByRole("button", { name: /retry/i }).click();
@@ -199,9 +200,32 @@ test.describe("TTS Audio Playback", () => {
     await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
   });
 
+  test("offers reading silently when audio generation fails", async ({ authedPage: page }) => {
+    await setupAudioPage(page);
+
+    await page.route(`**/api/posts/${postWithAudio.id}/audio`, (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "TTS_ERROR", message: "TTS service unavailable" },
+        }),
+      })
+    );
+
+    await page.goto(`/posts/${postWithAudio.id}`);
+    await startListening(page);
+
+    // A failed clip must not strand the reader: reading silently still works.
+    await page.getByTestId("audio-read-silently").click();
+
+    await expect(page.getByTestId("pacer-controls")).toBeVisible();
+    await expect(page.getByTestId("audio-read-silently")).toHaveCount(0);
+  });
+
   test("auto-loads the player when the post already has audio", async ({ authedPage: page }) => {
     // A post flagged hasAudio should surface the controls immediately, without
-    // the user clicking "Listen to article".
+    // the reader choosing "Read with sound".
     const readyPost = makePostDetail("feed-1", {
       id: "audio-existing-post",
       title: "Post With Existing Audio",
@@ -234,8 +258,8 @@ test.describe("TTS Audio Playback", () => {
 
     await page.goto(`/posts/${readyPost.id}`);
 
-    // Controls appear automatically; the "Listen to article" button never shows.
+    // Controls appear automatically; the start reading button never shows.
     await expect(page.getByTestId("play-pause-button")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId("listen-button")).toHaveCount(0);
+    await expect(page.getByTestId("start-reading-button")).toHaveCount(0);
   });
 });

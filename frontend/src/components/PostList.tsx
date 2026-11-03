@@ -7,7 +7,7 @@ import { Box, Button, CircularProgress, Typography, Alert, Stack } from "@mui/ma
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PostCard from "./PostCard";
 import { PostListSkeleton } from "./skeletons/PostListSkeleton";
-import type { PostSummary } from "../hooks/usePostsData";
+import type { PostSummary, ReadState } from "../hooks/usePostsData";
 
 interface PostListProps {
   posts: PostSummary[];
@@ -15,6 +15,8 @@ interface PostListProps {
   loadingMore: boolean;
   hasMore: boolean;
   error: string | null;
+  // Only changes the empty-state wording
+  readState?: ReadState;
   onLoadMore?: () => void;
   onRefresh?: () => void;
   onMarkAsRead?: (postId: string, isRead: boolean) => void;
@@ -24,7 +26,10 @@ interface PostListProps {
 /**
  * Empty state when no posts match filters
  */
-const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
+const EmptyState: React.FC<{ readState?: ReadState; onRefresh?: () => void }> = ({
+  readState,
+  onRefresh,
+}) => (
   <Box
     sx={{
       py: 8,
@@ -41,7 +46,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
         color: "text.secondary",
       }}
     >
-      No posts found
+      {readState === "in_progress" ? "Nothing in progress yet" : "No posts found"}
     </Typography>
     <Typography
       variant="body2"
@@ -49,7 +54,9 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
         color: "text.secondary",
       }}
     >
-      Try adjusting your filters or add more feeds
+      {readState === "in_progress"
+        ? "Start reading an article."
+        : "Try adjusting your filters or add more feeds"}
     </Typography>
     {onRefresh && (
       <Button variant="outlined" startIcon={<RefreshIcon />} onClick={onRefresh}>
@@ -88,6 +95,7 @@ export const PostList: React.FC<PostListProps> = ({
   loadingMore,
   hasMore,
   error,
+  readState,
   onLoadMore,
   onRefresh,
   onMarkAsRead,
@@ -105,7 +113,7 @@ export const PostList: React.FC<PostListProps> = ({
 
   // Empty state
   if (!loading && posts.length === 0) {
-    return <EmptyState onRefresh={onRefresh} />;
+    return <EmptyState readState={readState} onRefresh={onRefresh} />;
   }
 
   return (

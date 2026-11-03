@@ -20,6 +20,8 @@ function makePost(overrides: Partial<PostSummary> = {}): PostSummary {
     link: "https://example.com/1",
     publishedAt: "2026-02-13T12:00:00Z",
     isRead: false,
+    readProgress: 0,
+    isSeen: false,
     hasAudio: false,
     hasContent: true,
     ...overrides,
@@ -45,6 +47,22 @@ describe("PostList", () => {
       );
       expect(screen.getByTestId("posts-empty")).toBeInTheDocument();
       expect(screen.getByText(/no posts found/i)).toBeInTheDocument();
+    });
+
+    it("should explain the In progress filter when nothing is in progress", () => {
+      render(
+        <PostList
+          posts={[]}
+          loading={false}
+          loadingMore={false}
+          hasMore={false}
+          error={null}
+          readState="in_progress"
+        />
+      );
+      expect(screen.getByText("Nothing in progress yet")).toBeInTheDocument();
+      expect(screen.getByText("Start reading an article.")).toBeInTheDocument();
+      expect(screen.queryByText(/no posts found/i)).not.toBeInTheDocument();
     });
 
     it("should display posts sorted by date descending", () => {

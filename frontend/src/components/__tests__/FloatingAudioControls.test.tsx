@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { useRef } from "react";
 import { FloatingAudioControls } from "../FloatingAudioControls";
+import type { FloatingAudioControlsProps } from "../FloatingAudioControls";
 import type { UseAudioPlayerResult } from "../../hooks/useAudioPlayer";
 
 // ── IntersectionObserver mock (jsdom has none) ─────────────────────────
@@ -69,12 +70,19 @@ function makePlayer(overrides: Partial<UseAudioPlayerResult> = {}): UseAudioPlay
 }
 
 // ── Harness: gives the component real anchor/footer elements ───────────
+type SpeedScale = Pick<
+  FloatingAudioControlsProps,
+  "speeds" | "formatSpeed" | "speedLabel" | "hideMute"
+>;
+
 function Harness({
   player,
   withFooter = true,
+  scale = {},
 }: {
-  player: UseAudioPlayerResult;
+  player: FloatingAudioControlsProps["player"];
   withFooter?: boolean;
+  scale?: SpeedScale;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
@@ -90,6 +98,7 @@ function Harness({
         player={player}
         anchorRef={anchorRef}
         footerRef={withFooter ? footerRef : undefined}
+        {...scale}
       />
     </div>
   );
@@ -105,8 +114,8 @@ afterEach(() => {
 });
 
 /** Render, then scroll the inline player off-screen (active + off-screen). */
-function renderOffscreen(player: UseAudioPlayerResult) {
-  const view = render(<Harness player={player} />);
+function renderOffscreen(player: FloatingAudioControlsProps["player"], scale: SpeedScale = {}) {
+  const view = render(<Harness player={player} scale={scale} />);
   setIntersecting(screen.getByTestId("anchor"), false);
   return view;
 }
@@ -210,5 +219,114 @@ describe("FloatingAudioControls — speed", () => {
     open();
     fireEvent.touchEnd(document.body);
     expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+  });
+});
+
+describe("FloatingAudioControls — a different speed scale", () => {
+  const wpm: SpeedScale = {
+    speeds: [150, 200, 250, 300, 400],
+    formatSpeed: (value) => `${value}`,
+    speedLabel: "Reading speed",
+    hideMute: true,
+  };
+
+  /** What the page hands over for silent reading: only the fields the controls read. */
+  function makePacerPlayer(
+    overrides: Partial<FloatingAudioControlsProps["player"]> = {}
+  ): FloatingAudioControlsProps["player"] {
+    return {
+      status: "playing",
+      isPlaying: true,
+      toggle: vi.fn(),
+      playbackRate: 250,
+      setPlaybackRate: vi.fn(),
+      isMuted: false,
+      toggleMute: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  function open(player = makePacerPlayer()) {
+    renderOffscreen(player, wpm);
+    fireEvent.click(screen.getByTestId("floating-speed-button"));
+    return player;
+  }
+
+  const optionButtons = () =>
+    Array.from(screen.getByTestId("floating-speed-options").querySelectorAll("button"));
+
+  it("needs only the fields it reads from a player", () => {
+    const player = makePacerPlayer();
+    renderOffscreen(player, wpm);
+
+    fireEvent.click(screen.getByTestId("floating-play-button"));
+
+    expect(player.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the speeds it is given, written by formatSpeed", () => {
+    open();
+    expect(optionButtons().map((button) => button.textContent)).toEqual([
+      "150",
+      "200",
+      "250",
+      "300",
+      "400",
+    ]);
+  });
+
+  it("shows the current speed the way formatSpeed writes it", () => {
+    renderOffscreen(makePacerPlayer({ playbackRate: 300 }), wpm);
+    expect(screen.getByTestId("floating-speed-button").textContent).toBe("300");
+  });
+
+  it("marks only the current speed as selected", () => {
+    open(makePacerPlayer({ playbackRate: 200 }));
+    expect(optionButtons().map((button) => button.getAttribute("aria-pressed"))).toEqual([
+      "false",
+      "true",
+      "false",
+      "false",
+      "false",
+    ]);
+  });
+
+  it("hands the chosen speed to setPlaybackRate and closes the options", () => {
+    const player = open();
+    fireEvent.click(screen.getByLabelText("Set speed 300"));
+    expect(player.setPlaybackRate).toHaveBeenCalledWith(300);
+    expect(screen.queryByTestId("floating-speed-options")).toBeNull();
+  });
+
+  it("names the speed control with speedLabel", () => {
+    open();
+    expect(screen.getByTestId("floating-speed-button").getAttribute("aria-label")).toBe(
+      "Reading speed"
+    );
+    expect(screen.getByTestId("floating-speed-options").getAttribute("aria-label")).toBe(
+      "Reading speed options"
+    );
+  });
+
+  it("keeps the audio names when no speedLabel is given", () => {
+    renderOffscreen(makePlayer());
+    fireEvent.click(screen.getByTestId("floating-speed-button"));
+    expect(screen.getByTestId("floating-speed-button").getAttribute("aria-label")).toBe(
+      "Playback speed"
+    );
+    expect(screen.getByTestId("floating-speed-options").getAttribute("aria-label")).toBe(
+      "Playback speed options"
+    );
+  });
+
+  it("leaves out the mute button when hideMute is set", () => {
+    renderOffscreen(makePacerPlayer(), wpm);
+    expect(screen.queryByTestId("floating-mute-button")).toBeNull();
+    expect(screen.queryByTestId("floating-play-button")).not.toBeNull();
+  });
+
+  it("shows the mute button by default", () => {
+    renderOffscreen(makePlayer());
+    expect(screen.queryByTestId("floating-mute-button")).not.toBeNull();
   });
 });

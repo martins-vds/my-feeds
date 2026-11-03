@@ -1,10 +1,18 @@
-"""UserPost (read state) SQLAlchemy model."""
+"""UserPost (read state and reading progress) SQLAlchemy model."""
 
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +26,7 @@ if TYPE_CHECKING:
 class UserPostModel(Base):
     """SQLAlchemy model for UserPost entity (read state).
 
-    Junction table tracking per-user read state for posts.
+    Junction table tracking per-user read state and reading progress for posts.
     """
 
     __tablename__ = "user_posts"
@@ -43,13 +51,25 @@ class UserPostModel(Base):
     is_read: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        default=True,
+        default=False,
         comment="Whether the user has read this post",
     )
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         comment="When the post was first read",
+    )
+    opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="When the user first opened this post",
+    )
+    read_progress: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        server_default="0",
+        comment="Furthest reading position reached, from 0.0 to 1.0",
     )
 
     # Relationships
@@ -63,8 +83,12 @@ class UserPostModel(Base):
     )
 
     __table_args__ = (
-        # User can only have one read state per post
-        {"comment": "Per-user read state for posts"},
+        UniqueConstraint("user_id", "post_id", name="uq_user_posts_user_id_post_id"),
+        CheckConstraint(
+            "read_progress >= 0 AND read_progress <= 1",
+            name="ck_user_posts_read_progress_range",
+        ),
+        {"comment": "Per-user read state and reading progress for posts"},
     )
 
     def __repr__(self) -> str:

@@ -21,7 +21,12 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import PostList from "../../components/PostList";
 import { FeedSidebar } from "../../components/FeedSidebar";
-import { usePostsData, type PostSummary, type ReadState } from "../../hooks/usePostsData";
+import {
+  parseReadState,
+  usePostsData,
+  type PostSummary,
+  type ReadState,
+} from "../../hooks/usePostsData";
 import { useFeedsData } from "../../hooks/useFeedsData";
 import { useUnreadCounts } from "../../hooks/useUnreadCounts";
 
@@ -34,10 +39,6 @@ function readInitialSidebar(isDesktop: boolean): boolean {
   const stored = window.localStorage.getItem(SIDEBAR_PREF_KEY);
   if (stored === null) return isDesktop;
   return stored === "true";
-}
-
-function parseReadState(value: string | null): ReadState {
-  return value === "unread" || value === "read" ? value : "all";
 }
 
 export const ReaderPage: React.FC = () => {
@@ -68,7 +69,7 @@ export const ReaderPage: React.FC = () => {
     loadMore,
     markAsRead,
     markAllRead,
-  } = usePostsData(categoryId ?? undefined, feedId ?? undefined);
+  } = usePostsData(categoryId ?? undefined, feedId ?? undefined, readState);
 
   // Feeds & categories (lazy)
   const {
@@ -370,6 +371,7 @@ export const ReaderPage: React.FC = () => {
           loadingMore={loadingMore}
           hasMore={hasMore}
           error={error}
+          readState={readState}
           onLoadMore={loadMore}
           onRefresh={refresh}
           onMarkAsRead={handleMarkAsRead}

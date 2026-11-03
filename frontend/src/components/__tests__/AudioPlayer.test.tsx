@@ -70,23 +70,9 @@ describe("AudioPlayer", () => {
   });
 
   describe("idle state", () => {
-    it("should display listen button in idle state", () => {
-      render(<AudioPlayer player={mockPlayer} />);
-      expect(screen.getByTestId("listen-button")).toBeInTheDocument();
-    });
-
-    it("should display listen button with accessible label", () => {
-      render(<AudioPlayer player={mockPlayer} />);
-      expect(screen.getByLabelText("Listen to article")).toBeInTheDocument();
-    });
-
-    it("should call generateAudio when listen button is clicked", async () => {
-      const generateAudio = vi.fn();
-      setMockState({ generateAudio });
-
-      render(<AudioPlayer player={mockPlayer} />);
-      await userEvent.click(screen.getByTestId("listen-button"));
-      expect(generateAudio).toHaveBeenCalled();
+    it("renders nothing while idle", () => {
+      const { container } = render(<AudioPlayer player={mockPlayer} />);
+      expect(container).toBeEmptyDOMElement();
     });
   });
 
@@ -105,11 +91,10 @@ describe("AudioPlayer", () => {
       expect(screen.getByText("Loading audio…")).toBeInTheDocument();
     });
 
-    it("should not display listen or play buttons while loading", () => {
+    it("should not display play buttons while loading", () => {
       setMockState({ status: "loading" });
 
       render(<AudioPlayer player={mockPlayer} />);
-      expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();
       expect(screen.queryByTestId("play-pause-button")).not.toBeInTheDocument();
     });
   });
@@ -130,11 +115,10 @@ describe("AudioPlayer", () => {
       expect(screen.getByTestId("audio-generating-elapsed")).toBeInTheDocument();
     });
 
-    it("should not display listen or play buttons while generating", () => {
+    it("should not display play buttons while generating", () => {
       setMockState({ status: "generating" });
 
       render(<AudioPlayer player={mockPlayer} />);
-      expect(screen.queryByTestId("listen-button")).not.toBeInTheDocument();
       expect(screen.queryByTestId("play-pause-button")).not.toBeInTheDocument();
     });
   });
@@ -161,6 +145,27 @@ describe("AudioPlayer", () => {
       render(<AudioPlayer player={mockPlayer} />);
       await userEvent.click(screen.getByLabelText("Retry audio generation"));
       expect(generateAudio).toHaveBeenCalled();
+    });
+
+    it("should offer to read silently instead when a handler is given", async () => {
+      const onReadSilently = vi.fn();
+      const generateAudio = vi.fn();
+      setMockState({ status: "error", error: "Failed", generateAudio });
+
+      render(<AudioPlayer player={mockPlayer} onReadSilently={onReadSilently} />);
+      const button = screen.getByRole("button", { name: "Read silently" });
+      expect(button).toBe(screen.getByTestId("audio-read-silently"));
+
+      await userEvent.click(button);
+      expect(onReadSilently).toHaveBeenCalledTimes(1);
+      expect(generateAudio).not.toHaveBeenCalled();
+    });
+
+    it("should not offer to read silently without a handler", () => {
+      setMockState({ status: "error", error: "Failed" });
+
+      render(<AudioPlayer player={mockPlayer} />);
+      expect(screen.queryByRole("button", { name: "Read silently" })).not.toBeInTheDocument();
     });
   });
 

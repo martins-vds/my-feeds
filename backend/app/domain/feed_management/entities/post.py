@@ -24,6 +24,8 @@ class Post:
         author: Author name, optional
         fetched_at: When we fetched this post
         is_read: Read state for current user (populated dynamically)
+        read_progress: Furthest reading position for current user, 0.0-1.0 (populated dynamically)
+        is_seen: Whether the current user has opened the post (populated dynamically)
         has_audio: Whether audio exists for this post
         feed_title: Title of parent feed (populated for summaries)
         feed_icon_url: Icon URL of parent feed (populated for summaries)
@@ -41,6 +43,8 @@ class Post:
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # These are populated dynamically, not stored in Post table
     is_read: bool = False
+    read_progress: float = 0.0
+    is_seen: bool = False
     has_audio: bool = False
     feed_title: Optional[str] = None
     feed_icon_url: Optional[str] = None
@@ -162,6 +166,8 @@ class Post:
             "link": self.link,
             "publishedAt": self.published_at.isoformat(),
             "isRead": self.is_read,
+            "readProgress": self.read_progress,
+            "isSeen": self.is_seen,
             "hasAudio": self.has_audio,
             "hasContent": has_readable_content(self.content) or has_readable_content(self.summary),
         }

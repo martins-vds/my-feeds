@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import and_, case, delete, exists, func, literal, or_, select, true, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.feed_management.entities.post import Post
+from app.domain.feed_management.entities.user_post_state import UserPostState
 from app.domain.feed_management.repositories.post_repository import PostRepository, ReadState
 from app.infrastructure.persistence.models.audio import AudioModel
 from app.infrastructure.persistence.models.feed import FeedModel
@@ -16,6 +18,8 @@ from app.infrastructure.persistence.models.feed_category import feed_categories
 from app.infrastructure.persistence.models.post import PostModel
 from app.infrastructure.persistence.models.user_post import UserPostModel
 from app.infrastructure.sanitization.html_sanitizer import sanitize_html
+
+_USER_POST_UNIQUE = "uq_user_posts_user_id_post_id"
 
 
 class SQLAlchemyPostRepository(PostRepository):
@@ -62,16 +66,29 @@ class SQLAlchemyPostRepository(PostRepository):
         limit: int = 50,
         uncategorized: bool = False,
     ) -> List[Post]:
-        """Get posts for a user with optional filters."""
-        # Base query joining posts -> feeds (owned by the user)
+        """Get posts for a user with optional filters.
+
+        The user's reading state comes from one LEFT JOIN, and the read-state
+        filter is a SQL predicate, so LIMIT applies to the filtered rows.
+        """
         query = (
-            select(PostModel)
+            select(
+                PostModel,
+                UserPostModel.is_read,
+                UserPostModel.read_progress,
+                UserPostModel.opened_at.is_not(None).label("is_seen"),
+            )
+            .select_from(PostModel)
             .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            # The user predicate sits in the ON clause so posts without a row stay in.
+            .outerjoin(
+                UserPostModel,
+                and_(UserPostModel.post_id == PostModel.id, UserPostModel.user_id == user_id),
+            )
             .where(FeedModel.user_id == user_id)
             .options(selectinload(PostModel.feed), selectinload(PostModel.audio))
         )
 
-        # Apply filters
         if category_id is not None:
             query = query.join(feed_categories, FeedModel.id == feed_categories.c.feed_id).where(
                 feed_categories.c.category_id == category_id
@@ -82,6 +99,16 @@ class SQLAlchemyPostRepository(PostRepository):
 
         if feed_id is not None:
             query = query.where(PostModel.feed_id == feed_id)
+
+        # A post with no user_posts row is unread with no progress, hence IS NOT TRUE.
+        if read_state == "read":
+            query = query.where(UserPostModel.is_read.is_(True))
+        elif read_state == "unread":
+            query = query.where(UserPostModel.is_read.is_not(True))
+        elif read_state == "in_progress":
+            query = query.where(
+                UserPostModel.is_read.is_not(True), UserPostModel.read_progress > 0.0
+            )
 
         # Cursor-based pagination
         if before is not None:
@@ -95,23 +122,13 @@ class SQLAlchemyPostRepository(PostRepository):
         query = query.limit(limit)
 
         result = await self._session.execute(query)
-        models = result.scalars().all()
-
-        # Convert to entities and populate read state
-        posts = []
-        for model in models:
+        posts: List[Post] = []
+        for model, is_read, read_progress, is_seen in result.all():
             post = self._to_entity(model)
-            # Get read state for this user
-            is_read, _ = await self.get_read_state(user_id, post.id)
-            post.is_read = is_read
+            post.is_read = bool(is_read)
+            post.read_progress = float(read_progress or 0.0)
+            post.is_seen = bool(is_seen)
             posts.append(post)
-
-        # Filter by read state after fetching (not optimal for large datasets)
-        if read_state == "unread":
-            posts = [p for p in posts if not p.is_read]
-        elif read_state == "read":
-            posts = [p for p in posts if p.is_read]
-
         return posts
 
     async def get_by_feed(
@@ -200,45 +217,116 @@ class SQLAlchemyPostRepository(PostRepository):
         return result.rowcount
 
     async def mark_as_read(self, user_id: UUID, post_id: UUID, is_read: bool = True) -> None:
-        """Mark a post as read/unread for a user."""
-        # Check if user_post record exists
-        result = await self._session.execute(
-            select(UserPostModel).where(
-                UserPostModel.user_id == user_id,
-                UserPostModel.post_id == post_id,
-            )
+        """Mark a post as read/unread for a user.
+
+        Marking read sets the progress to 100%; marking unread resets it to 0%.
+        ``opened_at`` is never touched.
+        """
+        stmt = pg_insert(UserPostModel).values(
+            user_id=user_id,
+            post_id=post_id,
+            is_read=is_read,
+            read_progress=1.0 if is_read else 0.0,
+            read_at=datetime.now(timezone.utc) if is_read else None,
         )
-        user_post = result.scalar_one_or_none()
+        stmt = stmt.on_conflict_do_update(
+            constraint=_USER_POST_UNIQUE,
+            set_={
+                "is_read": stmt.excluded.is_read,
+                "read_progress": stmt.excluded.read_progress,
+                "read_at": stmt.excluded.read_at,
+            },
+        )
+        await self._session.execute(stmt)
 
-        if user_post:
-            # Update existing
-            user_post.is_read = is_read
-            user_post.read_at = datetime.now(timezone.utc) if is_read else None
-        else:
-            # Create new
-            user_post = UserPostModel(
-                user_id=user_id,
-                post_id=post_id,
-                is_read=is_read,
-                read_at=datetime.now(timezone.utc) if is_read else None,
-            )
-            self._session.add(user_post)
+    async def record_opened(self, user_id: UUID, post_id: UUID) -> None:
+        """Remember that the user opened a post; ``opened_at`` is only ever set once."""
+        stmt = pg_insert(UserPostModel).values(
+            user_id=user_id,
+            post_id=post_id,
+            is_read=False,
+            read_progress=0.0,
+            read_at=None,
+            opened_at=datetime.now(timezone.utc),
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint=_USER_POST_UNIQUE,
+            set_={"opened_at": func.coalesce(UserPostModel.opened_at, stmt.excluded.opened_at)},
+        )
+        await self._session.execute(stmt)
 
-        await self._session.flush()
+    async def record_progress(
+        self, user_id: UUID, post_id: UUID, progress: float, *, completed: bool
+    ) -> UserPostState:
+        """Upsert reading progress and return the resulting state.
+
+        Progress is a monotonic maximum. A post that is already read stays read at
+        100% with its original ``read_at``. ``opened_at`` is set while still NULL.
+        """
+        now = datetime.now(timezone.utc)
+        stmt = pg_insert(UserPostModel).values(
+            user_id=user_id,
+            post_id=post_id,
+            is_read=completed,
+            read_progress=1.0 if completed else progress,
+            read_at=now if completed else None,
+            opened_at=now,
+        )
+        new = stmt.excluded
+        already_read = UserPostModel.is_read.is_(True)
+        stmt = stmt.on_conflict_do_update(
+            constraint=_USER_POST_UNIQUE,
+            set_={
+                "is_read": or_(UserPostModel.is_read, new.is_read),
+                "read_progress": case(
+                    (already_read, 1.0),
+                    else_=func.greatest(UserPostModel.read_progress, new.read_progress),
+                ),
+                "read_at": case(
+                    (already_read, UserPostModel.read_at),
+                    (new.is_read.is_(True), new.read_at),
+                    else_=UserPostModel.read_at,
+                ),
+                "opened_at": func.coalesce(UserPostModel.opened_at, new.opened_at),
+            },
+        ).returning(
+            UserPostModel.is_read,
+            UserPostModel.read_at,
+            UserPostModel.read_progress,
+            UserPostModel.opened_at,
+        )
+        row = (await self._session.execute(stmt)).one()
+        return UserPostState(
+            is_read=row.is_read,
+            read_at=row.read_at,
+            read_progress=float(row.read_progress),
+            opened_at=row.opened_at,
+        )
+
+    async def get_user_post_state(self, user_id: UUID, post_id: UUID) -> UserPostState:
+        """Get a user's state for a post; the untouched default when there is no row."""
+        result = await self._session.execute(
+            select(
+                UserPostModel.is_read,
+                UserPostModel.read_at,
+                UserPostModel.read_progress,
+                UserPostModel.opened_at,
+            ).where(UserPostModel.user_id == user_id, UserPostModel.post_id == post_id)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return UserPostState()
+        return UserPostState(
+            is_read=row.is_read,
+            read_at=row.read_at,
+            read_progress=float(row.read_progress),
+            opened_at=row.opened_at,
+        )
 
     async def get_read_state(self, user_id: UUID, post_id: UUID) -> tuple[bool, Optional[datetime]]:
         """Get read state for a specific post and user."""
-        result = await self._session.execute(
-            select(UserPostModel).where(
-                UserPostModel.user_id == user_id,
-                UserPostModel.post_id == post_id,
-            )
-        )
-        user_post = result.scalar_one_or_none()
-
-        if user_post:
-            return (user_post.is_read, user_post.read_at)
-        return (False, None)  # Posts are unread by default
+        state = await self.get_user_post_state(user_id, post_id)
+        return (state.is_read, state.read_at)
 
     async def get_unread_counts_by_feed(self, user_id: UUID) -> dict[UUID, int]:
         """Get unread post counts grouped by feed for a user.
@@ -302,6 +390,31 @@ class SQLAlchemyPostRepository(PostRepository):
         uncategorized = uncat_result.scalar_one() or 0
         return by_category, uncategorized
 
+    @staticmethod
+    def _scoped_posts(
+        *columns,
+        user_id: UUID,
+        category_id: Optional[UUID],
+        feed_id: Optional[UUID],
+        uncategorized: bool,
+    ):
+        """SELECT ``columns`` for the posts in a scope (only the user's own feeds)."""
+        query = (
+            select(*columns)
+            .select_from(PostModel)
+            .join(FeedModel, PostModel.feed_id == FeedModel.id)
+            .where(FeedModel.user_id == user_id)
+        )
+        if category_id is not None:
+            query = query.join(feed_categories, FeedModel.id == feed_categories.c.feed_id).where(
+                feed_categories.c.category_id == category_id
+            )
+        if uncategorized:
+            query = query.where(~exists().where(feed_categories.c.feed_id == FeedModel.id))
+        if feed_id is not None:
+            query = query.where(PostModel.feed_id == feed_id)
+        return query
+
     async def mark_all_read(
         self,
         user_id: UUID,
@@ -311,57 +424,50 @@ class SQLAlchemyPostRepository(PostRepository):
         feed_id: Optional[UUID] = None,
         uncategorized: bool = False,
     ) -> int:
-        """Mark every post in a scope read/unread for a user."""
-        # Scoped set of post ids (only the user's own feeds).
-        id_query = (
-            select(PostModel.id)
-            .join(FeedModel, PostModel.feed_id == FeedModel.id)
-            .where(FeedModel.user_id == user_id)
-        )
-        if category_id is not None:
-            id_query = id_query.join(
-                feed_categories, FeedModel.id == feed_categories.c.feed_id
-            ).where(feed_categories.c.category_id == category_id)
-        if uncategorized:
-            id_query = id_query.where(~exists().where(feed_categories.c.feed_id == FeedModel.id))
-        if feed_id is not None:
-            id_query = id_query.where(PostModel.feed_id == feed_id)
+        """Mark every post in a scope read/unread for a user (set-based)."""
+        scope = {
+            "user_id": user_id,
+            "category_id": category_id,
+            "feed_id": feed_id,
+            "uncategorized": uncategorized,
+        }
 
-        result = await self._session.execute(id_query)
-        post_ids = [row[0] for row in result.all()]
-        if not post_ids:
-            return 0
-
-        now = datetime.now(timezone.utc)
-
-        # Update existing read-state rows in the scope.
-        existing_result = await self._session.execute(
-            select(UserPostModel).where(
-                UserPostModel.user_id == user_id,
-                UserPostModel.post_id.in_(post_ids),
-            )
-        )
-        existing_ids: set[UUID] = set()
-        for user_post in existing_result.scalars().all():
-            user_post.is_read = is_read
-            user_post.read_at = now if is_read else None
-            existing_ids.add(user_post.post_id)
-
-        # Posts with no row are already unread; only "mark read" needs inserts.
         if is_read:
-            for post_id_ in post_ids:
-                if post_id_ not in existing_ids:
-                    self._session.add(
-                        UserPostModel(
-                            user_id=user_id,
-                            post_id=post_id_,
-                            is_read=True,
-                            read_at=now,
-                        )
-                    )
+            insert_stmt = pg_insert(UserPostModel).from_select(
+                ["id", "user_id", "post_id", "is_read", "read_progress", "read_at"],
+                self._scoped_posts(
+                    func.gen_random_uuid(),
+                    literal(user_id, UserPostModel.user_id.type),
+                    PostModel.id,
+                    true(),
+                    literal(1.0, UserPostModel.read_progress.type),
+                    literal(datetime.now(timezone.utc), UserPostModel.read_at.type),
+                    **scope,
+                ),
+            )
+            insert_stmt = insert_stmt.on_conflict_do_update(
+                constraint=_USER_POST_UNIQUE,
+                set_={
+                    "is_read": insert_stmt.excluded.is_read,
+                    "read_progress": insert_stmt.excluded.read_progress,
+                    "read_at": insert_stmt.excluded.read_at,
+                },
+            )
+            result = await self._session.execute(insert_stmt)
+            return result.rowcount
 
-        await self._session.flush()
-        return len(post_ids)
+        scoped_ids = self._scoped_posts(PostModel.id, **scope)
+        total = (
+            await self._session.execute(select(func.count()).select_from(scoped_ids.subquery()))
+        ).scalar_one()
+        if total:
+            await self._session.execute(
+                update(UserPostModel)
+                .where(UserPostModel.user_id == user_id, UserPostModel.post_id.in_(scoped_ids))
+                .values(is_read=False, read_progress=0.0, read_at=None)
+                .execution_options(synchronize_session=False)
+            )
+        return total
 
     def _to_entity(self, model: PostModel) -> Post:
         """Convert SQLAlchemy model to domain entity.

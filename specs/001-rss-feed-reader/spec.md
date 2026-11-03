@@ -147,9 +147,11 @@ As a user, I want to listen to a post read aloud so that I can consume content h
 - **FR-016**: Users MUST be able to filter posts by category
 - **FR-017**: Users MUST be able to read full post content within the app
 - **FR-018**: System MUST render post content including text, images, and links
-- **FR-029**: System MUST automatically mark posts as read when opened
+- ~~**FR-029**: System MUST automatically mark posts as read when opened~~ - SUPERSEDED by FR-040 and FR-041 (opening a post no longer marks it read)
 - **FR-030**: Users MUST be able to manually toggle read/unread state on any post
-- **FR-031**: Users MUST be able to filter the posts view by read state (all, unread only)
+- **FR-031**: Users MUST be able to filter the posts view by read state (all, unread, in progress, read; unread includes posts that are in progress)
+- **FR-040**: Opening a post MUST NOT mark it read; the system MUST remember that the user opened it, and an opened post that was not read MUST still count as unread
+- **FR-041**: System MUST track reading progress from the read-along position while the user reads a post with Start reading (by audio or at a silent timed pace): progress MUST only move forward, a post reaching 95% MUST become read, marking a post read MUST set its progress to 100%, and marking it unread MUST reset it to 0%
 
 **Text-to-Speech**
 - **FR-019**: Users MUST be able to listen to any post via text-to-speech
@@ -176,7 +178,7 @@ As a user, I want to listen to a post read aloud so that I can consume content h
 - **User**: Authenticated individual with unique identity from OAuth provider; owns categories and feed subscriptions
 - **Category**: Named grouping for organizing feeds; belongs to a user; contains zero or more feeds
 - **Feed**: RSS/Atom subscription with URL, title, and metadata; belongs to a category; has zero or more posts
-- **Post**: Individual article/entry from a feed; has title, content, author, publication date, link, and per-user read state (auto-tracked on open, manually toggleable)
+- **Post**: Individual article/entry from a feed; has title, content, author, publication date, link, and per-user reading state (unread, in progress with a percentage, or read; tracked from read-along playback and manually toggleable), and whether the user has opened it
 - **Audio**: Cached text-to-speech rendering of a post; stored server-side and served via backend API; linked one-to-one with a post; generated on demand
 
 ## Success Criteria *(mandatory)*
@@ -206,6 +208,7 @@ As a user, I want to listen to a post read aloud so that I can consume content h
 ### Session 2026-02-03
 
 - Q: Should users be able to mark posts as read/unread, and should the system track read state automatically? → A: Auto-track read state when post is opened, with manual toggle available
+  - Superseded 2026-11-02: opening a post no longer marks it read; reading progress is tracked instead (FR-040, FR-041). See `docs/superpowers/specs/2026-11-02-reading-progress-design.md`
 - Q: How long should posts be retained before automatic cleanup? → A: 90 days from publication date
 - Q: Where should generated TTS audio files be stored? → A: Server-side storage (backend serves audio files)
 - Q: What time of day should daily notifications be sent? → A: Morning (8:00 AM user local time)
