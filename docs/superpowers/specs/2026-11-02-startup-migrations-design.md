@@ -1,7 +1,7 @@
 # Migrate on Startup (Opt-In) — Design
 
 **Date:** 2026-11-02
-**Status:** Design approved in conversation; written spec pending review
+**Status:** Approved (2026-11-02). Implementation plan: `docs/superpowers/plans/2026-11-02-startup-migrations.md`
 **Area:** Backend container entrypoint, Azure infrastructure parameter, operator docs
 **Supersedes:** "runtime startup never migrates" (README) and "Do not put migration
 credentials into runtime settings" (threat-model rollout) — for installations that
