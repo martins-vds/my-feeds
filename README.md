@@ -252,9 +252,10 @@ pending migrations before it serves: run
 `azd provision --preview`, then `azd provision`. Provisioning stores the database
 administrator URL in the web app's `MIGRATION_DATABASE_URL` setting; `start.sh` runs
 `alembic upgrade head` with it before `hypercorn`, and the server never receives that
-URL or either database password. A failed migration, or an unreachable database at
-start, stops the container instead of serving. First-time role bootstrap and runtime
-regrants stay with `infra/provision-database.sh`.
+URL or the administrator password; it keeps only the runtime `DATABASE_URL`. A failed
+migration, or an unreachable database at start, stops the container instead of
+serving. First-time role bootstrap and runtime regrants stay with
+`infra/provision-database.sh`.
 
 Keep migrations compatible with the previous image (add first, remove in a later
 release): the old container can overlap the new one during a deploy and nothing
