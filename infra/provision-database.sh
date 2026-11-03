@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Privileged operator path. Run from a private-network host with psql + Alembic.
-# Never give these credentials or this execution capability to runtime deployment.
+# Never give these credentials or this execution capability to runtime deployment;
+# the GitHub deploy workflow never receives them. An installation may separately opt
+# in to MIGRATE_ON_STARTUP so the web container migrates itself (see README).
 set -euo pipefail
 : "${PGHOST:?Set the private PostgreSQL hostname}" "${PGDATABASE:?Set the application database}"
 : "${POSTGRES_USER:?Set the migration administrator username}"
@@ -20,4 +22,4 @@ export PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=require
 psql -X --set=ON_ERROR_STOP=1 --file="$root/init-db.sql"
 sh "$root/backend/start.sh" migrate
 psql -X --set=ON_ERROR_STOP=1 --file="$root/init-db.sql"
-echo "Migrations and runtime grants applied. Publish only the runtime URL to the web app."
+echo "Migrations and runtime grants applied. Publish only the runtime URL to the web app unless you opted in to MIGRATE_ON_STARTUP (see README)."

@@ -235,7 +235,8 @@ From a host with private database access, run `infra/provision-database.sh`
 with administrator `MIGRATION_DATABASE_URL` (including `ssl=require`), the
 database connection variables, and the runtime password. Apply migrations
 through `b8e4a1c7d903` and reapply runtime grants. Only `myfeeds_runtime`
-credentials belong in app settings; runtime startup never migrates.
+credentials belong in app settings by default, and the container does not migrate
+at startup unless you opt in (see "Optional: migrate on startup" below).
 Opaque sessions replace legacy cookies, so existing users must sign in again.
 The shared-audio-key migration preserves per-post ownership links; downgrading
 its index requires first resolving any duplicate content keys.
@@ -243,6 +244,30 @@ The reading-progress migration removes duplicate `(user_id, post_id)` read-state
 rows (keeping one per pair, preferring a read row) and marks existing read rows
 as 100% read before it adds a unique constraint; downgrading cannot restore the
 removed duplicates.
+
+**Optional: migrate on startup.** When no operator can run
+`infra/provision-database.sh` before each release, opt in so the web container applies
+pending migrations before it serves: run
+`azd env set MIGRATE_ON_STARTUP true --environment my-feeds-prod`, review
+`azd provision --preview`, then `azd provision`. Provisioning stores the database
+administrator URL in the web app's `MIGRATION_DATABASE_URL` setting; `start.sh` runs
+`alembic upgrade head` with it before `hypercorn`, and the server never receives that
+URL or either database password. A failed migration, or an unreachable database at
+start, stops the container instead of serving. First-time role bootstrap and runtime
+regrants stay with `infra/provision-database.sh`.
+
+Keep migrations compatible with the previous image (add first, remove in a later
+release): the old container can overlap the new one during a deploy and nothing
+downgrades automatically. Run a single instance, because there is no migration lock.
+App Service waits about 230 seconds for a container to start, so run long migrations
+out of band. To deploy an image older than the applied revision, first run
+`azd env set MIGRATE_ON_STARTUP false --environment my-feeds-prod` and
+`azd provision`; otherwise the older image fails with `Can't locate revision`.
+
+**Trade-off:** anyone who can deploy an image to the app can read every app setting,
+including the administrator URL, and Azure may keep the value in deployment history.
+It stays until you opt out and re-provision. Protect `main` and add reviewers to the
+`production` environment before opting in.
 
 Protect `main`, select actual numeric reviewer IDs, and run operator-only
 `infra/setup-github.sh` to configure the reviewed production environment and a
@@ -262,7 +287,8 @@ and `.azure/my-feeds-prod/.env` contains its azd state. Keep that directory priv
 do not commit or upload it to CI, because provisioning state can contain secrets.
 The runner creates only local azd environment metadata, with explicit existing
 resource names and production slot selection; it does not refresh infrastructure
-outputs, run `azd up`, migrate the database, or change IAM. Azure CLI handles the
+outputs, run `azd up`, migrate the database (an opted-in container migrates itself
+at start), or change IAM. Azure CLI handles the
 remote build and registry/digest resolution because azd 1.37.2 skips standalone
 `azd publish` for App Service. Application settings and registry
 pull identity remain operator-provisioned.

@@ -296,3 +296,13 @@ test("bicep migrate-on-startup is a consent-gated opt-in that always emits the a
   );
   assert.match(read("infra/main.parameters.json"), /"migrateOnStartup": \{ "value": "\$\{MIGRATE_ON_STARTUP=false\}" \}/);
 });
+
+test("docs describe the opt-in startup migration instead of claiming it never happens", () => {
+  const readme = read("README.md");
+  const threatModel = read("my-feeds-threat-model.md");
+  assert.match(readme, /MIGRATE_ON_STARTUP/);
+  assert.doesNotMatch(readme, /runtime startup never migrates/);
+  assert.match(threatModel, /MIGRATE_ON_STARTUP/);
+  assert.doesNotMatch(threatModel, /Do not put migration credentials into runtime settings\./);
+  assert.match(read("infra/provision-database.sh"), /MIGRATE_ON_STARTUP/);
+});
