@@ -247,28 +247,60 @@ removed duplicates.
 
 **Optional: migrate on startup.** When no operator can run
 `infra/provision-database.sh` before each release, opt in so the web container applies
-pending migrations before it serves: run
-`azd env set MIGRATE_ON_STARTUP true --environment my-feeds-prod`, review
-`azd provision --preview`, then `azd provision`. Provisioning stores the database
-administrator URL in the web app's `MIGRATION_DATABASE_URL` setting; `start.sh` runs
+pending migrations before it serves. Provisioning stores the database administrator URL
+in the web app's `MIGRATION_DATABASE_URL` setting; `start.sh` runs
 `alembic upgrade head` with it before `hypercorn`, and the server never receives that
 URL or the administrator password; it keeps only the runtime `DATABASE_URL`. A failed
 migration, or an unreachable database at start, stops the container instead of
 serving. First-time role bootstrap and runtime regrants stay with
 `infra/provision-database.sh`.
 
+Roll out in this order: opt in and provision, deploy, then verify.
+
+1. Opt in with `azd env set MIGRATE_ON_STARTUP true --environment my-feeds-prod`. The
+   administrator password goes into the URL without URL-encoding, so it must be
+   URL-safe (azd-generated values are).
+2. Check before provisioning. `azd provision` applies the whole template, not only this
+   setting, and rebuilds `DATABASE_URL` from `POSTGRES_RUNTIME_PASSWORD`; if that
+   variable is not set, azd may generate a new password. Confirm it holds the password
+   the `myfeeds_runtime` role already uses (never print it). Run `azd provision --preview`
+   and keep the output private, because it may include setting values. Continue only if
+   the only change is `MIGRATION_DATABASE_URL` and the running image is kept. Stop on any
+   change to `DATABASE_URL`, `SECRET_KEY`, OAuth settings, or Speech/network resources,
+   and reconcile that drift first.
+3. Run `azd provision`. The settings change restarts the app briefly.
+4. Run the `deploy.yml` workflow.
+5. Verify. When a migration is pending, the container log shows Alembic's
+   `Running upgrade ... -> b8e4a1c7d903` before the server starts, and, from a
+   private-network host, `alembic_version` holds `b8e4a1c7d903`. Log and site access
+   depend on the app's IP restrictions.
+
+If the migration fails, the container exits and App Service restarts it, so the site
+stays down until you fix the cause. Opting out only stops the restart loop and leaves the
+new code on the old schema. Fix the cause and redeploy, redeploy the previous image, or
+run `infra/provision-database.sh` from a private-network host.
+
+To keep the administrator URL in app settings only while a migration is pending, opt in
+for that release and, once it is verified, run
+`azd env set MIGRATE_ON_STARTUP false --environment my-feeds-prod` and `azd provision`
+again with the same checks.
+
 Keep migrations compatible with the previous image (add first, remove in a later
 release): the old container can overlap the new one during a deploy and nothing
 downgrades automatically. Run a single instance, because there is no migration lock.
 App Service waits about 230 seconds for a container to start, so run long migrations
-out of band. To deploy an image older than the applied revision, first run
-`azd env set MIGRATE_ON_STARTUP false --environment my-feeds-prod` and
-`azd provision`; otherwise the older image fails with `Can't locate revision`.
+out of band. An older image that also migrates at start fails with
+`Can't locate revision` when the database is already ahead of it; before deploying one,
+run `azd env set MIGRATE_ON_STARTUP false --environment my-feeds-prod` and
+`azd provision`.
 
-**Trade-off:** anyone who can deploy an image to the app can read every app setting,
-including the administrator URL, and Azure may keep the value in deployment history.
-It stays until you opt out and re-provision. Protect `main` and add reviewers to the
-`production` environment before opting in.
+**Trade-off:** the opt-in keeps the database administrator URL in an app setting. Anyone
+who can deploy an image to the app can read that setting and run code with it (schema
+and role changes, reading or deleting any data), and Azure may keep the value in
+deployment history. Opting out removes the setting but cannot revoke a copy someone
+already read; rotate `POSTGRES_PASSWORD` if you suspect exposure. Before opting in,
+protect `main` and add reviewers to the `production` environment (see below), and check
+that both are enforced.
 
 Protect `main`, select actual numeric reviewer IDs, and run operator-only
 `infra/setup-github.sh` to configure the reviewed production environment and a
