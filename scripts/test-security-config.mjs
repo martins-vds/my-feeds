@@ -286,3 +286,13 @@ test("start.sh requires the runtime URL before migrating on startup", () => {
   assert.match(result.stderr, /DATABASE_URL/);
   assert.deepEqual(result.calls, []);
 });
+
+test("bicep migrate-on-startup is a consent-gated opt-in that always emits the app setting", () => {
+  const bicep = read("infra/main.bicep");
+  assert.match(bicep, /@description\('[^'\n]+'\)\nparam migrateOnStartup bool = false\n/);
+  assert.equal(
+    bicep.match(/^\s*MIGRATION_DATABASE_URL: (.+)$/m)?.[1],
+    "migrateOnStartup ? 'postgresql+asyncpg://${postgresUser}:${postgresPassword}@${postgres.outputs.fqdn!}:5432/${postgresDb}?ssl=require' : ''",
+  );
+  assert.match(read("infra/main.parameters.json"), /"migrateOnStartup": \{ "value": "\$\{MIGRATE_ON_STARTUP=false\}" \}/);
+});

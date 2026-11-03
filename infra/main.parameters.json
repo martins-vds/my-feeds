@@ -9,6 +9,7 @@
     "postgresRuntimePassword": { "value": "${POSTGRES_RUNTIME_PASSWORD}" },
     "allowExternalTts": { "value": "${EXTERNAL_TTS_ENABLED=false}" },
     "allowExternalImages": { "value": "${ALLOW_EXTERNAL_IMAGES=false}" },
+    "migrateOnStartup": { "value": "${MIGRATE_ON_STARTUP=false}" },
     "secretKey": { "value": "${SECRET_KEY}" },
     "webAppName": { "value": "${WEB_APP_NAME=}" },
     "webExists": { "value": "${SERVICE_WEB_RESOURCE_EXISTS=false}" },

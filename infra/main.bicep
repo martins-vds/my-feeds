@@ -42,6 +42,9 @@ param allowExternalTts bool = false
 @description('Explicit consent to load remote HTTPS feed images in the browser.')
 param allowExternalImages bool = false
 
+@description('Explicit consent to store the database administrator URL in the web app settings so the container applies pending migrations before it starts serving. Off by default.')
+param migrateOnStartup bool = false
+
 @secure()
 @minLength(32)
 @metadata({ azd: { type: 'generate', config: { length: 64, noSpecial: true } } })
@@ -327,6 +330,8 @@ module web 'br/public:avm/res/web/site@sha256:7d528404c437967a069a1635f46c550063
           ENVIRONMENT: 'production'
           DEBUG: 'false'
           DATABASE_URL: 'postgresql+asyncpg://myfeeds_runtime:${postgresRuntimePassword}@${postgres.outputs.fqdn!}:5432/${postgresDb}?ssl=require'
+          // Always emitted: the module merges settings, so only an empty value clears a stored URL.
+          MIGRATION_DATABASE_URL: migrateOnStartup ? 'postgresql+asyncpg://${postgresUser}:${postgresPassword}@${postgres.outputs.fqdn!}:5432/${postgresDb}?ssl=require' : ''
           SECRET_KEY: secretKey
           OAUTH_REDIRECT_BASE_URL: publicUrl
           FRONTEND_URL: publicUrl
